@@ -1,0 +1,63 @@
+name: Desplegar ARCHIVA en GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      # El proyecto usa pnpm: npm install falla por el conflicto de peer
+      # dependencies entre @angular/fire@20 y Angular 21.
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile --config.strict-peer-dependencies=false
+
+      # El sitio se publica en /Archiva/, no en la raiz del dominio.
+      - name: Compilar
+        run: pnpm exec ng build --base-href /Archiva/
+
+      # GitHub Pages devuelve 404 en las rutas profundas de una SPA.
+      # Servir index.html como 404 hace que el router de Angular resuelva.
+      - name: Preparar respaldo de rutas para la SPA
+        run: cp dist/archiva/browser/index.html dist/archiva/browser/404.html
+
+      - name: Subir artefacto
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/archiva/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

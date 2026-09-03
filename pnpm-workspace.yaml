@@ -6,3 +6,13 @@ allowBuilds:
   msgpackr-extract: set this to true or false
   protobufjs: set this to true or false
   re2: set this to true or false
+# Dependencias con scripts de compilacion nativa autorizadas.
+# Sin esta lista pnpm los omite y el build en CI puede fallar.
+onlyBuiltDependencies:
+  - '@firebase/util'
+  - '@parcel/watcher'
+  - esbuild
+  - lmdb
+  - msgpackr-extract
+  - protobufjs
+  - re2

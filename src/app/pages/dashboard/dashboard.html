@@ -1,0 +1,353 @@
+@if (isLoading()) {
+  <div class="loading-screen">
+    <div class="spinner"></div>
+    <p>Cargando...</p>
+  </div>
+}
+
+@if (!isLoading()) {
+<div class="dashboard">
+  
+  <!-- Header pequeño del dashboard -->
+  <header class="dash-header">
+    <div>
+      <h1>Dashboard Documental</h1>
+      <p class="dash-header__subtitle">{{ monthName | titlecase }}</p>
+    </div>
+  </header>
+
+  <!-- ===== FILA 1: Balance Expansible ===== -->
+  <div class="row row--1">
+    <div class="card card--balance card--carousel" [class.expanded]="isBalanceExpanded()">
+      <!-- Vista 0: Documentos Activos -->
+      @if (currentBalanceView() === 0) {
+        <div class="carousel-slide">
+          <div class="card__header">
+            <span class="card__label">Documentos Activos</span>
+            <span class="badge" [class.badge--positive]="totals.balance >= 0" [class.badge--negative]="totals.balance < 0">
+              {{ totals.balance >= 0 ? '+' : '' }}{{ formatSol(totals.balance) }}
+            </span>
+          </div>
+          <div class="card__value">{{ formatSol(totals.balance) }}</div>
+
+          @if (isBalanceExpanded()) {
+            <!-- Versión COMPLETA: chart grande -->
+            <div class="chart-container chart-container--full">
+              <canvas baseChart
+                [data]="balanceChartData"
+                [options]="balanceChartOptions"
+                [type]="'line'">
+              </canvas>
+            </div>
+            <div class="card__footer">
+              <span class="footer-label">Día {{ currentDay }}</span>
+              <span class="footer-label">{{ daysRemaining }} días restantes</span>
+            </div>
+          } @else {
+            <!-- Versión REDUCIDA: mini chart neon -->
+            <div class="chart-container chart-container--mini">
+              <canvas baseChart
+                [data]="balanceMiniChartData"
+                [options]="balanceMiniChartOptions"
+                [type]="'line'">
+              </canvas>
+            </div>
+          }
+
+          <!-- Navegación -->
+          <div class="carousel-nav">
+            <button class="carousel-toggle" (click)="toggleBalanceSize()">
+              @if (isBalanceExpanded()) {
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6M20 10h-6V4"/></svg>
+                <span>Reducir</span>
+              } @else {
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                <span>Ver detalle</span>
+              }
+            </button>
+            <div class="carousel-dots">
+              @for (i of [0,1]; track i) {
+                <button class="carousel-dot" [class.active]="currentBalanceView() === i" (click)="setBalanceView(i)"></button>
+              }
+            </div>
+            <button class="carousel-arrow" (click)="nextBalanceView()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        </div>
+      }
+
+      <!-- Vista 1: Entradas vs Salidas (Chart.js) -->
+      @if (currentBalanceView() === 1) {
+        <div class="carousel-slide">
+          <div class="card__header">
+            <span class="card__label">Entradas vs Salidas</span>
+            <span class="card__label">{{ currentMonthName }}</span>
+          </div>
+          <div class="chart-container chart-container--bar">
+            <canvas baseChart
+              [data]="comparisonChartData"
+              [options]="comparisonChartOptions"
+              [type]="'bar'">
+            </canvas>
+          </div>
+          <div class="card__subtitle">
+            Diferencia: <strong [style.color]="(totals.income - totals.expenses) >= 0 ? 'var(--color-success)' : 'var(--color-error)'">
+              {{ formatSol(totals.income - totals.expenses) }}
+            </strong>
+          </div>
+          <!-- Navegación -->
+          <div class="carousel-nav">
+            <button class="carousel-arrow" (click)="prevBalanceView()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <div class="carousel-dots">
+              @for (i of [0,1]; track i) {
+                <button class="carousel-dot" [class.active]="currentBalanceView() === i" (click)="setBalanceView(i)"></button>
+              }
+            </div>
+            <button class="carousel-arrow" (click)="nextBalanceView()" [disabled]="currentBalanceView() === totalBalanceViews - 1">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- ===== FILA 2: 3 Cards Métricas ===== -->
+  <div class="row row--2">
+    <!-- Documentos Recibidos -->
+    <a routerLink="/documentos" class="card card--metric card--clickable card--metric--income">
+      <div class="card__header">
+        <span class="card__label">Documentos</span>
+        <span class="metric-pct" [class.metric-pct--positive]="incomeChange >= 0" [class.metric-pct--negative]="incomeChange < 0">
+          {{ incomeChange >= 0 ? '+' : '' }}{{ incomeChange.toFixed(1) }}%
+        </span>
+      </div>
+      <div class="card__value">{{ formatSol(actualIncome) }}</div>
+      @if (configuredIncome > actualIncome && configuredIncome > 0) {
+        <div class="card__subtitle">
+          Esperado: {{ formatSol(configuredIncome) }}
+        </div>
+      }
+      <div class="mini-chart">
+        <canvas baseChart
+          [data]="incomeMiniChartData"
+          [options]="miniChartOptions"
+          [type]="'line'">
+        </canvas>
+      </div>
+      @if (incomePopups().length > 0) {
+        <div class="income-popup-rotator">
+          <div class="income-popup" [class]="'income-popup--' + currentPopup()?.type">
+            <app-icon [name]="currentPopup()?.icon || 'info'" [size]="14"></app-icon>
+            <span>{{ currentPopup()?.message }}</span>
+          </div>
+          @if (incomePopups().length > 1) {
+            <div class="popup-dots">
+              @for (item of incomePopups(); track $index) {
+                <span class="popup-dot" [class.active]="$index === currentPopupIndex()"></span>
+              }
+            </div>
+          }
+        </div>
+      }
+    </a>
+
+    <!-- Solicitudes -->
+    <a routerLink="/solicitudes" class="card card--metric card--clickable">
+      <div class="card__header">
+        <span class="card__label">Solicitudes</span>
+        <span class="metric-pct" [class.metric-pct--positive]="expenseChange <= 0" [class.metric-pct--negative]="expenseChange > 0">
+          {{ expenseChange >= 0 ? '+' : '' }}{{ expenseChange.toFixed(1) }}%
+        </span>
+      </div>
+      <div class="card__value">{{ formatSol(totals.expenses) }}</div>
+      <div class="mini-chart">
+        <canvas baseChart
+          [data]="expenseMiniChartData"
+          [options]="miniChartOptions"
+          [type]="'line'">
+        </canvas>
+      </div>
+    </a>
+
+    <!-- Archivo -->
+    <a routerLink="/archivo" class="card card--metric card--clickable">
+      <div class="card__header">
+        <span class="card__label">Archivo</span>
+        <span class="metric-pct" [class.metric-pct--positive]="savingsChange >= 0" [class.metric-pct--negative]="savingsChange < 0">
+          {{ savingsChange >= 0 ? '+' : '' }}{{ savingsChange.toFixed(1) }}%
+        </span>
+      </div>
+      <div class="card__value">{{ formatSol(totals.income - totals.expenses) }}</div>
+      <div class="mini-chart">
+        <canvas baseChart
+          [data]="savingsMiniChartData"
+          [options]="miniChartOptions"
+          [type]="'line'">
+        </canvas>
+      </div>
+    </a>
+  </div>
+
+  <!-- ===== FILA 3: Distribución + Metas ===== -->
+  <div class="row row--3">
+    <!-- Estado del Acervo (Izquierda) -->
+    <div class="card card--distribution">
+      <div class="card__header">
+        <span class="card__label">Estado del Acervo</span>
+        <span class="card__subtitle">{{ lastMonthName }} vs {{ currentMonthName }}</span>
+      </div>
+      <div class="distribution-bars">
+        <div class="dist-item">
+          <div class="dist-item__info">
+            <span class="dist-item__name">Aprobados</span>
+            <span class="dist-item__pct">{{ pct(byRule.need, limits.need) }}%</span>
+          </div>
+          <div class="dist-bar">
+            <div class="dist-bar__fill" [style.width.%]="pct(byRule.need, limits.need)" [style.background]="barColor(byRule.need, limits.need)"></div>
+          </div>
+          <span class="dist-item__amount">{{ formatSol(byRule.need) }}</span>
+        </div>
+        <div class="dist-item">
+          <div class="dist-item__info">
+            <span class="dist-item__name">Observados</span>
+            <span class="dist-item__pct">{{ pct(byRule.want, limits.want) }}%</span>
+          </div>
+          <div class="dist-bar">
+            <div class="dist-bar__fill" [style.width.%]="pct(byRule.want, limits.want)" [style.background]="barColor(byRule.want, limits.want)"></div>
+          </div>
+          <span class="dist-item__amount">{{ formatSol(byRule.want) }}</span>
+        </div>
+        <div class="dist-item">
+          <div class="dist-item__info">
+            <span class="dist-item__name">Archivados</span>
+            <span class="dist-item__pct">{{ pct(byRule.saving, limits.saving) }}%</span>
+          </div>
+          <div class="dist-bar">
+            <div class="dist-bar__fill" [style.width.%]="pct(byRule.saving, limits.saving)" [style.background]="barColor(byRule.saving, limits.saving)"></div>
+          </div>
+          <span class="dist-item__amount">{{ formatSol(byRule.saving) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Flujos de Aprobación (Derecha) -->
+    <div class="card card--goals">
+      <div class="card__header">
+        <span class="card__label">Metas</span>
+        <span class="card__subtitle">Distribución del acervo</span>
+      </div>
+      @if (goal()) {
+        <div class="goals-grid">
+          <div class="goal-circle">
+            <svg viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-border)" stroke-width="3"/>
+              <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-primary)" stroke-width="3" 
+                [attr.stroke-dasharray]="goalProgress + ', 100'" 
+                stroke-linecap="round"
+                transform="rotate(-90 18 18)"/>
+            </svg>
+            <span class="goal-circle__pct">{{ goalProgress.toFixed(0) }}%</span>
+          </div>
+          <div class="goal-info">
+            <span class="goal-info__name">{{ goal()!.name }}</span>
+            <span class="goal-info__amount">{{ formatSol(goal()!.etapasCompletadas) }} / {{ formatSol(goal()!.etapasTotales) }}</span>
+            <span class="goal-info__time">{{ goal()!.periodosParaCierre }} meses</span>
+          </div>
+        </div>
+      } @else {
+        <div class="empty-goals">
+          <p>Sin flujos en curso</p>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- ===== FILA 4: Actividad Reciente ===== -->
+  <div class="row row--4">
+    <div class="card card--transactions">
+      <div class="card__header">
+        <span class="card__label">Actividad Reciente</span>
+        <a routerLink="/historial" class="card__link">Ver todas</a>
+      </div>
+      <div class="transactions-table">
+        <div class="table-header">
+          <span>Descripción</span>
+          <span>Fecha</span>
+          <span>Cantidad</span>
+        </div>
+        @for (tx of transactions().slice(0, 5); track tx.id) {
+          <div class="table-row">
+            <div class="table-row__desc">
+              <span class="table-row__icon">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9h6M9 15h6"/>
+  </svg>
+</span>
+              <span>{{ tx.description || tx.category?.name || 'Sin descripción' }}</span>
+            </div>
+            <span class="table-row__date">{{ tx.date | date:'dd MMM' }}</span>
+            <span class="table-row__amount" [class.positive]="tx.amount > 0" [class.negative]="tx.amount < 0">
+              {{ tx.amount > 0 ? '+' : '' }}{{ formatSol(tx.amount) }}
+            </span>
+          </div>
+        }
+        @if (transactions().length === 0) {
+          <div class="table-empty">Sin actividad registrada</div>
+        }
+      </div>
+    </div>
+  </div>
+
+</div>
+}
+
+<!-- Quick Entry Modal -->
+@if (showQuickEntry()) {
+  <div class="overlay" (click)="closeQuickEntry()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal__header">
+        <h3>Nuevo registro</h3>
+        <button class="modal__close" (click)="closeQuickEntry()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="type-toggle">
+        <button [class.active]="!isExpense" (click)="setSign('income')">Documento</button>
+        <button [class.active]="isExpense" (click)="setSign('expense')">Solicitud</button>
+      </div>
+      <div class="numpad__display" [class.expense]="isExpense" [class.income]="!isExpense">
+        {{ quickAmount || '0' }}
+      </div>
+      <div class="numpad">
+        <button class="numpad__key" (click)="appendDigit('1')">1</button>
+        <button class="numpad__key" (click)="appendDigit('2')">2</button>
+        <button class="numpad__key" (click)="appendDigit('3')">3</button>
+        <button class="numpad__key" (click)="appendDigit('4')">4</button>
+        <button class="numpad__key" (click)="appendDigit('5')">5</button>
+        <button class="numpad__key" (click)="appendDigit('6')">6</button>
+        <button class="numpad__key" (click)="appendDigit('7')">7</button>
+        <button class="numpad__key" (click)="appendDigit('8')">8</button>
+        <button class="numpad__key" (click)="appendDigit('9')">9</button>
+        <button class="numpad__key" (click)="appendDigit('.')">.</button>
+        <button class="numpad__key" (click)="appendDigit('0')">0</button>
+        <button class="numpad__key numpad__key--del" (click)="deleteDigit()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="17 10 12 15 7 10"/>
+            <line x1="12" y1="15" x2="7" y2="10"/>
+          </svg>
+        </button>
+      </div>
+      <input type="text" [(ngModel)]="quickDescription" placeholder="Descripción (opcional)" class="modal__input">
+      <button class="btn-primary" (click)="saveQuickEntry()" [disabled]="quickLoading">
+        {{ quickLoading ? 'Guardando...' : 'Guardar' }}
+      </button>
+    </div>
+  </div>
+}

@@ -1,0 +1,155 @@
+// ============================================
+// DESIGN SYSTEM - ARCHIVA
+// Gestion Documental Empresarial | papel hueso + azul petroleo + kraft
+// ============================================
+
+// ------------------------------------------
+// COLORES - Brand Identity
+// ------------------------------------------
+:root {
+  // Primary Colors
+  --color-primary: #1F4959;
+  --color-primary-light: #356B7D;
+  --color-primary-dark: #12303A;
+  
+  // Neutral Colors
+  --color-bg: #F4F2ED;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #EAE7E0;
+  
+  // Text Colors
+  --color-text: #1A2426;
+  --color-text-secondary: #5E6B6E;
+  --color-text-muted: #8A9295;
+  
+  // Accent
+  --color-accent: #C97B3C;
+  --color-gold: #B8791F;
+  
+  // Semantic
+  --color-success: #2D7D5A;
+  --color-warning: #B8791F;
+  --color-error: #A3342B;
+  
+  // Borders
+  --color-border: rgba(31, 73, 89, 0.16);
+  --color-border-hover: rgba(31, 73, 89, 0.42);
+}
+
+// ------------------------------------------
+// TIPOGRAFÍA - Brand Identity
+// ------------------------------------------
+:root {
+  --font-heading: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  
+  --text-xs: 0.75rem;    // 12px
+  --text-sm: 0.875rem;   // 14px
+  --text-base: 1rem;      // 16px
+  --text-lg: 1.125rem;    // 18px
+  --text-xl: 1.25rem;     // 20px
+  --text-2xl: 1.5rem;     // 24px
+  --text-3xl: 1.875rem;   // 30px
+  
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+}
+
+// ------------------------------------------
+// EASING - Emil Kowalski Principles
+// ------------------------------------------
+:root {
+  // Strong ease-out for UI interactions (buttons, etc)
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  
+  // Strong ease-in-out for on-screen movement
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  
+  // iOS-like drawer curve
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  
+  // Default UI ease
+  --ease-default: ease-out;
+}
+
+// ------------------------------------------
+// DURACIONES - Emil Kowalski Principles
+// ------------------------------------------
+:root {
+  --duration-fast: 100ms;
+  --duration-normal: 160ms;
+  --duration-slow: 200ms;
+  --duration-page: 300ms;
+}
+
+// ------------------------------------------
+// RADII
+// ------------------------------------------
+:root {
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+}
+
+// ------------------------------------------
+// SHADOWS
+// ------------------------------------------
+:root {
+  --shadow-sm: 0 1px 2px rgba(18, 48, 58, 0.08);
+  --shadow-md: 0 4px 12px rgba(18, 48, 58, 0.10);
+  --shadow-lg: 0 8px 24px rgba(18, 48, 58, 0.14);
+  --shadow-glow: 0 0 20px rgba(201, 123, 60, 0.28);
+}
+
+// ------------------------------------------
+// SPACING
+// ------------------------------------------
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+}
+
+// ------------------------------------------
+// LAYOUT
+// ------------------------------------------
+:root {
+  --sidebar-width: 240px;
+  --topbar-height: 64px;
+  --bottom-nav-height: 72px;
+}
+// ------------------------------------------
+// ESTADOS DOCUMENTALES - ARCHIVA
+// ------------------------------------------
+:root {
+  --estado-borrador: #8A9295;
+  --estado-en-revision: #3E6E8E;
+  --estado-pendiente: #B8791F;
+  --estado-aprobado: #2D7D5A;
+  --estado-observado: #C97B3C;
+  --estado-rechazado: #A3342B;
+  --estado-archivado: #6B7B7E;
+  --estado-vencido: #8C2A22;
+}
+
+// ------------------------------------------
+// CODIGO DOCUMENTAL
+// ------------------------------------------
+.codigo-doc {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}

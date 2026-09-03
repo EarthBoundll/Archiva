@@ -1,0 +1,127 @@
+<header class="page-header">
+  <div>
+    <h1>Gestión de Almacenamiento</h1>
+    <p class="page-subtitle">{{ currentMonth }}</p>
+  </div>
+  <button class="btn-icon" (click)="createBudget()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  </button>
+</header>
+
+<div class="budget-grid">
+  <!-- Resumen -->
+  <div class="card card--summary">
+    <div class="summary-row">
+      <div class="summary-item">
+        <span class="summary-label">Total presupuestado</span>
+        <span class="summary-value">{{ formatSol(totalBudgeted) }}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Total gastado</span>
+        <span class="summary-value spent">{{ formatSol(totalSpent) }}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Restante</span>
+        <span class="summary-value" [class.positive]="remaining >= 0" [class.negative]="remaining < 0">
+          {{ formatSol(remaining) }}
+        </span>
+      </div>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" [style.width.%]="budgetProgress"></div>
+    </div>
+    <span class="progress-label">{{ budgetProgress }}% del cuota usado</span>
+  </div>
+
+  <!-- Categorías -->
+  <div class="budget-categories">
+    @for (cat of categories(); track cat.id) {
+      <div class="card card--category" [class.at-risk]="cat.status === 'at_risk'" [class.exceeded]="cat.status === 'exceeded'">
+        <div class="category-header">
+          <div class="category-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              @switch (cat.category) {
+                @case ('housing') { <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/> }
+                @case ('utilities') { <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/> }
+                @case ('transport') { <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/> }
+                @case ('health') { <path d="M22 12h-4l-3 9L9 3l-3 9H2"/> }
+                @case ('groceries') { <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/> }
+                @case ('dining_out') { <path d="M3 2h18v20H3z"/><path d="M8 10h8M8 14h8"/> }
+                @case ('entertainment') { <polygon points="5 3 19 12 5 21 5 3"/> }
+                @default { <circle cx="12" cy="12" r="10"/> }
+              }
+            </svg>
+          </div>
+          <span class="category-name">{{ cat.categoryName }}</span>
+        </div>
+        
+        <div class="category-values">
+          <span class="spent">{{ formatSol(cat.spent) }}</span>
+          <span class="separator">/</span>
+          <span class="budgeted">{{ formatSol(cat.budgeted) }}</span>
+        </div>
+        
+        <div class="category-progress">
+          <div class="progress-fill" 
+            [style.width.%]="cat.percentage" 
+            [class.warning]="cat.percentage >= 70 && cat.percentage < 90"
+            [class.danger]="cat.percentage >= 90">
+          </div>
+        </div>
+        
+        <div class="category-footer">
+          <span class="percentage" [class.over]="cat.percentage > 100">
+            {{ cat.percentage > 100 ? 100 : cat.percentage }}%
+          </span>
+          <span class="remaining" [class.negative]="cat.remaining < 0">
+            {{ cat.remaining >= 0 ? '+' : '' }}{{ formatSol(cat.remaining) }}
+          </span>
+        </div>
+      </div>
+    } @empty {
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+        <p>No hay cuotas configurados</p>
+        <button class="btn-primary" (click)="createBudget()">Crear cuota</button>
+      </div>
+    }
+  </div>
+</div>
+
+@if (showModal()) {
+  <div class="overlay" (click)="closeModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal__header">
+        <h3>{{ editingCategory() ? 'Editar' : 'Nuevo' }} cuota</h3>
+        <button class="modal__close" (click)="closeModal()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="form-group">
+        <label>Categoría</label>
+        <select [(ngModel)]="formCategory" class="form-select">
+          <option value="">Seleccionar...</option>
+          @for (cat of availableCategories; track cat.value) {
+            <option [value]="cat.value">{{ cat.label }}</option>
+          }
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>Cantidad presupuestado</label>
+        <input type="number" [(ngModel)]="formAmount" class="form-input" placeholder="0.00" min="0" step="0.01">
+      </div>
+      
+      <button class="btn-primary" (click)="saveBudget()" [disabled]="!formCategory || !formAmount">
+        Guardar
+      </button>
+    </div>
+  </div>
+}

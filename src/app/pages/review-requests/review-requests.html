@@ -1,0 +1,556 @@
+<div class="expenses-page">
+  <div class="page-header">
+    <div class="header-left">
+      <h1>Solicitudes de Revisión</h1>
+      <span class="month-label">{{ currentMonth() }}</span>
+    </div>
+    <button class="btn-add" (click)="openAddModal()">+ Nuevo</button>
+  </div>
+
+  @if (isLoading()) {
+    <div class="loading">Cargando...</div>
+  } @else {
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+      <button class="stat stat-clickable" (click)="openPaidHistory()">
+        <app-icon name="wallet" [size]="14"></app-icon>
+        <div class="stat-col">
+          <span class="stat-label">Total Pagado</span>
+          <span class="stat-value">{{ formatSol(totalPaid()) }}</span>
+        </div>
+        <app-icon name="chevron-right" [size]="14" class="stat-arrow"></app-icon>
+      </button>
+      <div class="stat accent">
+        <app-icon name="shield" [size]="14"></app-icon>
+        <div class="stat-col">
+          <span class="stat-label">Primordial</span>
+          <span class="stat-value">{{ formatSol(primordialPaid()) }} / {{ formatSol(primordialBudgeted()) }}</span>
+        </div>
+      </div>
+      <div class="stat warn">
+        <app-icon name="zap" [size]="14"></app-icon>
+        <div class="stat-col">
+          <span class="stat-label">No Esencial</span>
+          <span class="stat-value">{{ formatSol(nonPrimordialPaid()) }} / {{ formatSol(nonPrimordialBudgeted()) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <button class="tab" [class.active]="activeTab() === 'primordial'" (click)="activeTab.set('primordial')">
+        Primordiales
+        <span class="tab-count">{{ primordialExpenses().length }}</span>
+      </button>
+      <button class="tab" [class.active]="activeTab() === 'nonPrimordial'" (click)="activeTab.set('nonPrimordial')">
+        No Esenciales
+        <span class="tab-count">{{ nonPrimordialExpenses().length }}</span>
+      </button>
+    </div>
+
+    <!-- Filter Pills -->
+    <div class="filter-pills">
+      <button class="pill" [class.active]="selectedCategory() === ''" (click)="selectedCategory.set('')">Todos</button>
+      @for (cat of categoryList(); track cat) {
+        <button class="pill" [class.active]="selectedCategory() === cat" (click)="selectedCategory.set(cat)">
+          <app-icon [name]="getCategoryIcon(cat)" [size]="13"></app-icon>
+          <span>{{ getEtiquetaCategoria(cat) }}</span>
+          @if (categoryTotals()[cat]) {
+            <span class="pill-badge">{{ formatSol(categoryTotals()[cat]) }}</span>
+          }
+        </button>
+      }
+    </div>
+
+    <!-- Top Grid: Por Pagar + Próximos -->
+    <div class="top-grid">
+      @if (pendingExpenses().length > 0) {
+        <div class="card pending-card">
+          <div class="card-header pending-header">
+            <div class="card-header-left">
+              <app-icon name="clock" [size]="15"></app-icon>
+              <span>Por Pagar</span>
+            </div>
+            <span class="card-header-badge">{{ pendingExpenses().length }} · {{ formatSol(pendingBudgeted()) }}</span>
+          </div>
+          <div class="card-body">
+            @for (exp of pendingExpenses(); track exp.id) {
+              <div class="compact-row" [class.overdue]="exp.status === 'overdue'">
+                <app-icon [name]="getSubcategoryIcon(exp.subcategory || '')" [size]="14"></app-icon>
+                <span class="compact-name">{{ exp.name }}</span>
+                <span class="compact-day">Día {{ exp.diaLimiteMes || '?' }}</span>
+                <span class="compact-amt">{{ formatSol(exp.budgetedAmount) }}</span>
+                <button class="btn-icon success btn-tiny" (click)="openConfirmPaid(exp)" [disabled]="processing()" title="Marcar pagado">
+                  <app-icon name="check" [size]="12"></app-icon>
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      @if (upcomingPayments().length > 0) {
+        <div class="card">
+          <div class="card-header">
+            <div class="card-header-left">
+              <app-icon name="calendar" [size]="15"></app-icon>
+              <span>Próximos</span>
+            </div>
+          </div>
+          <div class="card-body">
+            @for (up of upcomingPayments(); track up.solicitudId) {
+              <div class="compact-row">
+                <app-icon [name]="getCategoryIcon(up.category)" [size]="14"></app-icon>
+                <span class="compact-name">{{ up.name }}</span>
+                <span class="compact-day" [class.overdue]="up.isOverdue">
+                  {{ up.isOverdue ? 'Vencido' : 'Día ' + up.fechaLimite }}
+                </span>
+                <span class="compact-amt">{{ formatSol(up.amount) }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    @if (activeSources().length === 0) {
+      <div class="empty-state">
+        <p>No hay solicitudes {{ activeTab() === 'primordial' ? 'primordiales' : 'no esenciales' }} registrados</p>
+        <button class="btn-add" (click)="openAddModal()">Agregar solicitud</button>
+      </div>
+    }
+
+    <!-- Category Grid -->
+    @if (activeSources().length > 0) {
+      <div class="category-grid">
+        @for (group of groupedWithSubcategories(); track group.category) {
+          <div class="card category-card">
+            <div class="card-header category-card-header" [style.border-left-color]="getCategoryColor(group.category)"
+                 (click)="toggleCategory(group.category)">
+              <div class="card-header-left">
+                <app-icon [name]="getCategoryIcon(group.category)" [size]="15"></app-icon>
+                <span>{{ getEtiquetaCategoria(group.category) }}</span>
+              </div>
+              <div class="card-header-right">
+                <span class="card-count">{{ group.count }}</span>
+                <span class="card-total">{{ formatSol(group.total) }}</span>
+              </div>
+            </div>
+            @if (!collapsedCategories().has(group.category)) {
+              <div class="card-body">
+                @for (sub of group.subcategories; track sub.subcategory || '__main__') {
+                  @for (exp of sub.expenses; track exp.id) {
+                    <div class="compact-row" [class.paid]="exp.status === 'paid'" [class.overdue]="exp.status === 'overdue'">
+                      <app-icon [name]="getSubcategoryIcon(exp.subcategory || '')" [size]="14"></app-icon>
+                      <span class="compact-name">{{ exp.name }}</span>
+                      @if (exp.status === 'paid') {
+                        <span class="compact-badge paid">✓</span>
+                      } @else {
+                        <span class="compact-day">Día {{ exp.diaLimiteMes || '?' }}</span>
+                      }
+                      <span class="compact-amt">{{ formatSol(exp.actualAmount || exp.budgetedAmount) }}</span>
+                      @if (exp.status !== 'paid') {
+                        <button class="btn-icon success btn-tiny" (click)="openConfirmPaid(exp)" [disabled]="processing()" title="Marcar pagado">
+                          <app-icon name="check" [size]="12"></app-icon>
+                        </button>
+                      }
+                    </div>
+                  }
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Distribution -->
+    @if (categoryBreakdown().length > 0) {
+      <div class="dist-compact">
+        @for (cat of categoryBreakdown(); track cat.category) {
+          <div class="dist-item">
+            <app-icon [name]="getCategoryIcon(cat.category)" [size]="12"></app-icon>
+            <span class="dist-label">{{ getEtiquetaCategoria(cat.category) }}</span>
+            <div class="dist-bar">
+              <div class="dist-fill" [style.width.%]="cat.pct" [style.background]="getCategoryColor(cat.category)"></div>
+            </div>
+            <span class="dist-value">{{ cat.pct.toFixed(0) }}%</span>
+          </div>
+        }
+      </div>
+    }
+
+  }
+</div>
+
+<!-- Confirm Paid Modal -->
+@if (showConfirmPaid()) {
+  <div class="confirm-overlay" (click)="closeConfirmPaid()">
+    <div class="confirm-dialog" (click)="$event.stopPropagation()">
+      <div class="confirm-icon">
+        <app-icon name="check" [size]="32"></app-icon>
+      </div>
+      <h4 class="confirm-title">{{ isVariableExpense() ? 'Registrar pago' : 'Confirmar pago' }}</h4>
+      <p class="confirm-message">
+        <strong>{{ confirmTarget()?.name }}</strong>
+        @if (!isVariableExpense()) {
+          <span> — <strong>{{ formatSol(confirmTarget()?.budgetedAmount || 0) }}</strong></span>
+        }
+      </p>
+      @if (isVariableExpense()) {
+        <div class="confirm-amount-group">
+          <label class="confirm-budget-label">Cuota: {{ formatSol(confirmTarget()?.budgetedAmount || 0) }}</label>
+          <label class="confirm-input-label">Días reales de atención</label>
+          <input type="number" [value]="confirmActualAmount()" (input)="onConfirmAmountInput($event)" class="form-input confirm-amount-input" min="0" step="0.01" placeholder="0.00">
+        </div>
+      }
+      <div class="confirm-actions">
+        <button class="btn-secondary" (click)="closeConfirmPaid()" [disabled]="processing()">Cancelar</button>
+        <button class="btn-primary" (click)="confirmMarkPaid()" [disabled]="processing()">
+          {{ processing() ? 'Procesando...' : (isVariableExpense() ? 'Registrar' : 'Sí, pagado') }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Delete Alert Modal -->
+@if (showDeleteAlert()) {
+  <div class="confirm-overlay" (click)="closeDeleteAlert()">
+    <div class="confirm-dialog" (click)="$event.stopPropagation()">
+      <div class="confirm-icon" style="background:rgba(239,68,68,0.12);color:#ef4444">
+        <app-icon name="trash-2" [size]="32"></app-icon>
+      </div>
+      <h4 class="confirm-title">Eliminar solicitud</h4>
+      <p class="confirm-message">
+        Vas a eliminar <strong>{{ deleteTarget()?.name }}</strong>.
+        Esta acción lo quitará de tus solicitudes activos.
+        <br><br>
+        <strong style="color:#ef4444">No se puede deshacer.</strong>
+      </p>
+      <div class="confirm-actions">
+        <button class="btn-secondary" (click)="closeDeleteAlert()" [disabled]="processing()">Cancelar</button>
+        <button class="btn-primary" style="background:#ef4444" (click)="confirmDelete()" [disabled]="processing()">{{ processing() ? 'Eliminando...' : 'Sí, eliminar' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Edit Warning Modal -->
+@if (showEditWarning()) {
+  <div class="confirm-overlay" (click)="closeEditWarning()">
+    <div class="confirm-dialog" (click)="$event.stopPropagation()">
+      <div class="confirm-icon" style="background:rgba(245,158,11,0.12);color:var(--color-warning)">
+        <app-icon name="alert-triangle" [size]="32"></app-icon>
+      </div>
+      <h4 class="confirm-title">Editar solicitud confirmado</h4>
+      <p class="confirm-message">
+        <strong>{{ editWarningTarget()?.name }}</strong> ya fue marcado como pagado.
+        <br><br>
+        Editarlo puede afectar tu historial.
+      </p>
+      <div class="confirm-actions">
+        <button class="btn-secondary" (click)="closeEditWarning()">Cancelar</button>
+        <button class="btn-primary" style="background:var(--color-warning);color:#fff" (click)="proceedEdit()">Entendido, editar</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Paid History Modal -->
+@if (showPaidHistory()) {
+  <div class="confirm-overlay" (click)="closePaidHistory()">
+    <div class="paid-history-modal" (click)="$event.stopPropagation()">
+      <div class="phm-header">
+        <div class="phm-header-left">
+          <div class="phm-icon">
+            <app-icon name="wallet" [size]="24"></app-icon>
+          </div>
+          <div>
+            <h3>Historial de Pagos</h3>
+            <span class="phm-subtitle">{{ paidHistory().reduce((sum, g) => sum + g.expenses.length, 0) }} pagos confirmados</span>
+          </div>
+        </div>
+        <button class="close-btn" (click)="closePaidHistory()">
+          <app-icon name="x" [size]="18"></app-icon>
+        </button>
+      </div>
+
+      <div class="phm-body">
+        @if (paidHistory().length === 0) {
+          <div class="phm-empty">
+            <app-icon name="inbox" [size]="40"></app-icon>
+            <p>No hay pagos confirmados aún</p>
+            <small>Marca un solicitud como pagado para verlo aquí</small>
+          </div>
+        } @else {
+          @for (group of paidHistory(); track group.category) {
+            <div class="phm-group">
+              <div class="phm-group-header" [style.border-left-color]="getCategoryColor(group.category)">
+                <app-icon [name]="getCategoryIcon(group.category)" [size]="16"></app-icon>
+                <span class="phm-group-name">{{ getEtiquetaCategoria(group.category) }}</span>
+                <span class="phm-group-count">{{ group.expenses.length }} pagos</span>
+                <span class="phm-group-total">{{ formatSol(group.total) }}</span>
+              </div>
+              @for (exp of group.expenses; track exp.id) {
+                <div class="phm-row">
+                  <div class="phm-row-icon">
+                    <app-icon [name]="getSubcategoryIcon(exp.subcategory || '')" [size]="14"></app-icon>
+                  </div>
+                  <div class="phm-row-info">
+                    <div class="phm-row-top">
+                      <span class="phm-row-name">{{ exp.name }}</span>
+                      @if (exp.provider) { <span class="phm-row-provider">{{ exp.provider }}</span> }
+                    </div>
+                    <div class="phm-row-meta">
+                      <span class="phm-row-date">
+                        <app-icon name="calendar" [size]="10"></app-icon>
+                        {{ exp.fechaAtencion || 'Sin fecha' }}
+                      </span>
+                      @if (exp.esReincidente) { <span class="phm-tag sub">Suscripción</span> }
+                      @if (exp.isVariable) { <span class="phm-tag var">Variable</span> }
+                      @if (exp.actualAmount && exp.actualAmount !== exp.budgetedAmount) {
+                        <span class="phm-tag" [class.under]="exp.actualAmount < exp.budgetedAmount" [class.over]="exp.actualAmount > exp.budgetedAmount">
+                          {{ exp.actualAmount < exp.budgetedAmount ? '▼' : '▲' }} {{ formatSol(absAmount(exp.actualAmount - exp.budgetedAmount)) }}
+                        </span>
+                      }
+                    </div>
+                    <div class="phm-row-note">
+                      <app-icon name="file-text" [size]="10"></app-icon>
+                      <input type="text" [value]="exp.notes || ''" placeholder="Agregar descripción..."
+                        (blur)="updateExpenseNote(exp, $event)" class="phm-note-input">
+                    </div>
+                  </div>
+                  <div class="phm-row-amount">
+                    <span class="phm-amt-budget">{{ formatSol(exp.budgetedAmount) }}</span>
+                    <span class="phm-amt-real">{{ formatSol(exp.actualAmount || exp.budgetedAmount) }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        }
+      </div>
+
+      <div class="phm-footer">
+        <div class="phm-footer-total">
+          Total: <strong>{{ formatSol(totalPaid()) }}</strong>
+        </div>
+        <button class="btn-primary" (click)="closePaidHistory()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Modal Add/Edit SolicitudRevision -->
+@if (showModal()) {
+  <div class="modal-overlay">
+    <div class="modal modal-expense" (click)="$event.stopPropagation()" [ngStyle]="{'--cat-color': getCategoryColor(formCategory)}">
+      <div class="modal-header modal-header-cat">
+        <div class="modal-header-left">
+          <div class="modal-cat-icon" [style.background]="getCategoryColor(formCategory) + '18'" [style.color]="getCategoryColor(formCategory)">
+            <app-icon [name]="getCategoryIcon(formCategory)" [size]="18"></app-icon>
+          </div>
+          <div class="modal-header-text">
+            <span class="modal-cat-label">{{ getEtiquetaCategoria(formCategory) }}</span>
+            <h3>{{ editingExpense() ? 'Editar' : 'Agregar' }} Solicitud</h3>
+          </div>
+        </div>
+        <button class="close-btn" (click)="closeModal()">
+          <app-icon name="x" [size]="18"></app-icon>
+        </button>
+      </div>
+      <div class="modal-body">
+        @if (detectedInfo()) {
+          <div class="detected-badge">
+            <app-icon name="sparkles" [size]="13"></app-icon>
+            <span>{{ detectedInfo() }}</span>
+          </div>
+        }
+        <div class="form-group">
+          <label>Prioridad</label>
+          <div class="toggle-group">
+            <button class="toggle-btn" [class.active]="formIsPrimordial()" (click)="onPrimordialToggle(true)">
+              <app-icon name="shield" [size]="13"></app-icon> Primordial
+            </button>
+            <button class="toggle-btn" [class.active]="!formIsPrimordial()" (click)="onPrimordialToggle(false)">
+              <app-icon name="zap" [size]="13"></app-icon> No Esencial
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Categoría</label>
+          <div class="category-selector">
+            @for (key of categoryKeys(); track key) {
+              <button class="cat-btn" [class.active]="formCategory === key" (click)="onCategoryChange(key)" [ngStyle]="{'--cat': getCategoryColor(key)}">
+                <app-icon [name]="getCategoryIcon(key)" [size]="18"></app-icon>
+                <span>{{ getEtiquetaCategoria(key) }}</span>
+              </button>
+            }
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Subcategoría <span class="required">*</span></label>
+          <select [ngModel]="formSubcategory" (ngModelChange)="onSubcategorySelect($event)" class="form-input" [class.input-error]="subcategoryError()">
+            @for (sub of getAvailableSubcategories(); track sub) {
+              <option [value]="sub">{{ sub }}</option>
+            }
+          </select>
+          @if (subcategoryError()) {
+            <span class="field-error">{{ subcategoryError() }}</span>
+          }
+        </div>
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" [ngModel]="formName" (ngModelChange)="formName = $event" [placeholder]="formSubcategory || 'ej. Netflix, Alquiler, Luz'" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Días estimados</label>
+          <input type="number" [ngModel]="formAmount" (ngModelChange)="onAmountInput($event)" placeholder="0.00" min="0" class="form-input" [class.input-error]="amountError()">
+          @if (amountError()) {
+            <span class="field-error">{{ amountError() }}</span>
+          }
+          @if (suggestedAmount() && formAmount !== suggestedAmount()) {
+            <button class="suggested-chip" (click)="formAmount = suggestedAmount()">
+              <app-icon name="lightbulb" [size]="11"></app-icon>
+              Sugerido: {{ formatSol(suggestedAmount()!) }}
+            </button>
+          }
+        </div>
+        <div class="form-group">
+          <label>Tipo de recurrencia</label>
+          <div class="type-selector">
+            <button class="type-btn" [class.active]="formType() === 'subscription'" (click)="onTypeChange('subscription')">
+              <app-icon name="repeat" [size]="14"></app-icon>
+              <span>Suscripción</span>
+            </button>
+            <button class="type-btn" [class.active]="formType() === 'fixed'" (click)="onTypeChange('fixed')">
+              <app-icon name="shield" [size]="14"></app-icon>
+              <span>Fijo</span>
+            </button>
+            <button class="type-btn" [class.active]="formType() === 'variable'" (click)="onTypeChange('variable')">
+              <app-icon name="trending-up" [size]="14"></app-icon>
+              <span>Variable</span>
+            </button>
+            <button class="type-btn" [class.active]="formType() === 'one-time'" (click)="onTypeChange('one-time')">
+              <app-icon name="zap" [size]="14"></app-icon>
+              <span>Único</span>
+            </button>
+          </div>
+        </div>
+        @if (formType() === 'variable') {
+          <div class="form-group">
+            <label>Umbral de alerta (%)</label>
+            <input type="number" [ngModel]="formDangerThreshold" (ngModelChange)="formDangerThreshold = $event" placeholder="ej: 50" min="10" max="200" class="form-input">
+            <small class="form-hint">Alerta si el solicitud supera este % sobre el cuota</small>
+          </div>
+        }
+        <div class="form-group">
+          <label>Día del primer pago</label>
+          <input type="number" [ngModel]="formFirstPaymentDay()" (ngModelChange)="onFirstPaymentDayChange($event)" placeholder="Ej: 15" min="1" max="31" class="form-input" [class.input-error]="firstPaymentDayError()">
+          @if (firstPaymentDayError()) {
+            <span class="field-error">{{ firstPaymentDayError() }}</span>
+          }
+          <small class="form-hint">Día del mes en que vence o se paga por primera vez</small>
+        </div>
+        <div class="form-group">
+          <label>¿Tiene fecha de vencimiento?</label>
+          <div class="toggle-row">
+            <button class="toggle-sm" [class.active]="formHasDueDate()" (click)="onHasDueDateToggle(true)">Sí</button>
+            <button class="toggle-sm" [class.active]="!formHasDueDate()" (click)="onHasDueDateToggle(false)">No</button>
+          </div>
+        </div>
+        @if (formHasDueDate()) {
+          <div class="form-group">
+            <label>Ventana de pago</label>
+            <div class="date-window">
+              <div class="date-input">
+                <label class="date-label">Disponible desde</label>
+                <input type="date" [ngModel]="formAvailableDate()" (ngModelChange)="formAvailableDate.set($event)" class="form-input" [class.input-error]="dateError()">
+              </div>
+              <div class="date-separator">
+                <app-icon name="repeat" [size]="14"></app-icon>
+              </div>
+              <div class="date-input">
+                <label class="date-label">Vence el</label>
+                <input type="date" [ngModel]="formDueDate()" (ngModelChange)="formDueDate.set($event)" class="form-input" [class.input-error]="dateError()">
+              </div>
+            </div>
+            @if (dateError()) {
+              <span class="field-error">{{ dateError() }}</span>
+            }
+            <small class="form-hint">Plazo de pago disponible para este solicitud</small>
+          </div>
+        }
+        @if (currentMeta()?.metadataFields?.length) {
+          <div class="form-section-divider" [ngStyle]="{'--divider-color': getCategoryColor(formCategory)}">
+            <span class="divider-label">Detalles de {{ getEtiquetaCategoria(formCategory) }}</span>
+          </div>
+          @for (field of currentMeta()!.metadataFields; track field.key) {
+            <div class="form-group metadata-field">
+              <label>
+                @if (field.icon) { <app-icon [name]="field.icon" [size]="12"></app-icon> }
+                {{ field.label }}
+                @if (field.required) { <span class="required">*</span> }
+              </label>
+              @switch (field.type) {
+                @case ('text') {
+                  <input type="text" [placeholder]="field.placeholder || ''" [value]="formMetadata()[field.key] || ''" (input)="onMetadataChange(field.key, $any($event.target).value)" class="form-input metadata-input" [class.input-error]="metadataErrors()[field.key]">
+                }
+                @case ('select') {
+                  <select [value]="formMetadata()[field.key] || ''" (change)="onMetadataChange(field.key, $any($event.target).value)" class="form-input metadata-input">
+                    <option value="">Seleccionar...</option>
+                    @for (opt of field.options; track opt) { <option [value]="opt">{{ opt }}</option> }
+                  </select>
+                }
+                @case ('number') {
+                  <input type="number" [placeholder]="field.placeholder || ''" [value]="formMetadata()[field.key] || ''" (input)="onMetadataChange(field.key, $any($event.target).valueAsNumber)" class="form-input metadata-input" min="0">
+                }
+                @case ('boolean') {
+                  <label class="checkbox-inline">
+                    <input type="checkbox" [checked]="formMetadata()[field.key] || false" (change)="onMetadataChange(field.key, $any($event.target).checked)">
+                    <span>{{ field.hint || field.label }}</span>
+                  </label>
+                }
+              }
+              @if (field.hint && field.type !== 'boolean') { <small class="form-hint">{{ field.hint }}</small> }
+              @if (metadataErrors()[field.key]) { <span class="field-error">{{ metadataErrors()[field.key] }}</span> }
+            </div>
+          }
+        }
+        <div class="form-group">
+          <label>Proveedor</label>
+          <input type="text" [ngModel]="formProvider" (ngModelChange)="formProvider = $event" placeholder="ej. Netflix, EDEGEL, BCP" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Notas</label>
+          <textarea [ngModel]="formNotes" (ngModelChange)="formNotes = $event" placeholder="Detalles adicionales..." class="form-input" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" (click)="closeModal()">Cancelar</button>
+        <button class="btn-primary" [style.background]="getCategoryColor(formCategory)" (click)="saveExpense()" [disabled]="!formName || !formAmount || !formSubcategory">
+          {{ editingExpense() ? 'Actualizar' : 'Guardar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Toast Notification -->
+@if (showToast()) {
+  <div class="toast" [class.toast-success]="toastType() === 'success'" [class.toast-error]="toastType() === 'error'" [class.toast-warning]="toastType() === 'warning'" (click)="closeToast()">
+    @if (toastType() === 'success') {
+      <app-icon name="check-circle" [size]="18"></app-icon>
+    } @else if (toastType() === 'error') {
+      <app-icon name="x-circle" [size]="18"></app-icon>
+    } @else {
+      <app-icon name="alert-triangle" [size]="18"></app-icon>
+    }
+    <span class="toast-message">{{ toastMessage() }}</span>
+    <button class="toast-close" (click)="closeToast(); $event.stopPropagation()">
+      <app-icon name="x" [size]="14"></app-icon>
+    </button>
+  </div>
+}

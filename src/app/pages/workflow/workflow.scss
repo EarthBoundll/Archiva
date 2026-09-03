@@ -1,0 +1,348 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+.page {
+  min-height: 100vh;
+  background: #0E1212;
+  font-family: 'Inter', sans-serif;
+  color: #F5F7F5;
+  padding-bottom: 4rem;
+}
+
+// ─── Header ──────────────────────────────────────────
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  background: #0D1B16;
+  border-bottom: 1px solid rgba(170, 181, 174, 0.1);
+  h1 { font-size: 1.1rem; font-weight: 600; }
+}
+
+.btn-back {
+  color: #2FA46A;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  &:hover { color: #F5F7F5; }
+}
+
+// ─── Loading / Empty ─────────────────────────────────
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4rem;
+}
+
+.empty {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: #475569;
+  &__sub { font-size: 0.82rem; margin-top: 0.5rem; }
+}
+
+// ─── Main ────────────────────────────────────────────
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+// ─── Toast ───────────────────────────────────────────
+.toast {
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #4ade80;
+  text-align: center;
+}
+
+// ─── Hero ────────────────────────────────────────────
+.hero {
+  background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.08));
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 20px;
+  padding: 1.75rem;
+
+  &__amounts {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.25rem;
+  }
+
+  &__current {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #4ade80;
+    line-height: 1;
+    margin-bottom: 0.25rem;
+  }
+
+  &__target {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #a5b4fc;
+    text-align: right;
+    margin-bottom: 0.25rem;
+  }
+
+  &__label {
+    font-size: 0.72rem;
+    color: #64748b;
+  }
+
+  &__pct {
+    text-align: center;
+    font-size: 0.82rem;
+    color: #94a3b8;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  &__remaining {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #64748b;
+    strong { color: #f1f5f9; }
+  }
+
+  &__right { text-align: right; }
+}
+
+// ─── Progress bar con hitos ───────────────────────────
+.progress-track {
+  position: relative;
+  height: 12px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 99px;
+  overflow: visible;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #6366f1, #4ade80);
+  transition: width 0.8s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.milestone-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.2);
+  z-index: 2;
+  transition: all 0.3s;
+
+  &.reached {
+    background: #4ade80;
+    border-color: #4ade80;
+    box-shadow: 0 0 8px rgba(74,222,128,0.5);
+  }
+}
+
+// ─── Stats cards ─────────────────────────────────────
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+
+  @media (max-width: 400px) { grid-template-columns: 1fr; }
+}
+
+.stat-card {
+  background: #16181f;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+
+  &__icon  { font-size: 1.3rem; }
+  &__value { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
+  &__label { font-size: 0.72rem; color: #64748b; }
+}
+
+// ─── Secciones ───────────────────────────────────────
+.section {
+  &__title { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin-bottom: 1rem; }
+}
+
+// ─── Hitos ───────────────────────────────────────────
+.milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.milestone {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem;
+  background: #16181f;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  transition: border-color 0.3s;
+
+  &.reached {
+    border-color: rgba(74,222,128,0.25);
+    background: rgba(74,222,128,0.05);
+  }
+
+  &__icon  { font-size: 1.1rem; }
+  &__label { flex: 1; font-size: 0.9rem; color: #cbd5e1; font-weight: 500; }
+  &__badge {
+    font-size: 0.72rem;
+    background: rgba(74,222,128,0.15);
+    color: #4ade80;
+    padding: 0.2rem 0.6rem;
+    border-radius: 99px;
+    font-weight: 600;
+  }
+}
+
+// ─── Escenarios ──────────────────────────────────────
+.scenarios {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scenario {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  background: #16181f;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  transition: border-color 0.2s;
+
+  &.active {
+    border-color: rgba(99,102,241,0.35);
+    background: rgba(99,102,241,0.07);
+  }
+
+  &__left    { display: flex; flex-direction: column; gap: 0.2rem; }
+  &__label   { font-size: 0.88rem; color: #cbd5e1; font-weight: 500; }
+  &__contribution { font-size: 0.72rem; color: #64748b; }
+  &__months  { font-size: 0.9rem; font-weight: 700; color: #a5b4fc; }
+}
+
+// ─── Editar parámetros ───────────────────────────────
+.edit-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.edit-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: #16181f;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+
+  &__info   { display: flex; flex-direction: column; gap: 0.2rem; }
+  &__label  { font-size: 0.75rem; color: #64748b; }
+  &__value  { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
+}
+
+.btn-edit {
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.25);
+  color: #a5b4fc;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+  &:hover { background: rgba(99,102,241,0.2); }
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+}
+
+.form-input {
+  background: #0f1117;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  color: #f1f5f9;
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  &:focus { border-color: #6366f1; }
+}
+
+.error {
+  font-size: 0.78rem;
+  color: #f87171;
+}
+
+// ─── Botones ─────────────────────────────────────────
+.btn-primary {
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  &:hover:not(:disabled) { background: #4f46e5; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+// ─── Spinners ────────────────────────────────────────
+.spinner, .spinner-lg {
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #fff;
+}
+.spinner-lg {
+  width: 36px; height: 36px;
+  border: 3px solid rgba(255,255,255,0.1);
+  border-top-color: #6366f1;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

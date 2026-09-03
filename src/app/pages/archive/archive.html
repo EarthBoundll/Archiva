@@ -1,0 +1,101 @@
+<div class="savings-page">
+  <div class="page-header">
+    <div class="header-left">
+      <a routerLink="/dashboard" class="back-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1>Archivo Histórico</h1>
+    </div>
+    <span class="month-label">{{ currentMonth }}</span>
+  </div>
+
+  @if (isLoading()) {
+    <div class="loading">Cargando...</div>
+  } @else {
+    <!-- Resumen Principal -->
+    <div class="summary-cards">
+      <div class="card card--total">
+        <div class="card__header">
+          <span class="card__label">Ahorrado Este Mes</span>
+          <span class="card__subtitle">Acervo archivado</span>
+        </div>
+        <div class="card__value" [class.positive]="totalSavedThisMonth >= 0" [class.negative]="totalSavedThisMonth < 0">
+          {{ formatSol(totalSavedThisMonth) }}
+        </div>
+        <div class="card__compare" [class.positive]="monthChange >= 0" [class.negative]="monthChange < 0">
+          {{ monthChange >= 0 ? '+' : '' }}{{ monthChange.toFixed(1) }}% vs {{ lastMonthName }}
+        </div>
+      </div>
+
+      <div class="card card--target">
+        <div class="card__header">
+          <span class="card__label">Meta 50/30/20</span>
+          <span class="card__subtitle">20% de tus documentos</span>
+        </div>
+        <div class="card__value">{{ formatSol(target20Percent) }}</div>
+        <div class="card__sub">Documentos: {{ formatSol(monthlyIncome) }}</div>
+      </div>
+
+      <div class="card card--alltime">
+        <div class="card__header">
+          <span class="card__label">Total Acumulado</span>
+          <span class="card__subtitle">Últimos 6 meses</span>
+        </div>
+        <div class="card__value">{{ formatSol(totalSavedAllTime) }}</div>
+        <div class="card__sub">{{ monthlyHistory().filter(m => m.amount > 0).length }} meses con archivo</div>
+      </div>
+    </div>
+
+    <!-- Historial Visual -->
+    <div class="history-section">
+      <h2>Evolución del Archivo</h2>
+      <div class="history-chart">
+        @for (month of monthlyHistory(); track month.month) {
+          <div class="history-bar">
+            <div class="bar-container">
+              <div class="bar-fill" [style.height.%]="getBarHeight(month.amount)"></div>
+            </div>
+            <span class="bar-label">{{ month.month }}</span>
+            <span class="bar-value">{{ formatSol(month.amount) }}</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Meta Actual -->
+    @if (currentGoal()) {
+      <div class="goal-section">
+        <h2>Meta de Archivado del Periodo</h2>
+        <div class="goal-card">
+          <div class="goal-progress-ring">
+            <svg viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-border)" stroke-width="3"/>
+              <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-primary)" stroke-width="3" 
+                [attr.stroke-dasharray]="goalProgress + ', 100'" 
+                stroke-linecap="round"
+                transform="rotate(-90 18 18)"/>
+            </svg>
+            <span class="goal-pct">{{ goalProgress.toFixed(0) }}%</span>
+          </div>
+          <div class="goal-details">
+            <span class="goal-name">{{ currentGoal()!.name }}</span>
+            <span class="goal-amount">{{ formatSol(currentGoal()!.etapasCompletadas) }} / {{ formatSol(currentGoal()!.etapasTotales) }}</span>
+            <a routerLink="/flujos" class="goal-link">Ver detalles →</a>
+          </div>
+        </div>
+      </div>
+    } @else {
+      <div class="no-goal">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+        </svg>
+        <p>No tienes una meta activa</p>
+        <a routerLink="/flujos" class="btn btn--primary">Crear Meta</a>
+      </div>
+    }
+  }
+</div>

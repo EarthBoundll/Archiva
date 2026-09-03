@@ -1,0 +1,139 @@
+<header class="page-header">
+  <div>
+    <h1>Indicadores Documentales</h1>
+    <p class="page-subtitle">{{ currentMonth }}</p>
+  </div>
+  <div class="period-selector">
+    <button [class.active]="period() === 'month'" (click)="period.set('month')">Mes</button>
+    <button [class.active]="period() === 'year'" (click)="period.set('year')">Año</button>
+  </div>
+</header>
+
+<div class="insights-grid">
+  <!-- Card: Tendencia de solicitudes -->
+  <div class="card card--chart">
+    <div class="card__header">
+      <span class="card__label">Tendencia de solicitudes</span>
+    </div>
+    <div class="chart-container">
+      <svg viewBox="0 0 300 120" class="line-chart">
+        <path [attr.d]="spendingPath" fill="none" stroke="var(--color-primary)" stroke-width="2"/>
+        <path [attr.d]="spendingArea" fill="url(#areaGradient)" opacity="0.3"/>
+        <defs>
+          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--color-primary)"/>
+            <stop offset="100%" stop-color="transparent"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+    <div class="chart-labels">
+      @for (m of months; track m) {
+        <span>{{ m }}</span>
+      }
+    </div>
+  </div>
+
+  <!-- Card: Comparación vs mes anterior -->
+  <div class="card card--comparison">
+    <div class="card__header">
+      <span class="card__label">vs mes anterior</span>
+    </div>
+    <div class="comparison-values">
+      <div class="comp-item">
+        <span class="comp-label">Documentos</span>
+        <span class="comp-value positive">+12%</span>
+      </div>
+      <div class="comp-item">
+        <span class="comp-label">Solicitudes</span>
+        <span class="comp-value negative">+8%</span>
+      </div>
+      <div class="comp-item">
+        <span class="comp-label">Archivo</span>
+        <span class="comp-value positive">+24%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card: Top categorías -->
+  <div class="card card--top-cats">
+    <div class="card__header">
+      <span class="card__label">Top categorías</span>
+    </div>
+    <div class="cat-list">
+      @for (cat of topCategories(); track cat.name) {
+        <div class="cat-row">
+          <div class="cat-info">
+            <span class="cat-name">{{ cat.name }}</span>
+            <div class="cat-bar">
+              <div class="cat-bar__fill" [style.width.%]="cat.percentage"></div>
+            </div>
+          </div>
+          <span class="cat-amount">{{ formatSol(cat.amount) }}</span>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Card: Distribución por tipo -->
+  <div class="card card--distribution">
+    <div class="card__header">
+      <span class="card__label">Distribución</span>
+    </div>
+    <div class="donut-chart">
+      <svg viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-border)" stroke-width="3"/>
+        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-primary)" stroke-width="3" 
+          [attr.stroke-dasharray]="incomeDash" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-error)" stroke-width="3" 
+          [attr.stroke-dasharray]="expenseDash" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+      </svg>
+      <div class="donut-center">
+        <span class="donut-pct">{{ savingsRate }}%</span>
+        <span class="donut-label">Archivo</span>
+      </div>
+    </div>
+    <div class="donut-legend">
+      <div class="legend-item">
+        <span class="legend-dot" style="background: var(--color-primary)"></span>
+        <span>Documentos</span>
+        <span class="legend-value">{{ formatSol(totals().income) }}</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-dot" style="background: var(--color-error)"></span>
+        <span>Solicitudes</span>
+        <span class="legend-value">{{ formatSol(totals().expenses) }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card: Alertas de solicitud -->
+  <div class="card card--alerts">
+    <div class="card__header">
+      <span class="card__label">Insights</span>
+    </div>
+    <div class="insights-list">
+      @for (insight of insights(); track insight.title) {
+        <div class="insight-item" [class.warning]="insight.type === 'warning'" [class.positive]="insight.type === 'positive'">
+          <div class="insight-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              @if (insight.type === 'warning') {
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              }
+              @if (insight.type === 'positive') {
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              }
+              @if (insight.type === 'info') {
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+              }
+            </svg>
+          </div>
+          <div class="insight-content">
+            <span class="insight-title">{{ insight.title }}</span>
+            <span class="insight-desc">{{ insight.description }}</span>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+</div>

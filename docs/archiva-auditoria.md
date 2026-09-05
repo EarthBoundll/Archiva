@@ -3,6 +3,10 @@
 **Fecha:** 5 de septiembre de 2026 · **Objetivo:** https://earthboundll.github.io/Archiva/ · **Commit:** `7b15ee4`
 **Perfiles aplicados:** Senior Full Stack · UX/UI · QA · Security Analyst
 
+> **Estado tras la auditoría (commit ):** los tres hallazgos críticos
+> están **corregidos y desplegados**. Ver el apartado *Correcciones aplicadas*
+> al final del documento. El resto de hallazgos sigue abierto.
+
 ## Alcance y limitación declarada
 
 Auditoría realizada sobre el código fuente completo (22.113 líneas) y sobre el despliegue en producción, con pruebas activas en navegador y verificación contra las APIs de Firebase y GitHub.
@@ -255,9 +259,13 @@ Sobrevivieron a la migración porque estaban en plantillas en línea con redacci
 
 Son las cuatro primeras frases que lee un evaluador. Corregirlas cuesta minutos y su ausencia delata el origen del proyecto.
 
-### U-3 · Fallo silencioso — Alto
+### U-3 · Botón bloqueado sin explicación — Alto
 
-Recorrí el asistente sin sesión y pulsé **¡Empezar!** seis veces seguidas: la pantalla no cambió, no apareció ningún error, no hubo indicador de carga. El usuario no tiene forma de saber qué ocurrió. Cualquier acción que pueda fallar necesita, como mínimo, un mensaje.
+*(Corregido respecto a la primera versión de este informe: en un primer análisis lo describí como un fallo silencioso al pulsar. La causa real es distinta.)*
+
+El botón está deshabilitado por  — dos campos heredados de Tracky que en ARCHIVA no tienen sentido. Al recorrer el asistente sin rellenarlos, el botón simplemente no responde y **nada indica qué falta**.
+
+Un control deshabilitado sin explicación es peor que uno habilitado que falla: el usuario no tiene ninguna pista de qué hacer. La regla es señalar el campo pendiente, no bloquear en silencio.
 
 ### Lo que sí está bien
 
@@ -504,3 +512,66 @@ El más embarazoso no es técnico: **el onboarding pide tres datos y los tira a 
 8. Auditoría visual de las 12 pantallas con sesión (I-3) · **2 h**
 
 **Total hasta un estado publicable: menos de una jornada.**
+
+
+---
+
+## 9. Correcciones Aplicadas
+
+Commit , desplegado y verificado en producción (run #8).
+
+### C-1 · Guard reactivo — cierra S-1 y S-4
+
+ ahora **espera** a que  pase a  antes de decidir, en lugar de expulsar al login con información incompleta:
+
+\
+Cierra de paso **S-4**: la condición de carrera de  desaparece porque el guard ya no evalúa antes de tiempo.
+
+Se añade  sobre , de modo que un usuario autenticado que llegue al formulario de acceso sea devuelto al tablero.
+
+**Verificado en producción:**  sin sesión sigue redirigiendo a , sin regresión ni bloqueo.
+**Sin verificar:** el caso que motivó el arreglo —F5 con sesión válida— requiere credenciales.
+
+### C-2 ·  protegido — cierra S-2 y Q-3
+
+\
+**Verificado en producción:** antes se recorría el asistente completo sin sesión; ahora redirige a .
+
+### C-3 · El onboarding persiste — cierra U-1, U-2, U-3 y Q-1
+
+ deja de ser un stub y guarda en el perfil del usuario mediante el método nuevo , que escribe en :
+
+| Campo | Origen |
+|---|---|
+|  | Paso 2 |
+|  | Paso 3 |
+|  | Paso 4 |
+|  | Paso 4, con sugerencia automática |
+| , ,  | Metadatos |
+
+No se reutilizó , que existía pero arrastraba el modelo financiero completo (, , ,  y creación automática de fuentes de ingreso).
+
+Los pasos 3 y 4 pedían **ingreso mensual** y **meta de ahorro**; ahora piden razón social, área responsable y prefijo. Con ello desaparecen los cuatro textos financieros de **U-2** y los campos que bloqueaban el botón en **U-3**.
+
+Se añaden además estado de carga (), mensaje de error diferenciado para sesión expirada frente a fallo de red, y  en la navegación final para no dejar el asistente en el historial.
+
+### Estado de los hallazgos
+
+| Hallazgo | Estado |
+|---|---|
+| S-1 Guard expulsa sesiones válidas | ✅ Corregido |
+| S-2  sin protección | ✅ Corregido y verificado |
+| S-4 Carrera en  | ✅ Corregido |
+| S-5 Login accesible con sesión activa | ✅ Corregido () |
+| U-1 El onboarding no guarda | ✅ Corregido |
+| U-2 Textos financieros en onboarding | ✅ Corregido |
+| U-3 Botón bloqueado sin explicación | ✅ Corregido |
+| S-3 Cache offline tras logout | ⬜ Abierto |
+| S-5 Cabeceras de seguridad | ⬜ Abierto |
+| S-6 PII en consola | ⬜ Abierto |
+| I-1, I-2 Formularios móviles | ⬜ Abierto |
+| I-3 Contraste sin verificar | ⬜ Abierto |
+| A-1  | ⬜ Abierto |
+| P-1 Bundle 952 kB | ⬜ Abierto |
+| Q-6 Cobertura de pruebas | ⬜ Abierto |
+| R-1, R-2, R-3 Deuda estructural | ⬜ Abierto |

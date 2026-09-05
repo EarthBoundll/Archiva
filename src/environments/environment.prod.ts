@@ -1,5 +1,12 @@
 export const environment = {
   production: true,
-  supabaseUrl: 'https://pvgjubhxaoaaeympioqn.supabase.co',
-  supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2Z2p1Ymh4YW9hYWV5bXBpb3FuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NzkwNDksImV4cCI6MjA5MzA1NTA0OX0.ysYRpN4j8QkpVtQ-Veq66Op8S9cezJJKNz-2Kw7jmKE'
+  firebase: {
+    apiKey: "AIzaSyBtc94kcn80dnGLi2KOVI0O12RMIp0C9_k",
+    authDomain: "track-pays.firebaseapp.com",
+    projectId: "track-pays",
+    storageBucket: "track-pays.firebasestorage.app",
+    messagingSenderId: "354610845993",
+    appId: "1:354610845993:web:32547d6e5bd6fb0907bf38",
+    measurementId: "G-D8T39CTF8B"
+  }
 };

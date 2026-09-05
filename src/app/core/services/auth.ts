@@ -33,9 +33,9 @@ export class Auth {
       await this.firebase.createUserProfile(result.user.uid, {
         fullName,
         email,
-        monthlyIncome: 1200,
-        currency: 'PEN',
+        rol: 'responsable_archivo',
         locale: 'es-PE',
+        onboardingCompleted: false,
         createdAt: new Date().toISOString()
       });
       this.router.navigate(['/dashboard']);
@@ -81,9 +81,9 @@ export class Auth {
         await this.firebase.createUserProfile(result.user.uid, {
           fullName: result.user.displayName || 'Usuario',
           email: result.user.email,
-          monthlyIncome: 1200,
-          currency: 'PEN',
+          rol: 'responsable_archivo',
           locale: 'es-PE',
+          onboardingCompleted: false,
           createdAt: new Date().toISOString()
         });
       }

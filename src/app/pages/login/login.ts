@@ -61,8 +61,16 @@ export class LoginComponent {
   }
 
   async onSubmit() {
-    // En modo login, solo verificar que los campos no estén vacíos
+    // Un formulario invalido devolvia el control en silencio: el usuario
+    // pulsaba Ingresar y no ocurria nada, sin ninguna pista de que fallaba.
     if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      this.errorMsg.set(this.describirCampoInvalido());
+      return;
+    }
+
+    if (this.isRegister() && !this.form.value.fullName?.trim()) {
+      this.errorMsg.set('Escribe tu nombre completo.');
       return;
     }
 
@@ -130,6 +138,19 @@ export class LoginComponent {
       this.isLoading.set(false);
       this.errorMsg.set('Revisa tu correo: si la dirección está registrada, recibirás un enlace para restablecer la contraseña.');
     }
+  }
+
+  /** Indica que campo impide enviar el formulario, en lugar de callar. */
+  private describirCampoInvalido(): string {
+    const email    = this.form.get('email');
+    const password = this.form.get('password');
+
+    if (email?.hasError('required'))     return 'Escribe tu correo electrónico.';
+    if (email?.hasError('email'))        return 'Ese correo no tiene un formato válido. Revisa que incluya @ y un dominio.';
+    if (password?.hasError('required'))  return 'Escribe tu contraseña.';
+    if (password?.hasError('minlength')) return 'La contraseña debe tener al menos 6 caracteres.';
+
+    return 'Revisa los datos: hay algún campo incompleto o mal escrito.';
   }
 
   private parseError(error: any): string {

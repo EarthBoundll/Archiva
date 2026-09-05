@@ -3,9 +3,10 @@
 **Fecha:** 5 de septiembre de 2026 · **Objetivo:** https://earthboundll.github.io/Archiva/ · **Commit:** `7b15ee4`
 **Perfiles aplicados:** Senior Full Stack · UX/UI · QA · Security Analyst
 
-> **Estado tras la auditoría (commit `9675b56`):** los tres hallazgos críticos
-> están **corregidos y desplegados**. Ver el apartado *Correcciones aplicadas*
-> al final del documento. El resto de hallazgos sigue abierto.
+> **Estado tras la auditoría (commit `9d13428`):** los tres hallazgos críticos
+> y la mayoría de los altos y medios están **corregidos, probados y desplegados**.
+> Ver *Correcciones aplicadas* al final del documento, con el balance de
+> puntuaciones y lo que sigue abierto.
 
 ## Alcance y limitación declarada
 
@@ -565,27 +566,108 @@ Los pasos 3 y 4 pedían **ingreso mensual** y **meta de ahorro**; ahora piden ra
 
 Se añaden además estado de carga (`Guardando…`), mensaje de error diferenciado para sesión expirada frente a fallo de red, y `replaceUrl: true` en la navegación final para no dejar el asistente en el historial.
 
+### C-4 · Cierre de los hallazgos altos y medios
+
+Commits `e626ed1` y `9d13428`, desplegados y verificados (runs #11 y #12).
+
+**Seguridad.** `signOut()` borra la base local mediante `borrarCacheLocal()`, una función suelta: inyectar `OfflineSyncService` en `Auth` habría creado una dependencia circular, porque ese servicio ya depende de `Auth`. Las 38 llamadas a `console.*` pasan por un logger silenciado en producción, conservando `error()`. Se retira la regla `/public` de Firestore. Se añade recuperación de contraseña con mensaje deliberadamente ambiguo, para no permitir enumerar cuentas.
+
+**Accesibilidad y móvil.** Se añade el bloque `prefers-reduced-motion` que no existía, y foco visible en todos los controles. Los campos pasan a 44 px de alto y 16 px de fuente.
+
+> El primer intento **no funcionó**: subió el alto a 44 px pero la fuente siguió en 14 px, porque `.field input` (especificidad 0-1-1) ganaba a la regla global `input` (0-0-1). Lo detecté midiendo el sitio desplegado, no leyendo el código. La regla global pasa a 0-3-1 mediante `:not()`. Afectaba a los formularios de acceso, tablero, documentos, solicitudes y almacenamiento.
+
+**Rendimiento.** Chart.js solo lo usa el tablero pero se registraba en `app.config` y entraba entero en el bundle inicial. Registrado en el componente, viaja en su chunk diferido: **952 kB → 754 kB (−21 %)**. Los 385 kB restantes son el SDK de Firestore, el suelo de este stack.
+
+**Otros.** Página 404 propia —el comodín mandaba al tablero, confundiendo un enlace mal escrito con una sesión expirada— y claves de `localStorage` migradas de `trackpays_*` a `archiva_*`.
+
+### C-5 · Un bug encontrado por las pruebas nuevas
+
+Al escribir la primera prueba real del motor de renovación, seis casos fallaron con el mismo patrón: **un mes de más**. La causa estaba en la rama mensual de `proximaOcurrencia`:
+
+```ts
+let targetMonth = result.getMonth() + interval;   // sin mirar el mes en curso
+```
+
+El motor avanzaba el mes de forma incondicional. **Un documento que vence el día 15, consultado el día 10, informaba de su renovación el 15 del mes siguiente**: la renovación inminente se saltaba y su alerta de vencimiento nunca llegaba a dispararse. La rama quincenal sí comprobaba el mes en curso (`if (currentDay < d1)`), lo que confirma que era un descuido y no un diseño.
+
+Corregido para la frecuencia mensual, la única en la que el mes en curso pertenece siempre al ciclo. **Queda abierto** el desalineamiento de ciclo en las frecuencias bimestral, trimestral y semestral: el motor suma el intervalo al mes actual en lugar de anclarse en `startDate`, de modo que la serie depende de cuándo se consulte. Corregirlo exige rediseñar el anclaje y no se ha tocado.
+
+### C-6 · Cobertura de pruebas y CI
+
+**46 pruebas, todas en verde**, sobre lo que de verdad puede romperse en silencio:
+
+| Área | Casos | Qué fija |
+|---|---|---|
+| Motor de renovación | 20 | Días que no existen en el mes, febrero común y bisiesto, último día, orden y unicidad de la serie, reglas ausentes |
+| Catálogo documental | 6 | Las 12 categorías, los 28 tipos, integridad de las referencias entre ambos |
+| Cuotas de almacenamiento | 10 | Los cuatro estados del semáforo, umbral personalizado, división por cero |
+| Flujos de aprobación | 6 | Avance por etapas, tope al 100 %, proyección de cierre |
+| Guards de sesión | 8 | **La regresión exacta que expulsaba sesiones válidas**, más el comportamiento de `guestGuard` |
+
+Se retiran los 8 specs de andamiaje: exigían todo el stack de Firebase y solo afirmaban `toBeTruthy()`. Un test que comprueba que una clase puede construirse, mientras arrastra media aplicación, es pasivo, no activo.
+
+El CI **ejecuta las pruebas antes de compilar**: si el motor de renovación o los guards se rompen, el despliegue no llega a producción.
+
+---
+
+## 10. Balance Final
+
 ### Estado de los hallazgos
 
-| Hallazgo | Estado |
-|---|---|
-| S-1 Guard expulsa sesiones válidas | ✅ Corregido |
-| S-2 `/onboarding` sin protección | ✅ Corregido y verificado |
-| S-4 Carrera en `signIn()` | ✅ Corregido |
-| Login accesible con sesión activa | ✅ Corregido (`guestGuard`) |
-| U-1 El onboarding no guarda | ✅ Corregido |
-| U-2 Textos financieros en onboarding | ✅ Corregido |
-| U-3 Botón bloqueado sin explicación | ✅ Corregido |
-| S-3 Cache offline tras logout | ⬜ Abierto |
-| S-5 Cabeceras de seguridad | ⬜ Abierto |
-| S-6 PII en consola | ⬜ Abierto |
-| S-7 Regla `/public/**` abierta | ⬜ Abierto |
-| S-9 Clave Supabase en el historial | ⬜ Abierto |
-| S-10 Sin recuperación de contraseña | ⬜ Abierto |
-| I-1, I-2 Formularios móviles | ⬜ Abierto |
-| I-3 Contraste sin verificar | ⬜ Abierto |
-| A-1 `prefers-reduced-motion` | ⬜ Abierto |
-| P-1 Bundle 952 kB | ⬜ Abierto |
-| Q-5 Rutas profundas con HTTP 404 | ⬜ Abierto |
-| Q-6 Cobertura de pruebas | ⬜ Abierto |
-| R-1, R-2, R-3 Deuda estructural | ⬜ Abierto |
+| Hallazgo | Severidad | Estado |
+|---|---|---|
+| S-1 Guard expulsa sesiones válidas | 🔴 | ✅ Corregido, con prueba de regresión |
+| S-2 `/onboarding` sin protección | 🔴 | ✅ Corregido y verificado en producción |
+| U-1 El onboarding no guarda nada | 🔴 | ✅ Corregido |
+| S-3 Cache offline tras logout | 🟠 | ✅ Corregido |
+| S-4 Carrera en `signIn()` | 🟠 | ✅ Corregido |
+| U-2 Textos financieros en onboarding | 🟠 | ✅ Corregido |
+| U-3 Botón bloqueado sin explicación | 🟠 | ✅ Corregido |
+| I-1, I-2 Formularios móviles | 🟠 | ✅ Corregido y verificado en producción |
+| A-1 `prefers-reduced-motion` | 🟠 | ✅ Corregido |
+| P-1 Bundle inicial | 🟠 | ✅ Reducido un 21 % |
+| **Motor: renovación inminente omitida** | 🟠 | ✅ **Encontrado y corregido por las pruebas** |
+| S-6 PII en consola | 🟡 | ✅ Corregido |
+| S-7 Regla `/public` abierta | 🟡 | ✅ Corregido |
+| Q-6 Cobertura de pruebas | 🟡 | ✅ 46 pruebas + CI |
+| S-10 Sin recuperación de contraseña | 🔵 | ✅ Corregido |
+| Q-7 Sin página 404 | 🔵 | ✅ Corregido |
+| I-4 Claves `trackpays_*` | 🔵 | ✅ Migradas |
+| S-5 Sin cabeceras de seguridad | 🟡 | ⬜ Limitación de GitHub Pages |
+| I-3 Contraste en 12 pantallas | 🟡 | ⬜ Requiere sesión |
+| A-2 Sin skeleton loaders | 🟡 | ⬜ Abierto |
+| Q-5 Rutas profundas con HTTP 404 | 🟡 | ⬜ Limitación de GitHub Pages |
+| **Motor: ciclo bimestral/trimestral** | 🟡 | ⬜ Exige rediseñar el anclaje |
+| R-1 `firebase.ts`, 1.123 líneas | 🟠 | ⬜ Abierto |
+| R-2 `review-requests.ts`, 1.962 líneas | 🟠 | ⬜ Abierto |
+| R-3 135 usos de `: any` | 🟠 | ⬜ Abierto |
+| S-8 `bypassSecurityTrustHtml` | 🔵 | ⬜ No explotable hoy |
+| S-9 Clave Supabase en el historial | 🔵 | ⬜ Ya público; procede rotar, no reescribir |
+| P-3 Sin service worker | 🟡 | ⬜ Abierto |
+
+**17 hallazgos cerrados, 11 abiertos.**
+
+### Puntuación
+
+| Dimensión | Antes | Después | Qué queda pendiente |
+|---|---|---|---|
+| **Seguridad** | 6 / 10 | **8 / 10** | Cabeceras imposibles en Pages; clave en el historial |
+| **UX** | 5 / 10 | **8 / 10** | Sin skeletons; 12 pantallas sin ver |
+| **UI** | 7 / 10 | **8 / 10** | Contraste sin verificar con sesión |
+| **Rendimiento** | 6 / 10 | **7 / 10** | 385 kB de SDK; sin service worker |
+| **Arquitectura** | 6 / 10 | **7 / 10** | God object, componente de 1.962 líneas, `any` en la frontera |
+| **Nota general** | 6 / 10 | **7,6 / 10** | |
+
+### Lo que impide subir de ahí
+
+Tres cosas, ninguna urgente y todas de fondo:
+
+1. **`FirebaseService` con 1.123 líneas y `: any` en cada firma.** Anula el modo estricto justo donde entran los datos externos. Ahora hay pruebas que protegerían el refactor.
+2. **`review-requests.ts` con 1.962 líneas.** Plantilla, estado, validación y formato en un archivo. Ni se mantiene ni se prueba.
+3. **Las 12 pantallas internas siguen sin verse.** Todo lo auditado ahí sale de leer el código. El contraste tras el cambio de tema oscuro a claro solo se confirma entrando.
+
+### Veredicto revisado
+
+**Publicable.** Los tres críticos están cerrados con prueba de regresión, el bundle bajó un 21 %, los formularios funcionan en móvil y hay una red de seguridad de 46 pruebas corriendo en cada despliegue.
+
+El hallazgo más valioso no estaba en la lista inicial: **escribir la primera prueba real del motor de renovación destapó que las alertas de vencimiento nunca se disparaban para el mes en curso**. Es la demostración exacta de por qué una cobertura del 0 % era el riesgo de fondo del proyecto, por encima de cualquier fallo de enrutado.

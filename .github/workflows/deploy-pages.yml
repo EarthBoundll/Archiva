@@ -19,15 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Descargar el repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      # enablement: true habilita GitHub Pages por API con el GITHUB_TOKEN,
-      # de modo que no hace falta activarlo a mano en Settings.
-      - name: Habilitar y configurar GitHub Pages
+      # Requiere Pages ya habilitado en Settings -> Pages -> Source: GitHub Actions.
+      # No se usa enablement: true porque crear el sitio por API exige que los
+      # permisos por defecto de Actions sean de escritura, y no lo son.
+      - name: Configurar GitHub Pages
         id: pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       # El proyecto usa pnpm: npm install falla por el conflicto de peer
       # dependencies entre @angular/fire@20 y Angular 21.

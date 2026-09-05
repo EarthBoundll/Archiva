@@ -222,7 +222,11 @@ router-outlet + * {
 // ============================================
 // 16px es el umbral por debajo del cual Safari en iOS hace zoom automatico
 // al enfocar un campo. 44px es el objetivo tactil minimo de WCAG 2.5.5.
-input,
+// Los :not() no son decorativos: elevan la especificidad a 0-3-1 para ganar
+// a las reglas de pagina (.field input, 0-1-1) que fijaban 14px y disparaban
+// el zoom automatico de Safari. Las casillas y los deslizadores quedan fuera
+// porque su tamaño no lo determina la tipografia.
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
 select,
 textarea {
   font-size: 16px;

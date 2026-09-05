@@ -561,7 +561,10 @@
 
   .field input {
     padding: var(--space-3) var(--space-3);
-    font-size: var(--text-sm);
+    // 16px es el umbral por debajo del cual Safari en iOS hace zoom
+    // automatico al enfocar. Con --text-sm (14px) el formulario saltaba
+    // en cada campo y obligaba a pellizcar para volver.
+    font-size: 16px;
   }
 
   .btn-primary {

@@ -13,6 +13,12 @@ import { DocumentosPeriodo } from '../../core/models/document.model';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { BaseChartDirective } from 'ng2-charts';
 
+interface IncomePopup {
+  message: string;
+  type: 'alert' | 'tip' | 'info';
+  icon: string;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -34,9 +40,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   monthlyIncome  = signal<DocumentosPeriodo | null>(null);
   actualBalance  = signal<number>(0);
   incomeSources  = signal<any[]>([]);
-  incomePopups   = signal<{message: string, type: 'alert' | 'tip' | 'info', icon: string}[]>([]);
+  incomePopups   = signal<IncomePopup[]>([]);
   currentPopupIndex = signal(0);
-  currentPopup = computed(() => this.incomePopups()[this.currentPopupIndex()] ?? null);
+  currentPopup = computed<IncomePopup | null>(() => this.incomePopups()[this.currentPopupIndex()] ?? null);
   popupInterval: ReturnType<typeof setInterval> | null = null;
 
   // Balance Card Carrusel
@@ -398,7 +404,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private generateIncomePopups() {
-    const popups: {message: string, type: 'alert' | 'tip' | 'info', icon: string}[] = [];
+    const popups: IncomePopup[] = [];
     const sources = this.incomeSources();
 
     // 1. Pagos próximos (3 días)

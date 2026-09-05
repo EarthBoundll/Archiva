@@ -1246,7 +1246,7 @@ export class ReviewRequestsComponent implements OnInit {
   metadataErrors = signal<Record<string, string>>({});
 
   // Computed: meta actual de la subcategoría seleccionada
-  currentMeta = computed(() => SUBCATEGORY_META[this.formSubcategory] || null);
+  currentMeta = computed<SubcategoryMeta | null>(() => SUBCATEGORY_META[this.formSubcategory] || null);
 
   // Computed: cantidad sugerido para la subcategoría actual
   suggestedAmount = computed(() => {

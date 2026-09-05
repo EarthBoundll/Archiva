@@ -40,18 +40,14 @@
       <span class="card__label">vs mes anterior</span>
     </div>
     <div class="comparison-values">
-      <div class="comp-item">
-        <span class="comp-label">Documentos</span>
-        <span class="comp-value positive">+12%</span>
-      </div>
-      <div class="comp-item">
-        <span class="comp-label">Solicitudes</span>
-        <span class="comp-value negative">+8%</span>
-      </div>
-      <div class="comp-item">
-        <span class="comp-label">Archivo</span>
-        <span class="comp-value positive">+24%</span>
-      </div>
+      @for (comp of comparisons(); track comp.label) {
+        <div class="comp-item">
+          <span class="comp-label">{{ comp.label }}</span>
+          <span class="comp-value" [class.positive]="comp.value >= 0" [class.negative]="comp.value < 0">
+            {{ comp.value >= 0 ? '+' : '' }}{{ comp.value }}%
+          </span>
+        </div>
+      }
     </div>
   </div>
 

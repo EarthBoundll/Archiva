@@ -9,6 +9,8 @@ interface Insight {
   type: 'warning' | 'positive' | 'info';
 }
 
+const TREND_MONTHS = 6;
+
 @Component({
   selector: 'app-insights',
   standalone: true,
@@ -22,13 +24,39 @@ export class IndicatorsComponent implements OnInit {
 
   period = signal<'month' | 'year'>('month');
   totals = signal({ income: 0, expenses: 0, balance: 0 });
+  previousTotals = signal({ income: 0, expenses: 0, balance: 0 });
   topCategories = signal<{ name: string; amount: number; percentage: number }[]>([]);
   monthlyTrend = signal<number[]>([]);
 
   now = new Date();
   currentMonth = this.now.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
 
-  months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'];
+  // Los seis periodos que alimentan la tendencia, terminando en el mes actual.
+  private trendPeriods = Array.from({ length: TREND_MONTHS }, (_, i) => {
+    const d = new Date(this.now.getFullYear(), this.now.getMonth() - (TREND_MONTHS - 1 - i), 1);
+    return { year: d.getFullYear(), month: d.getMonth() + 1, date: d };
+  });
+
+  months = this.trendPeriods.map(p => {
+    const label = p.date.toLocaleDateString('es-PE', { month: 'short' }).replace('.', '');
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  });
+
+  // Variación real frente al mes anterior. Se usa el valor absoluto del periodo
+  // previo como denominador para que un balance negativo no invierta el signo.
+  comparisons = computed(() => {
+    const cur = this.totals();
+    const prev = this.previousTotals();
+    const change = (a: number, b: number) => {
+      if (b === 0) return a === 0 ? 0 : 100;
+      return Math.round(((a - b) / Math.abs(b)) * 100);
+    };
+    return [
+      { label: 'Documentos', value: change(cur.income, prev.income) },
+      { label: 'Solicitudes', value: change(cur.expenses, prev.expenses) },
+      { label: 'Archivo', value: change(cur.balance, prev.balance) }
+    ];
+  });
 
   get spendingPath(): string {
     const data = this.monthlyTrend();
@@ -85,14 +113,14 @@ export class IndicatorsComponent implements OnInit {
     if (this.savingsRate > 20) {
       list.push({
         title: '¡Excelente archivo!',
-        description: `Estás ahorrando ${this.savingsRate}% de tus documentos`,
+        description: `Archivas el ${this.savingsRate}% de los documentos que ingresan`,
         type: 'positive'
       });
     }
 
     list.push({
       title: 'Consejo del día',
-      description: 'Revisa tus suscripciones mensualmente',
+      description: 'Revisa los vencimientos de tus documentos cada mes',
       type: 'info'
     });
 
@@ -104,9 +132,19 @@ export class IndicatorsComponent implements OnInit {
   }
 
   async loadData() {
-    const txs = await this.historyService.getPorPeriodo(this.now.getFullYear(), this.now.getMonth() + 1);
-    const totals = this.historyService.calcTotales(txs);
+    // Un periodo por punto de la tendencia; el último es el mes en curso.
+    const periods = await Promise.all(
+      this.trendPeriods.map(p => this.historyService.getPorPeriodo(p.year, p.month))
+    );
+    const totalsPorPeriodo = periods.map(txs => this.historyService.calcTotales(txs));
+
+    const txs = periods[periods.length - 1];
+    const totals = totalsPorPeriodo[totalsPorPeriodo.length - 1];
     this.totals.set(totals);
+    this.previousTotals.set(
+      totalsPorPeriodo[totalsPorPeriodo.length - 2] ?? { income: 0, expenses: 0, balance: 0 }
+    );
+    this.monthlyTrend.set(totalsPorPeriodo.map(t => t.expenses));
 
     const byCat = this.historyService.calcPorCategoria(txs);
     const totalExpenses = byCat.reduce((sum, c) => sum + c.total, 0);
@@ -117,8 +155,6 @@ export class IndicatorsComponent implements OnInit {
         percentage: totalExpenses > 0 ? (c.total / totalExpenses) * 100 : 0
       }))
     );
-
-    this.monthlyTrend.set([1200, 1400, 1100, 1600, 1300, totals.expenses]);
   }
 
   formatSol(n: number): string {

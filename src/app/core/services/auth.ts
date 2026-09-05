@@ -13,6 +13,11 @@ export class Auth {
   currentUser = signal<User | null>(null);
   isLoading = signal<boolean>(true);
 
+  // Firebase restaura la sesión persistida de forma asíncrona. Esta promesa se
+  // resuelve con el primer estado emitido, para que el guard pueda esperarla.
+  private resolveReady!: () => void;
+  readonly ready = new Promise<void>(resolve => { this.resolveReady = resolve; });
+
   constructor() {
     this.initAuthState();
   }
@@ -22,6 +27,7 @@ export class Auth {
     onAuthStateChanged(auth, (user) => {
       this.currentUser.set(user);
       this.isLoading.set(false);
+      this.resolveReady();
     });
   }
 

@@ -3,14 +3,14 @@
 // Design System + Base Styles
 // ============================================
 
-// Import Google Fonts
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap');
-
 // Design System (variables)
-@import 'styles/design-system';
+@use 'styles/design-system';
 
 // Reset & Base (mixins, animations, base styles)
-@import 'styles/reset';
+@use 'styles/reset';
+
+// Las fuentes se cargan con <link> en src/index.html: un @import de CSS aquí
+// bloquea el render en serie y además @use debe ir antes que cualquier otra regla.
 
 // Global App Styles
 body {

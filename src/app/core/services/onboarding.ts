@@ -209,6 +209,33 @@ export class OnboardingService {
     }
   }
 
+  /**
+   * Guarda la configuracion inicial de la empresa en el perfil del usuario.
+   * Sustituye al antiguo saveOnboardingResponse, cuyo modelo era financiero
+   * (ingresos, metas de ahorro, prioridad financiera).
+   */
+  async guardarConfiguracionEmpresa(datos: {
+    responsable: string;
+    razonSocial: string;
+    areaArchivo: string;
+    prefijoCodificacion: string;
+  }): Promise<void> {
+    const userId = this.authService.getUserId();
+    if (!userId) throw new Error('No autenticado');
+
+    await this.firebase.saveUserProfile(userId, {
+      responsableArchivo: datos.responsable,
+      razonSocial: datos.razonSocial,
+      areaArchivo: datos.areaArchivo,
+      prefijoCodificacion: datos.prefijoCodificacion,
+      estadoProyecto: 'en_desarrollo',
+      onboardingCompleted: true,
+      onboardingVersion: 2,
+      onboardingCompletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
   // Obtener el perfil del usuario
   async getUserProfile(): Promise<any> {
     const userId = this.authService.getUserId();

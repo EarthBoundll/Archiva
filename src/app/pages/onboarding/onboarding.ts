@@ -1,7 +1,8 @@
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { OnboardingService } from '../../core/services/onboarding';
 
 @Component({
   selector: 'app-onboarding',
@@ -27,7 +28,7 @@ import { Router } from '@angular/router';
             </svg>
           </div>
           <h1>Bienvenido a ARCHIVA</h1>
-          <p>Tu asistente financiero personal. Vamos a configurarlo juntos.</p>
+          <p>Vamos a configurar el archivo de tu empresa. Son tres datos.</p>
           <button class="btn btn-primary" (click)="nextStep()">Comenzar</button>
         </div>
       }
@@ -36,13 +37,13 @@ import { Router } from '@angular/router';
       @if (step() === 2) {
         <div class="step step--active">
           <h1>¿Cómo te llamas?</h1>
-          <p>Ingresa tu nombre para personalizar la experiencia.</p>
+          <p>Seras el responsable del archivo documental.</p>
           
           <div class="form-field">
             <input 
               type="text" 
               [(ngModel)]="fullName" 
-              placeholder="Tu nombre"
+              placeholder="Nombre y apellidos"
               class="input-large"
               (keyup.enter)="nextStep()"
             />
@@ -52,65 +53,64 @@ import { Router } from '@angular/router';
         </div>
       }
       
-      <!-- Step 3: Income -->
+      <!-- Paso 3: Empresa -->
       @if (step() === 3) {
         <div class="step step--active">
-          <h1>¿Cuál es la razón social de tu empresa?</h1>
-          <p>Esto nos ayuda a calcular tu cuota 50/30/20.</p>
-          
-          <div class="income-options">
-            @for (opt of incomeOptions; track opt) {
-              <button 
-                class="income-option" 
-                [class.selected]="income === opt"
-                (click)="income = opt"
-              >
-                {{ opt }}
-              </button>
-            }
-          </div>
-          
+          <h1>Razon social de la empresa</h1>
+          <p>Aparecera en las cabeceras y en los reportes documentales.</p>
+
           <div class="form-field">
-            <input 
-              type="number" 
-              [(ngModel)]="customIncome" 
-              placeholder="Otro cantidad"
+            <input
+              type="text"
+              [(ngModel)]="razonSocial"
+              placeholder="ej. Constructora Andes SAC"
               class="input-large"
+              (keyup.enter)="razonSocial && nextStep()"
             />
           </div>
-          
-          <button class="btn btn-primary" (click)="nextStep()" [disabled]="!income && !customIncome">Continuar</button>
+
+          <button class="btn btn-primary" (click)="nextStep()" [disabled]="!razonSocial">Continuar</button>
         </div>
       }
-      
-      <!-- Step 4: Goal -->
+
+      <!-- Paso 4: Area de archivo -->
       @if (step() === 4) {
         <div class="step step--active">
-          <h1>¿Qué área gestiona el archivo?</h1>
-          <p>Establece un objetivo para empezar a ahorrar.</p>
-          
+          <h1>Area que gestiona el archivo</h1>
+          <p>Se usara para codificar los documentos.</p>
+
           <div class="form-field">
-            <label>Nombre de la meta</label>
-            <input 
-              type="text" 
-              [(ngModel)]="goalName" 
-              placeholder="ej. Viaje, Auto, Emergencia"
+            <label>Area responsable</label>
+            <input
+              type="text"
+              [(ngModel)]="areaArchivo"
+              placeholder="ej. Administracion"
               class="input-large"
+              (ngModelChange)="sugerirPrefijo()"
             />
           </div>
-          
+
           <div class="form-field">
-            <label>Cantidad objetivo</label>
-            <input 
-              type="number" 
-              [(ngModel)]="goalAmount" 
-              placeholder="5000"
+            <label>Prefijo de codificacion</label>
+            <input
+              type="text"
+              [(ngModel)]="prefijoCodificacion"
+              placeholder="ADM"
+              maxlength="5"
               class="input-large"
             />
+            <small>Los documentos se codificaran como CON-{{ prefijoCodificacion || 'ADM' }}-0001</small>
           </div>
-          
-          <button class="btn btn-primary" (click)="finishOnboarding()" [disabled]="!goalName || !goalAmount">
-            ¡Empezar!
+
+          @if (errorMsg()) {
+            <p class="error-msg" role="alert">{{ errorMsg() }}</p>
+          }
+
+          <button
+            class="btn btn-primary"
+            (click)="finishOnboarding()"
+            [disabled]="!areaArchivo || !prefijoCodificacion || guardando()">
+            {{ guardando() ? 'Guardando...' : 'Finalizar' }}
           </button>
         </div>
       }
@@ -241,14 +241,14 @@ import { Router } from '@angular/router';
       }
     }
     
-    .income-options {
+    .chip-options {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: var(--space-3);
       margin-bottom: var(--space-4);
     }
     
-    .income-option {
+    .chip-option {
       padding: var(--space-3);
       background: var(--color-surface);
       border: 1px solid var(--color-border);
@@ -279,27 +279,70 @@ import { Router } from '@angular/router';
       from { opacity: 0; transform: translateY(16px); }
       to { opacity: 1; transform: translateY(0); }
     }
+
+    .error-msg {
+      color: var(--color-error);
+      font-size: var(--text-sm);
+      margin: var(--space-3) 0 0;
+    }
+    .form-field small {
+      display: block;
+      margin-top: var(--space-2);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
   `]
 })
 export class OnboardingComponent {
+  private router = inject(Router);
+  private onboarding = inject(OnboardingService);
+
   step = signal(1);
-  steps = [{num: 1}, {num: 2}, {num: 3}, {num: 4}];
-  
-  fullName = '';
-  income = 0;
-  customIncome = 0;
-  incomeOptions = [1000, 2000, 3000, 5000, 8000, 10000];
-  goalName = '';
-  goalAmount = 0;
-  
-  constructor(private router: Router) {}
-  
+  steps = [{ num: 1 }, { num: 2 }, { num: 3 }, { num: 4 }];
+
+  guardando = signal(false);
+  errorMsg  = signal('');
+
+  fullName            = '';
+  razonSocial         = '';
+  areaArchivo         = '';
+  prefijoCodificacion = '';
+
   nextStep() {
     this.step.update(s => Math.min(s + 1, 4));
   }
-  
-  finishOnboarding() {
-    // Guardar datos del onboarding en Firebase
-    this.router.navigate(['/dashboard']);
+
+  /** Propone un prefijo de 3 letras a partir del nombre del area. */
+  sugerirPrefijo() {
+    if (this.prefijoCodificacion) return;
+    const limpio = this.areaArchivo
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toUpperCase().replace(/[^A-Z]/g, '');
+    this.prefijoCodificacion = limpio.slice(0, 3);
+  }
+
+  async finishOnboarding() {
+    if (this.guardando()) return;
+
+    this.guardando.set(true);
+    this.errorMsg.set('');
+
+    try {
+      await this.onboarding.guardarConfiguracionEmpresa({
+        responsable:         this.fullName.trim(),
+        razonSocial:         this.razonSocial.trim(),
+        areaArchivo:         this.areaArchivo.trim(),
+        prefijoCodificacion: this.prefijoCodificacion.trim().toUpperCase()
+      });
+      await this.router.navigate(['/dashboard'], { replaceUrl: true });
+    } catch (e: any) {
+      this.errorMsg.set(
+        e?.message === 'No autenticado'
+          ? 'Tu sesion expiro. Vuelve a iniciar sesion para guardar la configuracion.'
+          : 'No se pudo guardar la configuracion. Revisa tu conexion e intentalo de nuevo.'
+      );
+    } finally {
+      this.guardando.set(false);
+    }
   }
 }

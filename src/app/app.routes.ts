@@ -1,17 +1,20 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth-guard';
+import { guestGuard } from './core/guards/guest-guard';
 
 export const routes: Routes = [
   // Acceso (sin layout)
   {
     path: 'login',
+    canActivate: [guestGuard],
     loadComponent: () =>
       import('./pages/login/login').then(m => m.LoginComponent)
   },
 
-  // Configuracion inicial de la empresa (sin layout)
+  // Configuracion inicial de la empresa (sin layout, pero solo con sesion)
   {
     path: 'onboarding',
+    canActivate: [authGuard],
     loadComponent: () =>
       import('./pages/onboarding/onboarding').then(m => m.OnboardingComponent)
   },

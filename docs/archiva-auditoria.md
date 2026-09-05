@@ -3,7 +3,7 @@
 **Fecha:** 5 de septiembre de 2026 · **Objetivo:** https://earthboundll.github.io/Archiva/ · **Commit:** `7b15ee4`
 **Perfiles aplicados:** Senior Full Stack · UX/UI · QA · Security Analyst
 
-> **Estado tras la auditoría (commit ):** los tres hallazgos críticos
+> **Estado tras la auditoría (commit `9675b56`):** los tres hallazgos críticos
 > están **corregidos y desplegados**. Ver el apartado *Correcciones aplicadas*
 > al final del documento. El resto de hallazgos sigue abierto.
 
@@ -263,7 +263,7 @@ Son las cuatro primeras frases que lee un evaluador. Corregirlas cuesta minutos 
 
 *(Corregido respecto a la primera versión de este informe: en un primer análisis lo describí como un fallo silencioso al pulsar. La causa real es distinta.)*
 
-El botón está deshabilitado por  — dos campos heredados de Tracky que en ARCHIVA no tienen sentido. Al recorrer el asistente sin rellenarlos, el botón simplemente no responde y **nada indica qué falta**.
+El botón está deshabilitado por `[disabled]="!goalName || !goalAmount"` — dos campos heredados de Tracky que en ARCHIVA no tienen sentido. Al recorrer el asistente sin rellenarlos, el botón simplemente no responde y **nada indica qué falta**.
 
 Un control deshabilitado sin explicación es peor que uno habilitado que falla: el usuario no tiene ninguna pista de qué hacer. La regla es señalar el campo pendiente, no bloquear en silencio.
 
@@ -518,60 +518,74 @@ El más embarazoso no es técnico: **el onboarding pide tres datos y los tira a 
 
 ## 9. Correcciones Aplicadas
 
-Commit , desplegado y verificado en producción (run #8).
+Commit `9675b56`, desplegado y verificado en producción (run #8).
 
 ### C-1 · Guard reactivo — cierra S-1 y S-4
 
- ahora **espera** a que  pase a  antes de decidir, en lugar de expulsar al login con información incompleta:
+`auth-guard.ts` ahora **espera** a que `isLoading` pase a `false` antes de decidir, en lugar de expulsar al login con información incompleta:
 
-\
-Cierra de paso **S-4**: la condición de carrera de  desaparece porque el guard ya no evalúa antes de tiempo.
+```ts
+return toObservable(auth.isLoading).pipe(
+  filter(cargando => !cargando),
+  take(1),
+  map(() => auth.isAuthenticated() ? true : router.createUrlTree(['/login']))
+);
+```
 
-Se añade  sobre , de modo que un usuario autenticado que llegue al formulario de acceso sea devuelto al tablero.
+Cierra de paso **S-4**: la condición de carrera de `signIn()` desaparece porque el guard ya no evalúa antes de tiempo.
 
-**Verificado en producción:**  sin sesión sigue redirigiendo a , sin regresión ni bloqueo.
+Se añade `guest-guard.ts` sobre `/login`, de modo que un usuario autenticado que llegue al formulario de acceso sea devuelto al tablero.
+
+**Verificado en producción:** `/almacenamiento` sin sesión sigue redirigiendo a `/login`, sin regresión ni bloqueo.
 **Sin verificar:** el caso que motivó el arreglo —F5 con sesión válida— requiere credenciales.
 
-### C-2 ·  protegido — cierra S-2 y Q-3
+### C-2 · `/onboarding` protegido — cierra S-2 y Q-3
 
-\
-**Verificado en producción:** antes se recorría el asistente completo sin sesión; ahora redirige a .
+```ts
+{ path: 'onboarding', canActivate: [authGuard], loadComponent: ... }
+```
+
+**Verificado en producción:** antes se recorría el asistente completo sin sesión; ahora redirige a `/login`.
 
 ### C-3 · El onboarding persiste — cierra U-1, U-2, U-3 y Q-1
 
- deja de ser un stub y guarda en el perfil del usuario mediante el método nuevo , que escribe en :
+`finishOnboarding()` deja de ser un stub y guarda en el perfil del usuario mediante el método nuevo `OnboardingService.guardarConfiguracionEmpresa()`, que escribe en `users/{uid}/profile/data`:
 
 | Campo | Origen |
 |---|---|
-|  | Paso 2 |
-|  | Paso 3 |
-|  | Paso 4 |
-|  | Paso 4, con sugerencia automática |
-| , ,  | Metadatos |
+| `responsableArchivo` | Paso 2 |
+| `razonSocial` | Paso 3 |
+| `areaArchivo` | Paso 4 |
+| `prefijoCodificacion` | Paso 4, con sugerencia automática |
+| `onboardingCompleted`, `onboardingVersion`, `onboardingCompletedAt` | Metadatos |
 
-No se reutilizó , que existía pero arrastraba el modelo financiero completo (, , ,  y creación automática de fuentes de ingreso).
+No se reutilizó `saveOnboardingResponse()`, que existía pero arrastraba el modelo financiero completo (`age`, `employmentType`, `hasInvestments`, `financialPriority` y creación automática de fuentes de ingreso).
 
-Los pasos 3 y 4 pedían **ingreso mensual** y **meta de ahorro**; ahora piden razón social, área responsable y prefijo. Con ello desaparecen los cuatro textos financieros de **U-2** y los campos que bloqueaban el botón en **U-3**.
+Los pasos 3 y 4 pedían **ingreso mensual** y **meta de ahorro**; ahora piden razón social, área responsable y prefijo de codificación. Con ello desaparecen los cuatro textos financieros de **U-2** y los campos que bloqueaban el botón en **U-3**.
 
-Se añaden además estado de carga (), mensaje de error diferenciado para sesión expirada frente a fallo de red, y  en la navegación final para no dejar el asistente en el historial.
+Se añaden además estado de carga (`Guardando…`), mensaje de error diferenciado para sesión expirada frente a fallo de red, y `replaceUrl: true` en la navegación final para no dejar el asistente en el historial.
 
 ### Estado de los hallazgos
 
 | Hallazgo | Estado |
 |---|---|
 | S-1 Guard expulsa sesiones válidas | ✅ Corregido |
-| S-2  sin protección | ✅ Corregido y verificado |
-| S-4 Carrera en  | ✅ Corregido |
-| S-5 Login accesible con sesión activa | ✅ Corregido () |
+| S-2 `/onboarding` sin protección | ✅ Corregido y verificado |
+| S-4 Carrera en `signIn()` | ✅ Corregido |
+| Login accesible con sesión activa | ✅ Corregido (`guestGuard`) |
 | U-1 El onboarding no guarda | ✅ Corregido |
 | U-2 Textos financieros en onboarding | ✅ Corregido |
 | U-3 Botón bloqueado sin explicación | ✅ Corregido |
 | S-3 Cache offline tras logout | ⬜ Abierto |
 | S-5 Cabeceras de seguridad | ⬜ Abierto |
 | S-6 PII en consola | ⬜ Abierto |
+| S-7 Regla `/public/**` abierta | ⬜ Abierto |
+| S-9 Clave Supabase en el historial | ⬜ Abierto |
+| S-10 Sin recuperación de contraseña | ⬜ Abierto |
 | I-1, I-2 Formularios móviles | ⬜ Abierto |
 | I-3 Contraste sin verificar | ⬜ Abierto |
-| A-1  | ⬜ Abierto |
+| A-1 `prefers-reduced-motion` | ⬜ Abierto |
 | P-1 Bundle 952 kB | ⬜ Abierto |
+| Q-5 Rutas profundas con HTTP 404 | ⬜ Abierto |
 | Q-6 Cobertura de pruebas | ⬜ Abierto |
 | R-1, R-2, R-3 Deuda estructural | ⬜ Abierto |

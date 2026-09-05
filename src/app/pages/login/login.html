@@ -188,5 +188,13 @@
       </button>
     </div>
 
+    @if (!isRegister()) {
+      <div class="login-footer">
+        <button type="button" class="btn-link" (click)="recuperarPassword()">
+          ¿Olvidaste tu contraseña?
+        </button>
+      </div>
+    }
+
   </div>
 </div>

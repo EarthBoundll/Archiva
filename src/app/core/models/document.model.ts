@@ -273,6 +273,32 @@ function firstWeekdayOfMonth(year: number, month: number, weekday: number): Date
 }
 
 /** Calcula la siguiente ocurrencia a partir de una fecha base */
+/**
+ * Fecha objetivo dentro de un mes concreto segun la regla mensual.
+ * Se usa tanto para comprobar el mes en curso como el mes destino.
+ */
+function fechaObjetivoDelMes(
+  year: number,
+  month: number,
+  rule: ReglaRenovacion,
+  monthlyRule: ReglaMensual | undefined
+): Date {
+  const d = new Date(year, month, 1, 12, 0, 0, 0);
+
+  if (monthlyRule?.kind === 'day') {
+    d.setDate(clampDay(year, month, monthlyRule.day));
+  } else if (monthlyRule?.kind === 'last_day') {
+    d.setDate(lastDayOfMonth(year, month));
+  } else if (monthlyRule?.kind === 'first_weekday') {
+    return firstWeekdayOfMonth(year, month, monthlyRule.weekday);
+  } else {
+    const originalDay = new Date(rule.startDate).getDate();
+    d.setDate(clampDay(year, month, originalDay));
+  }
+
+  return d;
+}
+
 export function proximaOcurrencia(rule: ReglaRenovacion, from: Date): Date | null {
   const { frequency, monthlyRule, weeklyDays, biweeklyMode, biweeklyDates, annualMonth, annualDay } = rule;
   const result = new Date(from);
@@ -318,6 +344,16 @@ export function proximaOcurrencia(rule: ReglaRenovacion, from: Date): Date | nul
         frequency === 'monthly' ? 1 :
         frequency === 'bimonthly' ? 2 :
         frequency === 'quarterly' ? 3 : 6;
+
+      // El mes en curso puede tener todavia pendiente su fecha objetivo.
+      // Avanzar siempre saltaba la renovacion inminente y, con ella, su
+      // alerta de vencimiento: un documento a 5 dias se informaba a 36.
+      // Solo aplica a la frecuencia mensual, la unica en la que el mes en
+      // curso pertenece siempre al ciclo.
+      if (interval === 1) {
+        const enCurso = fechaObjetivoDelMes(result.getFullYear(), result.getMonth(), rule, monthlyRule);
+        if (enCurso.getTime() > result.getTime()) return enCurso;
+      }
 
       let targetMonth = result.getMonth() + interval;
       let targetYear = result.getFullYear();

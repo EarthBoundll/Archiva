@@ -5,6 +5,7 @@ import { Router, RouterModule } from '@angular/router';
 import { Auth } from '../../core/services/auth';
 import { PasswordStrengthComponent } from '../../core/components/password-strength/password-strength';
 import { IconComponent } from '../../core/components/icon/icon.component';
+import { log } from '../../core/utils/logger';
 
 @Component({
   selector: 'app-login',
@@ -83,7 +84,7 @@ export class LoginComponent {
         await this.authService.signIn(email!, password!);
       }
     } catch (error: any) {
-      console.error('Login error:', error);
+      log.error('Login error:', error);
       this.errorMsg.set(this.parseError(error));
     } finally {
       this.isLoading.set(false);
@@ -98,6 +99,36 @@ export class LoginComponent {
     } catch (error: any) {
       this.errorMsg.set(this.parseError(error));
       this.isLoading.set(false);
+    }
+  }
+
+  /**
+   * Envia el correo de restablecimiento.
+   *
+   * El mensaje de confirmacion es deliberadamente ambiguo: confirmar que una
+   * direccion existe permitiria enumerar cuentas registradas.
+   */
+  async recuperarPassword() {
+    const email = this.form.get('email')?.value?.trim();
+
+    if (!email) {
+      this.errorMsg.set('Escribe tu correo electrónico y vuelve a pulsar.');
+      return;
+    }
+
+    this.isLoading.set(true);
+    this.errorMsg.set('');
+
+    try {
+      await this.authService.sendPasswordReset(email);
+    } catch (e: any) {
+      // Un correo no registrado no debe distinguirse de uno que si lo esta.
+      if (e?.code !== 'auth/user-not-found' && e?.code !== 'auth/invalid-email') {
+        log.error('Password reset error:', e?.code);
+      }
+    } finally {
+      this.isLoading.set(false);
+      this.errorMsg.set('Revisa tu correo: si la dirección está registrada, recibirás un enlace para restablecer la contraseña.');
     }
   }
 
@@ -135,7 +166,7 @@ export class LoginComponent {
       return 'Error de conexión. Verifica tu internet.';
     
     // Default - return friendly message
-    console.error('Auth error:', error);
+    log.error('Auth error:', error);
     return 'Ocurrió un error. Intenta de nuevo.';
   }
 }

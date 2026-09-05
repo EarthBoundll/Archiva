@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { FirebaseService } from './firebase';
 import { Auth } from './auth';
 import { HistoryService } from './history';
+import { log } from '../utils/logger';
 import {
   Documento,
   DocumentoPayload,
@@ -241,7 +242,7 @@ export class DocumentService {
           categoryId: null
         });
       } catch (txError) {
-        console.error('Error creating transaction after income confirmation:', txError);
+        log.error('Error creating transaction after income confirmation:', txError);
       }
     }
 
@@ -258,7 +259,7 @@ export class DocumentService {
         description: ''
       });
     } catch (histError) {
-      console.error('Error adding income history entry:', histError);
+      log.error('Error adding income history entry:', histError);
     }
   }
 

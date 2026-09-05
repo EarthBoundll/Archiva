@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Auth } from './auth';
 import { DevSettingsService } from './dev-settings';
+import { log } from '../utils/logger';
 
 @Injectable({ providedIn: 'root' })
 export class EmailService {
@@ -24,10 +25,10 @@ export class EmailService {
         const mod = await import('@emailjs/browser');
         this.emailjs = mod.default || mod;
         this.emailjs.init(this.PUBLIC_KEY);
-        console.log('[EmailService] EmailJS loaded OK');
+        log.debug('[EmailService] EmailJS loaded OK');
         return this.emailjs;
       } catch (e: any) {
-        console.error('[EmailService] Failed to load EmailJS:', e);
+        log.error('[EmailService] Failed to load EmailJS:', e);
         this.loadPromise = null;
         throw e;
       }
@@ -45,13 +46,13 @@ export class EmailService {
     anticipationDays?: number;
   }): Promise<boolean> {
     if (!this.devSettings.emailsEnabled()) {
-      console.log('[EmailService] Emails disabled by dev settings');
+      log.debug('[EmailService] Emails disabled by dev settings');
       return false;
     }
 
     const user = this.auth.currentUser();
     if (!user?.email) {
-      console.warn('[EmailService] No user email, skipping');
+      log.warn('[EmailService] No user email, skipping');
       return false;
     }
 
@@ -77,12 +78,12 @@ export class EmailService {
         status_text: 'RECIBIDO',
         status_color: '#10b981'
       };
-      console.log('[EmailService] Sending confirmation:', templateParams);
+      log.debug('[EmailService] Sending confirmation:', templateParams);
       await emailjs.send(this.SERVICE_ID, this.TEMPLATE_CONFIRM, templateParams);
-      console.log('[EmailService] Confirmation sent OK');
+      log.debug('[EmailService] Confirmation sent OK');
       return true;
     } catch (error: any) {
-      console.error('[EmailService] Send failed:', error?.status, error?.text || error?.message || error);
+      log.error('[EmailService] Send failed:', error?.status, error?.text || error?.message || error);
       return false;
     }
   }
@@ -95,13 +96,13 @@ export class EmailService {
     currency?: string;
   }): Promise<boolean> {
     if (!this.devSettings.emailsEnabled()) {
-      console.log('[EmailService] Emails disabled by dev settings');
+      log.debug('[EmailService] Emails disabled by dev settings');
       return false;
     }
 
     const user = this.auth.currentUser();
     if (!user?.email) {
-      console.warn('[EmailService] No user email, skipping catch-up');
+      log.warn('[EmailService] No user email, skipping catch-up');
       return false;
     }
 
@@ -123,12 +124,12 @@ export class EmailService {
         status_text: 'PENDIENTE',
         status_color: '#f59e0b'
       };
-      console.log('[EmailService] Sending catch-up:', templateParams);
+      log.debug('[EmailService] Sending catch-up:', templateParams);
       await emailjs.send(this.SERVICE_ID, this.TEMPLATE_CATCHUP, templateParams);
-      console.log('[EmailService] Catch-up sent OK');
+      log.debug('[EmailService] Catch-up sent OK');
       return true;
     } catch (error: any) {
-      console.error('[EmailService] Catch-up send failed:', error?.status, error?.text || error?.message || error);
+      log.error('[EmailService] Catch-up send failed:', error?.status, error?.text || error?.message || error);
       return false;
     }
   }

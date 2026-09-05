@@ -22,13 +22,5 @@ service cloud.firestore {
       }
     }
     
-    // ---------------------------
-    // PERFIL PÚBLICO (opcional)
-    // ---------------------------
-    match /public/{documentId} {
-      // Perfiles públicos de usuario (solo lectura)
-      allow read: if true;
-      allow write: if false;
-    }
   }
 }

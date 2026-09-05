@@ -12,11 +12,16 @@ import { FlujoAprobacion } from '../../core/models/workflow.model';
 import { DocumentosPeriodo } from '../../core/models/document.model';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { BaseChartDirective } from 'ng2-charts';
+import { log } from '../../core/utils/logger';
+import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
   imports: [CommonModule, RouterModule, FormsModule, IconComponent, BaseChartDirective],
+  // Chart.js se registra aqui y no en app.config para que viaje en el
+  // chunk diferido del tablero, no en el bundle inicial.
+  providers: [provideCharts(withDefaultRegisterables())],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss'
 })
@@ -329,7 +334,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         activeIncomes = await this.documentService.getActive();
         totalConfiguredIncome = activeIncomes.reduce((sum, src) => sum + (src.amount || 0), 0);
       } catch (e) {
-        console.error('Error loading income sources:', e);
+        log.error('Error loading income sources:', e);
       }
       this.incomeSources.set(activeIncomes);
 
@@ -339,7 +344,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           await this.documentService.getDocumentosPeriodo(this.now.getFullYear(), this.now.getMonth() + 1)
         );
       } catch (e) {
-        console.error('Error loading monthly income:', e);
+        log.error('Error loading monthly income:', e);
       }
 
       // Cargar metas y registros

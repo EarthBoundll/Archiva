@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { FirebaseService } from './firebase';
 import { Auth } from './auth';
+import { log } from '../utils/logger';
 
 export interface RolloverResult {
   success: boolean;
@@ -175,6 +176,6 @@ export class PeriodRolloverService {
     // Just mark as archived instead of deleting
     // In production, you might want to actually delete or move to cold storage
     // For now, we'll just log the archive action
-    console.log(`Month ${periodoId} would be archived - keeping for now`);
+    log.debug(`Month ${periodoId} would be archived - keeping for now`);
   }
 }

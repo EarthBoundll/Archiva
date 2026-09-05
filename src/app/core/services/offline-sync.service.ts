@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { FirebaseService } from './firebase';
 import { Auth } from './auth';
+import { log } from '../utils/logger';
 
 export interface SyncStatus {
   lastSynced: string | null;
@@ -16,7 +17,7 @@ export interface OfflineTransaction {
   timestamp: string;
 }
 
-const DB_NAME = 'trackpays_offline';
+const DB_NAME = 'archiva_offline';
 const DB_VERSION = 1;
 const STORES = {
   transactions: 'transactions',
@@ -26,6 +27,21 @@ const STORES = {
   goals: 'goals',
   pending: 'pending_sync'
 };
+
+/**
+ * Borra la base local. Funcion suelta, sin inyeccion de dependencias:
+ * Auth necesita invocarla al cerrar sesion y OfflineSyncService ya depende
+ * de Auth, asi que inyectar el servicio crearia una dependencia circular.
+ */
+export async function borrarCacheLocal(): Promise<void> {
+  if (typeof indexedDB === 'undefined') return;
+  await new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = () => resolve();
+    req.onerror   = () => resolve();  // no bloquear el logout por esto
+    req.onblocked = () => resolve();
+  });
+}
 
 @Injectable({ providedIn: 'root' })
 export class OfflineSyncService {
@@ -42,7 +58,7 @@ export class OfflineSyncService {
   private async initDatabase(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (typeof indexedDB === 'undefined') {
-        console.warn('IndexedDB not available');
+        log.warn('IndexedDB not available');
         resolve();
         return;
       }
@@ -95,11 +111,25 @@ export class OfflineSyncService {
 
   getStatus(): SyncStatus {
     return {
-      lastSynced: localStorage.getItem('trackpays_last_synced'),
+      lastSynced: localStorage.getItem('archiva_last_synced'),
       pendingChanges: 0, // Will be calculated
       isOnline: this.isOnline,
       isSyncing: false
     };
+  }
+
+  /**
+   * Borra por completo la base local.
+   *
+   * La cache no esta segmentada por usuario: guarda documentos, solicitudes,
+   * historial, flujos y cuotas en almacenes compartidos. Si sobrevive al
+   * cierre de sesion, en un equipo compartido el siguiente usuario recibe
+   * datos del anterior. Se invoca desde Auth.signOut().
+   */
+  async clearAll(): Promise<void> {
+    this.db?.close();
+    this.db = null;
+    await borrarCacheLocal();
   }
 
   // Store methods for each entity type
@@ -179,13 +209,13 @@ export class OfflineSyncService {
         await this.delete(STORES.pending, (change as any).id);
         synced++;
       } catch (error) {
-        console.error('Failed to sync change:', error);
+        log.error('Failed to sync change:', error);
         failed++;
       }
     }
 
     if (synced > 0) {
-      localStorage.setItem('trackpays_last_synced', new Date().toISOString());
+      localStorage.setItem('archiva_last_synced', new Date().toISOString());
     }
 
     return { synced, failed };
@@ -235,7 +265,7 @@ export class OfflineSyncService {
       this.cacheGoals(goals)
     ]);
 
-    localStorage.setItem('trackpays_last_synced', new Date().toISOString());
+    localStorage.setItem('archiva_last_synced', new Date().toISOString());
   }
 
   // Get data (tries cache first, falls back to Firebase)
@@ -271,7 +301,7 @@ export class OfflineSyncService {
     if (cached && cached.length > 0) {
       // If online, update cache in background
       if (this.isOnline && year && month) {
-        this.syncFromFirebase(year, month).catch(console.error);
+        this.syncFromFirebase(year, month).catch(e => log.error(e));
       }
       return cached;
     }

@@ -318,7 +318,7 @@ export class DocumentReportService {
   private generateFilename(type: ReportType, format: ReportFormat, year?: number, month?: number): string {
     const date = new Date().toISOString().split('T')[0];
     const period = year && month ? `${year}_${String(month).padStart(2, '0')}` : 'all';
-    return `trackpays_${type}_${period}.${format}`;
+    return `archiva_${type}_${period}.${format}`;
   }
 
   // Download helper

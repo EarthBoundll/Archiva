@@ -5,7 +5,8 @@ export interface DevSettings {
   debugMode: boolean;
 }
 
-const STORAGE_KEY = 'trackpays_dev_settings';
+const STORAGE_KEY        = 'archiva_dev_settings';
+const STORAGE_KEY_LEGACY = 'trackpays_dev_settings';
 
 @Injectable({ providedIn: 'root' })
 export class DevSettingsService {
@@ -16,7 +17,16 @@ export class DevSettingsService {
 
   private loadSettings(): DevSettings {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      // Migracion transparente desde la clave heredada de Tracky.
+      let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        const heredado = localStorage.getItem(STORAGE_KEY_LEGACY);
+        if (heredado) {
+          localStorage.setItem(STORAGE_KEY, heredado);
+          localStorage.removeItem(STORAGE_KEY_LEGACY);
+          raw = heredado;
+        }
+      }
       if (raw) {
         const parsed = JSON.parse(raw);
         return { ...this.defaults, ...parsed } as DevSettings;

@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { onAuthStateChanged, User } from '@angular/fire/auth';
 import { FirebaseService } from './firebase';
+import { borrarCacheLocal } from './offline-sync.service';
 
 @Injectable({
   providedIn: 'root'
@@ -52,7 +53,23 @@ export class Auth {
 
   async signOut() {
     await this.firebase.signOut();
-    this.router.navigate(['/login']);
+
+    // La cache local no esta segmentada por usuario: si sobrevive al cierre
+    // de sesion, en un equipo compartido el siguiente usuario recibe datos
+    // del anterior. Se borra siempre, aunque falle.
+    try {
+      await borrarCacheLocal();
+      localStorage.removeItem('archiva_last_synced');
+      localStorage.removeItem('trackpays_last_synced'); // clave heredada
+    } catch { /* el logout no debe bloquearse por la limpieza */ }
+
+    // replaceUrl evita dejar la pagina protegida como entrada de historial.
+    await this.router.navigate(['/login'], { replaceUrl: true });
+  }
+
+  /** Solicita el correo de restablecimiento. No revela si la cuenta existe. */
+  async sendPasswordReset(email: string): Promise<void> {
+    await this.firebase.sendPasswordReset(email);
   }
 
   async signInWithGoogle() {

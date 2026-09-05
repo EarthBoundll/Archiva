@@ -9,6 +9,7 @@ import { FirebaseService } from '../../core/services/firebase';
 import { EmailService } from '../../core/services/email';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
+import { log } from '../../core/utils/logger';
 import {
   Documento,
   DocumentoPayload,
@@ -294,7 +295,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
               periodosOmitidos: source.vencimiento?.periodosOmitidos || [],
               amount: source.amount,
               currency: source.currency
-            }).catch(e => console.warn('Catch-up email skipped:', e.message || e));
+            }).catch(e => log.warn('Catch-up email skipped:', e.message || e));
           }
         }
 
@@ -316,12 +317,12 @@ export class DocumentsComponent implements OnInit, OnDestroy {
           const history = await this.firebaseService.getBitacora(userId);
           this.incomeHistory.set(history as EntradaBitacora[]);
         } catch (e) {
-          console.warn('Error loading income history:', e);
+          log.warn('Error loading income history:', e);
           this.incomeHistory.set([]);
         }
       }
     } catch (e) {
-      console.error('Error loading income data:', e);
+      log.error('Error loading income data:', e);
       this.showErrorToast('Error al cargar datos. Verifica tu conexión.');
     } finally {
       this.isLoading.set(false);
@@ -525,7 +526,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       this.closeModal();
       await this.loadData();
     } catch (e: any) {
-      console.error('Error saving income source:', e);
+      log.error('Error saving income source:', e);
       this.showErrorToast('Error al guardar: ' + (e.message || 'Error desconocido'));
     } finally {
       this.processing.set(false);
@@ -543,7 +544,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       }
       await this.loadData();
     } catch (e: any) {
-      console.error('Error toggling income source:', e);
+      log.error('Error toggling income source:', e);
       this.showErrorToast('Error al cambiar estado: ' + (e.message || 'Error desconocido'));
     } finally {
       this.processing.set(false);
@@ -580,13 +581,13 @@ export class DocumentsComponent implements OnInit, OnDestroy {
         frequency: this.getFrequencyLabel(source),
         fechaVencimiento: this.getNextDateLabel(source),
         anticipationDays: this.getAnticipationDays(source)
-      }).catch(e => console.warn('Email skipped:', e.message || e));
+      }).catch(e => log.warn('Email skipped:', e.message || e));
 
       this.skipCatchUpOnLoad.set(true);
       await this.loadData();
       this.showSuccessToast(`✅ ${source.name} confirmado como recibido`);
     } catch (e: any) {
-      console.error('Error marking as received:', e);
+      log.error('Error marking as received:', e);
       this.showErrorToast('Error al confirmar: ' + (e.message || 'Error desconocido'));
     } finally {
       this.processing.set(false);
@@ -636,7 +637,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
         this.catchUpConfirmedCount.set(0);
       }
     } catch (e: any) {
-      console.error('Error confirming catch-up:', e);
+      log.error('Error confirming catch-up:', e);
       this.showErrorToast('Error al confirmar: ' + (e.message || 'Error desconocido'));
     } finally {
       this.processing.set(false);
@@ -703,7 +704,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       this.closeDeleteAlert();
       await this.loadData();
     } catch (e: any) {
-      console.error('Error deleting income source:', e);
+      log.error('Error deleting income source:', e);
       this.showErrorToast('Error al eliminar: ' + (e.message || 'Error desconocido'));
     } finally {
       this.processing.set(false);
@@ -781,7 +782,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
 
       await this.loadData();
     } catch (e: any) {
-      console.error('Error reopening income source:', e);
+      log.error('Error reopening income source:', e);
       this.showErrorToast('Error al reabrir: ' + (e.message || 'Error desconocido'));
     } finally {
       this.processing.set(false);
@@ -798,7 +799,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
     try {
       await this.firebaseService.actualizarBitacora(userId, entry.id, { description });
     } catch (e: any) {
-      console.error('Error updating history description:', e);
+      log.error('Error updating history description:', e);
     }
   }
 

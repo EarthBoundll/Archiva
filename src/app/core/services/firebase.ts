@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from '@angular/fire/auth';
+import { Auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from '@angular/fire/auth';
 import { Firestore, collection, doc, setDoc, getDoc, getDocs, query, where, orderBy, limit, writeBatch } from '@angular/fire/firestore';
 
 @Injectable({
@@ -39,6 +39,11 @@ export class FirebaseService {
       // No requerimos verificación para development
     }
     return userCredential;
+  }
+
+  /** Envia el correo de restablecimiento de contraseña. */
+  async sendPasswordReset(email: string) {
+    return sendPasswordResetEmail(this.auth, email);
   }
 
   async signOut() {

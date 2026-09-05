@@ -93,5 +93,11 @@ export const routes: Routes = [
 
   // Redireccion raiz al dashboard
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
-  { path: '**', redirectTo: '/dashboard' }
+  // Ruta inexistente: pagina propia en vez de redirigir al tablero, que
+  // confundia un enlace mal escrito con una sesion expirada.
+  {
+    path: '**',
+    loadComponent: () =>
+      import('./pages/not-found/not-found').then(m => m.NotFoundComponent)
+  }
 ];

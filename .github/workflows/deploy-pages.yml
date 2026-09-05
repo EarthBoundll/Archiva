@@ -44,6 +44,11 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile --config.strict-peer-dependencies=false
 
+      # Las pruebas corren ANTES de compilar: si el motor de renovacion o los
+      # guards de sesion se rompen, el despliegue no debe llegar a produccion.
+      - name: Ejecutar pruebas
+        run: pnpm exec ng test --watch=false
+
       # El sitio se publica en /Archiva/, no en la raiz del dominio.
       - name: Compilar
         run: pnpm exec ng build --base-href /Archiva/

@@ -8,6 +8,7 @@ import { Auth } from '../../core/services/auth';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { RegistroHistorial } from '../../core/models/history.model';
 import { SolicitudRevision, SolicitudRevisionPayload, DETALLES_POR_TIPO, TIPOS_PRIORITARIOS, TIPOS_ORDINARIOS } from '../../core/models/review-request.model';
+import { log } from '../../core/utils/logger';
 
 const CATEGORY_COLORS: Record<string, string> = {
   housing: '#166B46',
@@ -1642,7 +1643,7 @@ export class ReviewRequestsComponent implements OnInit {
       this.closeConfirmPaid();
       await this.loadData();
     } catch (e) {
-      console.error('Error marking as paid:', e);
+      log.error('Error marking as paid:', e);
     } finally {
       this.processing.set(false);
     }
@@ -1673,7 +1674,7 @@ export class ReviewRequestsComponent implements OnInit {
       this.closeDeleteAlert();
       await this.loadData();
     } catch (e) {
-      console.error('Error deleting expense:', e);
+      log.error('Error deleting expense:', e);
     } finally {
       this.processing.set(false);
     }
@@ -1716,7 +1717,7 @@ export class ReviewRequestsComponent implements OnInit {
       await this.reviewRequestService.update(expense.id, { notes: newNotes || undefined });
       await this.loadData();
     } catch (e) {
-      console.error('Error updating note:', e);
+      log.error('Error updating note:', e);
     }
   }
 
@@ -1930,7 +1931,7 @@ export class ReviewRequestsComponent implements OnInit {
       this.closeModal();
       await this.loadData();
     } catch (e) {
-      console.error('Error saving expense:', e);
+      log.error('Error saving expense:', e);
     }
   }
 

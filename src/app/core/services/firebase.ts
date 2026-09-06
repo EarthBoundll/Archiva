@@ -9,6 +9,28 @@ export class FirebaseService {
   private auth = inject(Auth);
   private firestore = inject(Firestore);
 
+  /**
+   * Firestore rechaza undefined y aborta la escritura entera con
+   * "Unsupported field value: undefined". Un campo opcional que el
+   * formulario deja vacio bastaba para tumbar el alta completa.
+   *
+   * Se limpia aqui, en la frontera de datos, y no en cada llamada: asi el
+   * problema no puede reaparecer al añadir un campo opcional nuevo.
+   * null si se conserva, porque significa "sin valor" de forma explicita.
+   */
+  private limpiar<T>(data: T): T {
+    if (data === null || typeof data !== 'object') return data;
+    if (Array.isArray(data)) return data.map(v => this.limpiar(v)) as T;
+    if (data instanceof Date) return data;
+
+    const salida: Record<string, unknown> = {};
+    for (const [clave, valor] of Object.entries(data as Record<string, unknown>)) {
+      if (valor === undefined) continue;
+      salida[clave] = this.limpiar(valor);
+    }
+    return salida as T;
+  }
+
   constructor() {
     this.auth.languageCode = 'es';
   }
@@ -101,14 +123,14 @@ export class FirebaseService {
     const monthSnap = await getDoc(monthRef);
     
     if (!monthSnap.exists()) {
-      await setDoc(monthRef, {
+      await setDoc(monthRef, this.limpiar({
         id: periodoId,
         year,
         month,
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      });
+      }));
     }
     
     return periodoId;
@@ -210,10 +232,10 @@ export class FirebaseService {
         const periodoId = this.getPeriodoId(new Date(txData['date']));
         const updateRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}/historial/${registroId}`);
         
-        await setDoc(updateRef, {
+        await setDoc(updateRef, this.limpiar({
           ...data,
           updatedAt: new Date().toISOString()
-        }, { merge: true });
+        }), { merge: true });
         
         await this.actualizarEstadoDocumental(userId, periodoId);
         found = true;
@@ -247,7 +269,7 @@ export class FirebaseService {
         const periodoId = this.getPeriodoId(new Date(txData['date']));
         const deleteRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}/historial/${registroId}`);
         
-        await setDoc(deleteRef, { deletedAt: new Date().toISOString(), deleted: true }, { merge: true });
+        await setDoc(deleteRef, this.limpiar({ deletedAt: new Date().toISOString(), deleted: true }), { merge: true });
         
         await this.actualizarEstadoDocumental(userId, periodoId);
         found = true;
@@ -354,7 +376,7 @@ export class FirebaseService {
     };
     
     const stateRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}`);
-    await setDoc(stateRef, { estadoDocumental }, { merge: true });
+    await setDoc(stateRef, this.limpiar({ estadoDocumental }), { merge: true });
     
     return estadoDocumental;
   }
@@ -424,7 +446,7 @@ export class FirebaseService {
   // Update goal
   async actualizarFlujo(userId: string, flujoId: string, data: any) {
     const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
-    await setDoc(docRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
   // Add contribution to goal
@@ -443,22 +465,22 @@ export class FirebaseService {
     const estaCompletado = newAmount >= (goal.etapasTotales || 0);
     
     const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
-    await setDoc(docRef, {
+    await setDoc(docRef, this.limpiar({
       etapasCompletadas: newAmount,
       estaCompletado,
       status: estaCompletado ? 'completed' : 'active',
       etapas: [...(goal.etapas || []), contribution],
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
   }
 
   // Delete/deactivate goal
   async eliminarFlujo(userId: string, flujoId: string) {
     const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
-    await setDoc(docRef, { 
+    await setDoc(docRef, this.limpiar({ 
       status: 'cancelled',
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
   }
 
   // ============================================
@@ -504,23 +526,23 @@ export class FirebaseService {
   // Update income source
   async actualizarDocumento(userId: string, documentoId: string, data: any) {
     const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
-    await setDoc(docRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
   // Delete (deactivate) income source
   async archivarDocumento(userId: string, documentoId: string) {
     const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
-    await setDoc(docRef, { activo: false, updatedAt: new Date().toISOString() });
+    await setDoc(docRef, this.limpiar({ activo: false, updatedAt: new Date().toISOString() }));
   }
 
   // Record income received
   async registrarVersionDocumento(userId: string, documentoId: string, amount: number, receivedDate: string) {
     const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
-    await setDoc(docRef, { 
+    await setDoc(docRef, this.limpiar({ 
       actualAmount: amount,
       lastPaymentDate: receivedDate,
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
   }
 
   // ============================================
@@ -540,7 +562,7 @@ export class FirebaseService {
    */
   async guardarArchivo(userId: string, documentoId: string, archivo: any): Promise<string> {
     const ref = doc(collection(this.firestore, `users/${userId}/documentos/${documentoId}/archivos`));
-    await setDoc(ref, { ...archivo, id: ref.id });
+    await setDoc(ref, this.limpiar({ ...archivo, id: ref.id }));
     return ref.id;
   }
 
@@ -565,7 +587,7 @@ export class FirebaseService {
 
   async agregarBitacora(userId: string, entry: any): Promise<string> {
     const docRef = doc(collection(this.firestore, `users/${userId}/bitacora`));
-    await setDoc(docRef, { ...entry, id: docRef.id });
+    await setDoc(docRef, this.limpiar({ ...entry, id: docRef.id }));
     return docRef.id;
   }
 
@@ -602,7 +624,7 @@ export class FirebaseService {
 
   async setAcervoInicial(userId: string, amount: number) {
     const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    await setDoc(docRef, { initialBalance: amount }, { merge: true });
+    await setDoc(docRef, this.limpiar({ initialBalance: amount }), { merge: true });
   }
 
   // ============================================
@@ -740,29 +762,29 @@ export class FirebaseService {
   // Update expense
   async actualizarSolicitud(userId: string, solicitudId: string, data: any) {
     const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
-    await setDoc(docRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
   // Mark expense as paid
   async marcarSolicitudAtendida(userId: string, solicitudId: string, paidAmount: number, fechaAtencion?: string) {
     const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
-    await setDoc(docRef, {
+    await setDoc(docRef, this.limpiar({
       actualAmount: paidAmount,
       fechaAtencion: fechaAtencion || new Date().toISOString(),
       status: 'paid',
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
   }
 
   // Cancel/deactivate expense
   async anularSolicitud(userId: string, solicitudId: string) {
     const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
-    await setDoc(docRef, {
+    await setDoc(docRef, this.limpiar({
       status: 'cancelled',
       isRecurring: false,
       activo: false,
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
   }
 
   // Calculate monthly expense summary
@@ -927,14 +949,14 @@ export class FirebaseService {
       percentage: porcentajeUso
     });
     
-    await setDoc(docRef, {
+    await setDoc(docRef, this.limpiar({
       actualAmount,
       disponibleMb,
       porcentajeUso,
       status,
       history,
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
   }
 
   // Calculate monthly budget summary with actuals
@@ -1076,7 +1098,7 @@ export class FirebaseService {
 
   async markNotificationAsRead(userId: string, notificationId: string) {
     const docRef = doc(this.firestore, `users/${userId}/notifications/${notificationId}`);
-    return setDoc(docRef, { isRead: true }, { merge: true });
+    return setDoc(docRef, this.limpiar({ isRead: true }), { merge: true });
   }
 
   // ============================================
@@ -1145,10 +1167,10 @@ export class FirebaseService {
 
   async markAsMigrated(userId: string, type: 'transactions' | 'goals') {
     const docRef = doc(this.firestore, `users/${userId}/migration/status`);
-    await setDoc(docRef, {
+    await setDoc(docRef, this.limpiar({
       [type]: true,
       [`${type}MigratedAt`]: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
   }
 
   async checkMigrationStatus(userId: string): Promise<boolean> {

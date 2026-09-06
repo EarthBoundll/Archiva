@@ -29,6 +29,83 @@ export type TipoDocumental =
   | 'manual_procedimientos' | 'politica_interna' | 'procedimiento_operativo'
   | 'otros';
 
+/** Ciclo de vida documental. Los ocho estados que promete el sistema. */
+export type EstadoDocumental =
+  | 'borrador'
+  | 'en_revision'
+  | 'pendiente_aprobacion'
+  | 'aprobado'
+  | 'observado'
+  | 'rechazado'
+  | 'archivado'
+  | 'vencido';
+
+/** Area emisora. Alimenta el segmento central del codigo documental. */
+export type AreaEmisora =
+  | 'gerencia'
+  | 'administracion'
+  | 'legal'
+  | 'finanzas'
+  | 'recursos_humanos'
+  | 'operaciones'
+  | 'tecnologia'
+  | 'otros';
+
+export type Confidencialidad = 'publico' | 'interno' | 'confidencial' | 'restringido';
+
+export const ESTADOS_DOCUMENTALES: Record<EstadoDocumental, {
+  label: string;
+  icon: string;
+  token: string;
+  descripcion: string;
+}> = {
+  borrador:             { label: 'Borrador',      icon: 'file-pen',      token: 'var(--estado-borrador)',     descripcion: 'En elaboracion, aun no enviado a revision' },
+  en_revision:          { label: 'En revision',   icon: 'file-search',   token: 'var(--estado-en-revision)',  descripcion: 'El area responsable lo esta revisando' },
+  pendiente_aprobacion: { label: 'Por aprobar',   icon: 'clock',         token: 'var(--estado-pendiente)',    descripcion: 'Esperando el visto bueno de quien aprueba' },
+  aprobado:             { label: 'Aprobado',      icon: 'file-check',    token: 'var(--estado-aprobado)',     descripcion: 'Vigente y en uso' },
+  observado:            { label: 'Observado',     icon: 'file-warning',  token: 'var(--estado-observado)',    descripcion: 'Requiere correcciones antes de aprobarse' },
+  rechazado:            { label: 'Rechazado',     icon: 'file-x',        token: 'var(--estado-rechazado)',    descripcion: 'Devuelto para reelaborar' },
+  archivado:            { label: 'Archivado',     icon: 'archive',       token: 'var(--estado-archivado)',    descripcion: 'Fuera del acervo activo, consultable' },
+  vencido:              { label: 'Vencido',       icon: 'calendar-x',    token: 'var(--estado-vencido)',      descripcion: 'Paso su fecha de vigencia sin renovarse' }
+};
+
+export const AREAS_EMISORAS: Record<AreaEmisora, { label: string; siglas: string }> = {
+  gerencia:         { label: 'Gerencia',          siglas: 'GER' },
+  administracion:   { label: 'Administracion',    siglas: 'ADM' },
+  legal:            { label: 'Legal',             siglas: 'LEG' },
+  finanzas:         { label: 'Finanzas',          siglas: 'FIN' },
+  recursos_humanos: { label: 'Recursos Humanos',  siglas: 'RRHH' },
+  operaciones:      { label: 'Operaciones',       siglas: 'OPE' },
+  tecnologia:       { label: 'Tecnologia',        siglas: 'TIC' },
+  otros:            { label: 'Otras areas',       siglas: 'GEN' }
+};
+
+export const NIVELES_CONFIDENCIALIDAD: Record<Confidencialidad, { label: string; icon: string }> = {
+  publico:      { label: 'Publico',      icon: 'globe' },
+  interno:      { label: 'Interno',      icon: 'building-2' },
+  confidencial: { label: 'Confidencial', icon: 'lock' },
+  restringido:  { label: 'Restringido',  icon: 'shield-alert' }
+};
+
+/**
+ * Transiciones permitidas del ciclo de vida.
+ * Sin esta tabla cualquier estado podia saltar a cualquier otro.
+ */
+export const TRANSICIONES: Record<EstadoDocumental, EstadoDocumental[]> = {
+  borrador:             ['en_revision', 'archivado'],
+  en_revision:          ['pendiente_aprobacion', 'observado', 'borrador'],
+  pendiente_aprobacion: ['aprobado', 'observado', 'rechazado'],
+  aprobado:             ['vencido', 'archivado', 'en_revision'],
+  observado:            ['en_revision', 'archivado'],
+  rechazado:            ['borrador', 'archivado'],
+  vencido:              ['en_revision', 'archivado'],
+  archivado:            []
+};
+
+export function puedeTransicionar(desde: EstadoDocumental, hasta: EstadoDocumental): boolean {
+  return TRANSICIONES[desde]?.includes(hasta) ?? false;
+}
+
 export type FrecuenciaRenovacion =
   | 'weekly'
   | 'biweekly'
@@ -64,60 +141,83 @@ export interface ReglaRenovacion {
 export interface Documento {
   id: string;
   userId: string;
+
+  // Identificacion
+  codigo: string;                  // CON-LEG-0001
+  titulo: string;
+  descripcion?: string;
+  version: number;
+
+  // Clasificacion
   category: CategoriaDocumental;
   type: TipoDocumental;
-  name: string;
-  description?: string;
-  amount: number;
-  actualAmount?: number;
-  currency?: string;
+  area: AreaEmisora;
+  confidencialidad: Confidencialidad;
 
-  // Recurrencia inteligente
+  // Ciclo de vida
+  estado: EstadoDocumental;
+  motivoEstado?: string;           // Obligatorio al observar o rechazar
+  fechaAprobacion?: string;        // Alimenta el tiempo promedio de aprobacion
+  fechaEnvioRevision?: string;
+
+  // Responsables
+  responsable: string;
+  elaboradoPor?: string;
+  revisadoPor?: string;
+  aprobadoPor?: string;
+  ubicacionReferencia?: string;
+
+  // Almacenamiento
+  tamanioMb: number;
+
+  // Vigencia y renovacion
   renovacion: ReglaRenovacion;
-  proximasRenovaciones: string[];               // Próximas 6 fechas calculadas
-  fechaUltimaVersion?: string;               // Última vez que se recibió
-
-  // Estado actual
+  proximasRenovaciones: string[];
+  fechaUltimaVersion?: string;
   vencimiento: {
-    status: 'pending' | 'received' | 'overdue' | 'upcoming' | 'scheduled';
     fechaVencimiento: string | null;
     diasParaVencer: number | null;
     estaVencido: boolean;
     renovacionesOmitidas: number;
     periodosOmitidos: string[];
   };
-
-  // Solo para documentos recurrentes (no 'other' rápido)
   alertarDiasAntes?: number | null;
   generarRegistroAuto?: boolean;
 
-  // Deducciones (solo salarios)
-  deductions?: {
-    afpPercent?: number;
-    insurancePercent?: number;
-    fifthCategoryPercent?: number;
-    otherDeductions?: { name: string; percent?: number; amount?: number; isFixed: boolean }[];
-  };
-
-  activo: boolean;
+  activo: boolean;                 // false = archivado
   notes?: string;
   createdAt: string;
   updatedAt: string;
 }
 
+/** Una version concreta del documento, con su historial. */
+export interface VersionDocumento {
+  numero: number;
+  fechaEmision: string;
+  tamanioMb: number;
+  resumenCambio: string;
+  elaboradoPor?: string;
+  aprobadoPor?: string;
+  esVigente: boolean;
+}
+
+
 export interface DocumentoPayload {
+  codigo?: string;                 // Se genera si no se indica
+  titulo: string;
+  descripcion?: string;
   category: CategoriaDocumental;
   type: TipoDocumental;
-  name: string;
-  description?: string;
-  amount: number;
-  currency?: string;
+  area: AreaEmisora;
+  confidencialidad: Confidencialidad;
+  responsable: string;
+  tamanioMb: number;
+  ubicacionReferencia?: string;
   renovacion: ReglaRenovacion;
   alertarDiasAntes?: number | null;
-  generarRegistroAuto?: boolean;
-  deductions?: Documento['deductions'];
   notes?: string;
 }
+
 
 export interface DocumentosPeriodo {
   periodoId: string;
@@ -152,26 +252,7 @@ export interface DocumentoPeriodo {
   daysUntilPayment: number | null;
 }
 
-/** Calcula el total de deducciones (AFP, seguro, 5ta categoría, otras) sobre un cantidad bruto */
-export function calcularDeducciones(amount: number, deductions?: Documento['deductions']): number {
-  if (!deductions) return 0;
-  let total = 0;
-  if (deductions.afpPercent) total += amount * (deductions.afpPercent / 100);
-  if (deductions.insurancePercent) total += amount * (deductions.insurancePercent / 100);
-  if (deductions.fifthCategoryPercent) total += amount * (deductions.fifthCategoryPercent / 100);
-  if (deductions.otherDeductions) {
-    for (const d of deductions.otherDeductions) {
-      if (d.percent) total += amount * (d.percent / 100);
-      else if (d.amount) total += d.amount;
-    }
-  }
-  return total;
-}
 
-/** Retorna el cantidad neto (bruto - deducciones) */
-export function cantidadNeto(amount: number, deductions?: Documento['deductions']): number {
-  return Math.max(0, amount - calcularDeducciones(amount, deductions));
-}
 
 // ============================================
 // MAPAS DE CATEGORÍAS Y TIPOS
@@ -448,11 +529,11 @@ export function calcularEstadoDocumento(
 ): Documento['vencimiento'] {
   // Documento puntual/variable: no tiene próximas fechas
   if (rule.frequency === 'variable') {
-    return { status: 'received', fechaVencimiento: null, diasParaVencer: null, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
+    return { fechaVencimiento: null, diasParaVencer: null, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
   }
 
   if (nextDates.length === 0) {
-    return { status: 'pending', fechaVencimiento: null, diasParaVencer: null, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
+    return { fechaVencimiento: null, diasParaVencer: null, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
   }
 
   const today = new Date();
@@ -491,7 +572,7 @@ export function calcularEstadoDocumento(
   }
 
   if (!chosenDateStr) {
-    return { status: 'pending', fechaVencimiento: null, diasParaVencer: null, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
+    return { fechaVencimiento: null, diasParaVencer: null, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
   }
 
   const chosenDate = new Date(chosenDateStr);
@@ -505,25 +586,25 @@ export function calcularEstadoDocumento(
     const last = new Date(fechaUltimaVersion);
     last.setHours(0, 0, 0, 0);
     if (last >= chosenDate) {
-      return { status: 'received', fechaVencimiento: chosenDateStr, diasParaVencer: null, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
+      return { fechaVencimiento: chosenDateStr, diasParaVencer: null, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
     }
   }
 
   // Si hay pagos perdidos pero ya estamos en fecha futura, status es upcoming/scheduled
   if (renovacionesOmitidas > 0) {
     if (diasParaVencer <= alertarDiasAntes && diasParaVencer >= 0) {
-      return { status: 'upcoming', fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: false, renovacionesOmitidas, periodosOmitidos };
+      return { fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: false, renovacionesOmitidas, periodosOmitidos };
     }
-    return { status: 'scheduled', fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: false, renovacionesOmitidas, periodosOmitidos };
+    return { fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: false, renovacionesOmitidas, periodosOmitidos };
   }
 
   if (diasParaVencer < 0) {
-    return { status: 'overdue', fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: true, renovacionesOmitidas: 0, periodosOmitidos: [] };
+    return { fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: true, renovacionesOmitidas: 0, periodosOmitidos: [] };
   }
   if (diasParaVencer <= alertarDiasAntes && diasParaVencer >= 0) {
-    return { status: 'upcoming', fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
+    return { fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
   }
-  return { status: 'scheduled', fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
+  return { fechaVencimiento: chosenDateStr, diasParaVencer, estaVencido: false, renovacionesOmitidas: 0, periodosOmitidos: [] };
 }
 
 /** Detecta patrones simples a partir de fechas históricas */
@@ -593,4 +674,55 @@ export interface EntradaBitacora {
   time: string;       // Hora local: "15:45"
   category: string;
   description: string;
+}
+
+
+// ============================================
+// CODIFICACION DOCUMENTAL
+// ============================================
+
+const PREFIJO_CATEGORIA: Record<CategoriaDocumental, string> = {
+  contrato: 'CON', factura: 'FAC', orden_compra: 'OCP', memorando: 'MEM',
+  oficio: 'OFI', informe: 'INF', resolucion: 'RES', convenio: 'CNV',
+  manual: 'MAN', politica: 'POL', procedimiento: 'PRO', otros: 'DOC'
+};
+
+/** Formato normalizado CAT-AREA-CORRELATIVO, p. ej. CON-LEG-0001. */
+export function generarCodigo(
+  category: CategoriaDocumental,
+  area: AreaEmisora,
+  correlativo: number
+): string {
+  const cat = PREFIJO_CATEGORIA[category] ?? 'DOC';
+  const ar  = AREAS_EMISORAS[area]?.siglas ?? 'GEN';
+  return `${cat}-${ar}-${String(correlativo).padStart(4, '0')}`;
+}
+
+export function esCodigoValido(codigo: string): boolean {
+  return /^[A-Z]{3}-[A-Z]{2,4}-\d{4}$/.test(codigo.trim().toUpperCase());
+}
+
+/**
+ * Deriva el estado de vigencia a partir de las fechas.
+ * No decide el estado del ciclo de vida: solo detecta el vencimiento,
+ * que es la unica transicion que ocurre sin que nadie la provoque.
+ */
+export function calcularVigencia(doc: Pick<Documento, 'proximasRenovaciones' | 'estado'>): {
+  fechaVencimiento: string | null;
+  diasParaVencer: number | null;
+  estaVencido: boolean;
+} {
+  const proxima = doc.proximasRenovaciones?.[0] ?? null;
+  if (!proxima) return { fechaVencimiento: null, diasParaVencer: null, estaVencido: false };
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const vence = new Date(proxima + 'T00:00:00');
+  const dias = Math.round((vence.getTime() - hoy.getTime()) / 86400000);
+
+  return {
+    fechaVencimiento: proxima,
+    diasParaVencer: dias,
+    estaVencido: dias < 0 && doc.estado === 'aprobado'
+  };
 }

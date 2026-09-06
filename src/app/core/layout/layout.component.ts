@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { Auth } from '../services/auth';
 import { LayoutService } from '../services/layout.service';
+import { ThemeService } from '../services/theme.service';
 
 @Component({
   selector: 'app-layout',
@@ -126,6 +127,23 @@ import { LayoutService } from '../services/layout.service';
             </svg>
           </button>
           
+          <button
+            class="topbar__tema"
+            (click)="theme.alternar()"
+            [attr.aria-label]="theme.temaAplicado() === 'oscuro' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
+            [title]="theme.temaAplicado() === 'oscuro' ? 'Tema claro' : 'Tema oscuro'">
+            @if (theme.temaAplicado() === 'oscuro') {
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="4"/>
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+              </svg>
+            } @else {
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+              </svg>
+            }
+          </button>
+
           <div class="topbar__user">
             <span class="topbar__greeting">{{ greeting }}, {{ userName }}</span>
             <div class="topbar__avatar">
@@ -203,6 +221,7 @@ import { LayoutService } from '../services/layout.service';
 export class LayoutComponent {
   private auth = inject(Auth);
   layoutService = inject(LayoutService);
+  theme = inject(ThemeService);
   
   toggleSidebar() {
     this.layoutService.toggleSidebar();

@@ -1,935 +1,359 @@
-import { Component, inject, OnInit, OnDestroy, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
 import { DocumentService } from '../../core/services/document';
-import { Auth } from '../../core/services/auth';
-import { HistoryService } from '../../core/services/history';
-import { FirebaseService } from '../../core/services/firebase';
-import { EmailService } from '../../core/services/email';
 import { IconComponent } from '../../core/components/icon/icon.component';
-import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { log } from '../../core/utils/logger';
 import {
   Documento,
   DocumentoPayload,
-  DocumentosPeriodo,
   CategoriaDocumental,
   TipoDocumental,
+  AreaEmisora,
+  EstadoDocumental,
+  Confidencialidad,
   FrecuenciaRenovacion,
-  ReglaMensual,
   CATEGORIAS_DOCUMENTALES,
-  getEtiquetaCategoria,
-  getEtiquetaTipo,
-  getIconoTipo,
-  getInfoTipo,
-  esTipoRapido,
-  generarOcurrencias,
-  calcularEstadoDocumento,
-  EntradaBitacora,
-  cantidadNeto
+  ESTADOS_DOCUMENTALES,
+  AREAS_EMISORAS,
+  NIVELES_CONFIDENCIALIDAD,
+  esCodigoValido
 } from '../../core/models/document.model';
 
+type FiltroEstado = EstadoDocumental | 'todos' | 'por_vencer';
+
 @Component({
-  selector: 'app-income',
+  selector: 'app-documents',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, IconComponent],
+  imports: [CommonModule, FormsModule, IconComponent],
   templateUrl: './documents.html',
-  styleUrl: './documents.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  styleUrl: './documents.scss'
 })
-export class DocumentsComponent implements OnInit, OnDestroy {
+export class DocumentsComponent implements OnInit {
+
   private documentService = inject(DocumentService);
-  private authService = inject(Auth);
-  private historyService = inject(HistoryService);
-  private firebaseService = inject(FirebaseService);
-  private emailService = inject(EmailService);
 
-  incomeSources = signal<Documento[]>([]);
-  incomeHistory = signal<EntradaBitacora[]>([]);
-  monthlyIncome = signal<DocumentosPeriodo | null>(null);
-  monthlyReceived = signal<number>(0);
-  isLoading = signal(true);
-  processing = signal(false);
-  showModal = signal(false);
-  confirmingId = signal<string | null>(null);
-  showToast = signal(false);
-  toastMessage = signal('');
-  toastType = signal<'success' | 'error' | 'info'>('success');
-  toastTimer: ReturnType<typeof setTimeout> | null = null;
-  notifiedSources = signal<Set<string>>(new Set());
+  // ── Datos ──
+  documentos = signal<Documento[]>([]);
+  cargando   = signal(true);
+  guardando  = signal(false);
+  errorMsg   = signal('');
 
-  selectedCategory = signal<CategoriaDocumental | 'all'>('all');
-  activeTab = signal<'sources' | 'history'>('sources');
-  searchQuery = signal('');
-  private descriptionSubject = new Subject<{ entry: EntradaBitacora; description: string }>();
+  // ── Filtros ──
+  filtroEstado    = signal<FiltroEstado>('todos');
+  filtroCategoria = signal<CategoriaDocumental | 'todas'>('todas');
+  busqueda        = signal('');
 
-  isOtherCategory = computed(() => this.selectedCategory() === 'otros');
-  categories = CATEGORIAS_DOCUMENTALES;
-  categoryList: CategoriaDocumental[] = ['contrato', 'factura', 'orden_compra', 'memorando', 'oficio', 'informe', 'resolucion', 'convenio', 'manual', 'politica', 'procedimiento', 'otros'];
+  // ── Catalogos para la plantilla ──
+  categorias      = CATEGORIAS_DOCUMENTALES;
+  estados         = ESTADOS_DOCUMENTALES;
+  areas           = AREAS_EMISORAS;
+  confidencialidades = NIVELES_CONFIDENCIALIDAD;
 
-  // Form signals
-  editingSource = signal<Documento | null>(null);
-  editingQuick = signal(false);
-  formCategory = signal<CategoriaDocumental>('contrato');
-  formType = signal<TipoDocumental>('contrato_servicios');
-  formName = signal('');
-  formAmount = signal<number | null>(null);
-  amountError = signal('');
-  formNotes = signal('');
+  listaCategorias = Object.keys(CATEGORIAS_DOCUMENTALES) as CategoriaDocumental[];
+  listaEstados    = Object.keys(ESTADOS_DOCUMENTALES) as EstadoDocumental[];
+  listaAreas      = Object.keys(AREAS_EMISORAS) as AreaEmisora[];
+  listaConfid     = Object.keys(NIVELES_CONFIDENCIALIDAD) as Confidencialidad[];
 
-  // Recurrence form
-  formFrequency = signal<FrecuenciaRenovacion>('monthly');
-  formStartDate = signal<string>(this.localToday());
-  formWeeklyDay = signal<number>(1);
-  formBiweeklyMode = signal<'two_dates' | 'every_15'>('two_dates');
-  formBiweeklyDates = signal<[number, number]>([15, 30]);
-  formMonthlyKind = signal<ReglaMensual['kind']>('day');
-  formMonthlyDay = signal<number>(15);
-  formMonthlyWeekday = signal<number>(1);
-  formAnnualMonth = signal<number>(0);
-  formAnnualDay = signal<number>(15);
+  frecuencias: { value: FrecuenciaRenovacion; label: string }[] = [
+    { value: 'monthly',     label: 'Mensual' },
+    { value: 'quarterly',   label: 'Trimestral' },
+    { value: 'semi_annual', label: 'Semestral' },
+    { value: 'annual',      label: 'Anual' },
+    { value: 'variable',    label: 'Sin vencimiento' }
+  ];
 
-  // Quick mode (other category)
-  formQuickDate = signal<string>(this.localToday());
+  // ── Formulario ──
+  modalAbierto  = signal(false);
+  editando      = signal<Documento | null>(null);
+  fCodigo       = signal('');
+  fTitulo       = signal('');
+  fDescripcion  = signal('');
+  fCategoria    = signal<CategoriaDocumental>('contrato');
+  fTipo         = signal<TipoDocumental>('contrato_servicios');
+  fArea         = signal<AreaEmisora>('administracion');
+  fConfid       = signal<Confidencialidad>('interno');
+  fResponsable  = signal('');
+  fTamanio      = signal<number | null>(null);
+  fUbicacion    = signal('');
+  fFrecuencia   = signal<FrecuenciaRenovacion>('annual');
+  fDiaVence     = signal(31);
+  fMesVence     = signal(11);
+  fAlerta       = signal(30);
 
-  // Alerts (only for recurrent)
-  formAlertDays = signal<number | null>(3);
-  formAutoCreate = signal(false);
+  // ── Modal de cambio de estado ──
+  modalEstado   = signal<{ doc: Documento; destino: EstadoDocumental } | null>(null);
+  motivoEstado  = signal('');
 
-  now = signal(new Date());
-  currentMonth = computed(() => this.now().toLocaleDateString('es-PE', { month: 'long', year: 'numeric' }));
+  // ── Modal de nueva version ──
+  modalVersion  = signal<Documento | null>(null);
+  resumenCambio = signal('');
+  nuevoTamanio  = signal<number | null>(null);
 
-  // ── Confirm Alert ──
-  showConfirmAlert = signal(false);
-  confirmAlertSource = signal<Documento | null>(null);
-  confirmAlertTitle = computed(() => {
-    const src = this.confirmAlertSource();
-    return src ? `Confirmar recepción` : '';
+  // ============================================
+  // DERIVADOS
+  // ============================================
+
+  resumen = computed(() => {
+    const docs = this.documentos();
+    const cuenta = (e: EstadoDocumental) => docs.filter(d => d.estado === e).length;
+    const controlados = docs.filter(d => d.estado !== 'archivado').length;
+
+    return {
+      total: docs.length,
+      vigentes: cuenta('aprobado'),
+      enProceso: cuenta('borrador') + cuenta('en_revision') + cuenta('pendiente_aprobacion'),
+      observados: cuenta('observado') + cuenta('rechazado'),
+      vencidos: cuenta('vencido'),
+      archivados: cuenta('archivado'),
+      porVencer: docs.filter(d => this.venceProto(d)).length,
+      indiceVigencia: controlados > 0 ? Math.round((cuenta('aprobado') / controlados) * 100) : 0
+    };
   });
 
-  // ── Delete Alert ──
-  showDeleteAlert = signal(false);
-  deleteAlertSource = signal<Documento | null>(null);
+  filtrados = computed(() => {
+    const estado = this.filtroEstado();
+    const cat    = this.filtroCategoria();
+    const q      = this.busqueda().trim().toLowerCase();
 
-  // ── Edit Warning ──
-  showEditWarning = signal(false);
-  editWarningSource = signal<Documento | null>(null);
-
-  // ── Reopen Warning ──
-  showReopenWarning = signal(false);
-  reopenWarningEntry = signal<EntradaBitacora | null>(null);
-
-  // ── Catch-up Alert ──
-  showCatchUpAlert = signal(false);
-  catchUpSource = signal<Documento | null>(null);
-  catchUpMonths = signal<string[]>([]);
-  skipCatchUpOnLoad = signal(false);
-  catchUpQueue = signal<Documento[]>([]);
-  catchUpConfirmedCount = signal(0);
-
-  catchUpProgress = computed(() => {
-    const queue = this.catchUpQueue();
-    const confirmed = this.catchUpConfirmedCount();
-    const total = queue.length + confirmed;
-    if (total <= 1) return null;
-    const current = confirmed + 1;
-    return `${current} de ${total}`;
-  });
-
-  // ── Computed ──
-  esRapido = computed(() => esTipoRapido(this.formType()) || this.editingQuick());
-
-  availableTypes = computed(() => this.documentService.getTiposDisponibles(this.formCategory()));
-
-  // ── Separación Fuentes Activas vs Historial ──
-
-  /** Fuentes activas: recurrentes programados (no variable) que están activos */
-  activeSources = computed(() => {
-    const cat = this.selectedCategory();
-    const sources = this.incomeSources().filter(
-      s => s.activo && s.renovacion?.frequency !== 'variable'
-    );
-    if (cat === 'all') return sources;
-    return sources.filter(s => s.category === cat);
-  });
-
-  /** Historial: fuentes que tienen fechaUltimaVersion (fueron recibidas) */
-  historySources = computed(() => {
-    const cat = this.selectedCategory();
-    return this.incomeSources().filter(s => {
-      if (cat === 'otros') {
-        return s.renovacion.frequency === 'variable' && s.category === 'otros';
-      }
-      if (cat === 'oficio') {
-        return s.fechaUltimaVersion != null && s.category === 'oficio';
-      }
-      if (cat !== 'all') {
-        if (s.category !== cat) return false;
-        return s.fechaUltimaVersion != null;
-      }
-      // Todas: recibidas de cualquier categoría EXCEPTO other/puntuales
-      return s.fechaUltimaVersion != null && s.category !== 'otros';
+    return this.documentos().filter(d => {
+      if (estado === 'por_vencer' && !this.venceProto(d)) return false;
+      if (estado !== 'todos' && estado !== 'por_vencer' && d.estado !== estado) return false;
+      if (cat !== 'todas' && d.category !== cat) return false;
+      if (q && !`${d.codigo} ${d.titulo} ${d.responsable}`.toLowerCase().includes(q)) return false;
+      return true;
     });
   });
 
-  /** Fuentes activas filtradas por búsqueda */
-  searchedSources = computed(() => {
-    const query = this.searchQuery().toLowerCase().trim();
-    const sources = this.activeSources();
-    if (!query) return sources;
-    return sources.filter(s => s.name.toLowerCase().includes(query));
-  });
+  tiposDisponibles = computed(() => this.documentService.getTiposDisponibles(this.fCategoria()));
 
-  /** Historial de fuentes filtrado por búsqueda */
-  searchedHistorySources = computed(() => {
-    const query = this.searchQuery().toLowerCase().trim();
-    const sources = this.historySources();
-    if (!query) return sources;
-    return sources.filter(s => s.name.toLowerCase().includes(query));
-  });
-
-  /** Historial de movimientos filtrado por categoría */
-  filteredHistory = computed(() => {
-    const cat = this.selectedCategory();
-    const history = this.incomeHistory();
-    const filtered = cat === 'all' ? history : history.filter(entry => entry.category === cat);
-    return filtered.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
-  });
-
-  /** Título dinámico para la sección de fuentes activas según categoría */
-  activeSourcesTitle = computed(() => {
-    const cat = this.selectedCategory();
-    if (cat === 'all') return 'Todas las Fuentes de Documento';
-    return this.getCategoryInfo(cat).label;
-  });
-
-  /** Solo para la barra de "Próximos" */
-  upcomingPayments = computed(() =>
-    this.activeSources()
-      .filter(s => s.vencimiento?.diasParaVencer != null && s.vencimiento!.diasParaVencer! >= 0)
-      .sort((a, b) => (a.vencimiento?.diasParaVencer ?? 999) - (b.vencimiento?.diasParaVencer ?? 999))
-  );
-
-  totalMonthly = computed(() =>
-    this.incomeSources()
-      .filter(s => s.activo)
-      .reduce((sum, s) => sum + cantidadNeto(s.amount, s.deductions), 0)
-  );
-
-  totalByCategory = computed(() => {
-    const result: Record<string, number> = {};
-    this.incomeSources()
-      .filter(s => s.activo && s.renovacion.frequency !== 'variable')
-      .forEach(s => {
-        result[s.category] = (result[s.category] || 0) + cantidadNeto(s.amount, s.deductions);
-      });
-    return result;
-  });
-
-  getEtiquetaCategoria = getEtiquetaCategoria;
-  getEtiquetaTipo = getEtiquetaTipo;
-  getIconoTipo = getIconoTipo;
-
-  getCategoryInfo(cat: string) {
-    return this.categories[cat as CategoriaDocumental] || { label: cat, icon: 'layout-dashboard', description: '' };
+  /** Aprobado y a 30 dias o menos de vencer. */
+  venceProto(d: Documento): boolean {
+    return d.estado === 'aprobado'
+      && d.vencimiento.diasParaVencer !== null
+      && d.vencimiento.diasParaVencer >= 0
+      && d.vencimiento.diasParaVencer <= 30;
   }
 
-  getCategoryAmount(cat: string): number {
-    return this.monthlyIncome()?.byCategory[cat as CategoriaDocumental] || 0;
-  }
+  // ============================================
+  // CICLO
+  // ============================================
 
   async ngOnInit() {
-    this.descriptionSubject.pipe(
-      debounceTime(500),
-      distinctUntilChanged((prev, curr) => prev.description === curr.description)
-    ).subscribe(({ entry, description }) => {
-      this.saveDescription(entry, description);
-    });
-
-    await this.loadData();
+    await this.cargar();
   }
 
-  onSelectCategory(cat: CategoriaDocumental | 'all') {
-    this.selectedCategory.set(cat);
-    if (cat === 'otros') {
-      this.activeTab.set('history');
-    }
-  }
-
-  async loadData() {
-    this.isLoading.set(true);
+  async cargar() {
+    this.cargando.set(true);
     try {
-      const userId = this.authService.getUserId();
-      this.now.set(new Date());
-      const now = this.now();
-
-      const sources = await this.documentService.getAll();
-      const [monthly, txs] = await Promise.all([
-        this.documentService.getDocumentosPeriodo(now.getFullYear(), now.getMonth() + 1, sources),
-        this.historyService.getPorPeriodo(now.getFullYear(), now.getMonth() + 1)
-      ]);
-
-      this.incomeSources.set(sources);
-      this.monthlyIncome.set(monthly);
-      const received = txs.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
-      this.monthlyReceived.set(received);
-
-      // Detectar pagos con check (upcoming, overdue, missed) y enviar catch-up
-      if (!this.skipCatchUpOnLoad()) {
-        const alertSources = sources.filter(s =>
-          s.activo && (
-            s.vencimiento?.status === 'upcoming' ||
-            s.vencimiento?.status === 'overdue' ||
-            (s.vencimiento?.renovacionesOmitidas && s.vencimiento.renovacionesOmitidas > 0)
-          )
-        );
-
-        // Enviar email de catch-up por cada fuente con check
-        for (const source of alertSources) {
-          if (!this.notifiedSources().has(source.id)) {
-            this.notifiedSources.update(set => new Set(set).add(source.id));
-            this.emailService.sendCatchUpReminder({
-              sourceName: source.name,
-              renovacionesOmitidas: source.vencimiento?.renovacionesOmitidas || 0,
-              periodosOmitidos: source.vencimiento?.periodosOmitidos || [],
-              amount: source.amount,
-              currency: source.currency
-            }).catch(e => log.warn('Catch-up email skipped:', e.message || e));
-          }
-        }
-
-        // Abrir modal solo si hay renovacionesOmitidas > 0
-        const missedSources = alertSources.filter(s =>
-          s.vencimiento?.renovacionesOmitidas && s.vencimiento.renovacionesOmitidas > 0
-        );
-        if (missedSources.length > 0) {
-          this.catchUpQueue.set(missedSources);
-          this.catchUpConfirmedCount.set(0);
-          setTimeout(() => this.openCatchUpAlert(missedSources[0]), 600);
-        }
-      }
-      this.skipCatchUpOnLoad.set(false);
-
-      // Cargar historial por separado (no bloquea si falla)
-      if (userId) {
-        try {
-          const history = await this.firebaseService.getBitacora(userId);
-          this.incomeHistory.set(history as EntradaBitacora[]);
-        } catch (e) {
-          log.warn('Error loading income history:', e);
-          this.incomeHistory.set([]);
-        }
-      }
+      this.documentos.set(await this.documentService.getAll());
     } catch (e) {
-      log.error('Error loading income data:', e);
-      this.showErrorToast('Error al cargar datos. Verifica tu conexión.');
+      log.error('Error cargando documentos:', e);
+      this.errorMsg.set('No se pudieron cargar los documentos. Revisa tu conexión.');
     } finally {
-      this.isLoading.set(false);
+      this.cargando.set(false);
     }
   }
 
-  onCategoryChange() {
-    const types = this.availableTypes();
-    if (types.length > 0) {
-      this.formType.set(types[0].value);
-      this.onTypeChange();
-    }
+  // ============================================
+  // FORMULARIO
+  // ============================================
+
+  abrirNuevo() {
+    this.editando.set(null);
+    this.errorMsg.set('');
+    this.fCodigo.set('');
+    this.fTitulo.set('');
+    this.fDescripcion.set('');
+    this.fCategoria.set('contrato');
+    this.onCategoriaChange();
+    this.fArea.set('administracion');
+    this.fConfid.set('interno');
+    this.fResponsable.set('');
+    this.fTamanio.set(null);
+    this.fUbicacion.set('');
+    this.fFrecuencia.set('annual');
+    this.fAlerta.set(30);
+    this.modalAbierto.set(true);
   }
 
-  onTypeChange() {
-    const info = getInfoTipo(this.formType());
-    if (info) {
-      this.formFrequency.set(info.typicalFrequency as FrecuenciaRenovacion);
-      if (this.formFrequency() === 'monthly') {
-        this.formMonthlyDay.set(15);
-      } else if (this.formFrequency() === 'biweekly') {
-        this.formBiweeklyDates.set([15, 30]);
+  abrirEdicion(d: Documento) {
+    this.editando.set(d);
+    this.errorMsg.set('');
+    this.fCodigo.set(d.codigo);
+    this.fTitulo.set(d.titulo);
+    this.fDescripcion.set(d.descripcion ?? '');
+    this.fCategoria.set(d.category);
+    this.fTipo.set(d.type);
+    this.fArea.set(d.area);
+    this.fConfid.set(d.confidencialidad);
+    this.fResponsable.set(d.responsable);
+    this.fTamanio.set(d.tamanioMb || null);
+    this.fUbicacion.set(d.ubicacionReferencia ?? '');
+    this.fFrecuencia.set(d.renovacion.frequency);
+    this.fAlerta.set(d.alertarDiasAntes ?? 30);
+    this.modalAbierto.set(true);
+  }
+
+  cerrarModal() {
+    this.modalAbierto.set(false);
+    this.editando.set(null);
+    this.errorMsg.set('');
+  }
+
+  onCategoriaChange() {
+    const tipos = this.tiposDisponibles();
+    if (tipos.length) this.fTipo.set(tipos[0].value);
+  }
+
+  async guardar() {
+    if (this.guardando()) return;
+
+    if (!this.fTitulo().trim())      { this.errorMsg.set('Escribe el título del documento.'); return; }
+    if (!this.fResponsable().trim()) { this.errorMsg.set('Indica quién es el responsable.');  return; }
+
+    const codigo = this.fCodigo().trim().toUpperCase();
+    if (codigo && !esCodigoValido(codigo)) {
+      this.errorMsg.set('El código debe seguir el formato CAT-ÁREA-0001, por ejemplo CON-LEG-0001.');
+      return;
+    }
+
+    const duplicado = this.documentos().some(
+      d => d.codigo === codigo && d.id !== this.editando()?.id
+    );
+    if (codigo && duplicado) {
+      this.errorMsg.set(`El código ${codigo} ya está en uso por otro documento.`);
+      return;
+    }
+
+    this.guardando.set(true);
+    this.errorMsg.set('');
+
+    const payload: DocumentoPayload = {
+      codigo: codigo || undefined,
+      titulo: this.fTitulo(),
+      descripcion: this.fDescripcion() || undefined,
+      category: this.fCategoria(),
+      type: this.fTipo(),
+      area: this.fArea(),
+      confidencialidad: this.fConfid(),
+      responsable: this.fResponsable(),
+      tamanioMb: this.fTamanio() ?? 0,
+      ubicacionReferencia: this.fUbicacion() || undefined,
+      alertarDiasAntes: this.fAlerta(),
+      renovacion: {
+        frequency: this.fFrecuencia(),
+        startDate: new Date().toISOString().split('T')[0],
+        monthlyRule: this.fFrecuencia() === 'variable' ? undefined : { kind: 'day', day: this.fDiaVence() },
+        annualMonth: this.fMesVence(),
+        annualDay: this.fDiaVence()
       }
-    }
-  }
-
-  onAmountInput(event: any) {
-    const val = event;
-    this.amountError.set('');
-    if (val === '' || val === null || val === undefined) {
-      this.formAmount.set(null);
-      return;
-    }
-    const str = String(val);
-    if (/[a-zA-ZáéíóúñÁÉÍÓÚÑ]/.test(str)) {
-      this.formAmount.set(null);
-      this.amountError.set('No es un cantidad válido');
-      return;
-    }
-    const num = parseFloat(str.replace(/[^0-9.]/g, ''));
-    if (!isNaN(num) && num >= 0) {
-      this.formAmount.set(num);
-    } else {
-      this.formAmount.set(null);
-      this.amountError.set('No es un cantidad válido');
-    }
-  }
-
-  openAddModal(category?: CategoriaDocumental) {
-    this.editingSource.set(null);
-    this.editingQuick.set(false);
-    this.formCategory.set(category || 'contrato');
-    this.onCategoryChange();
-    this.formName.set('');
-    this.formAmount.set(null);
-    this.formNotes.set('');
-    this.formStartDate.set(this.localToday());
-    this.formQuickDate.set(this.localToday());
-    this.formWeeklyDay.set(1);
-    this.formBiweeklyMode.set('two_dates');
-    this.formBiweeklyDates.set([15, 30]);
-    this.formMonthlyKind.set('day');
-    this.formMonthlyDay.set(15);
-    this.formMonthlyWeekday.set(1);
-    this.formAnnualMonth.set(0);
-    this.formAnnualDay.set(15);
-    this.formAlertDays.set(3);
-    this.formAutoCreate.set(false);
-    this.showModal.set(true);
-  }
-
-  openAddModalForCurrentCategory() {
-    const cat = this.selectedCategory();
-    this.openAddModal(cat === 'all' ? undefined : cat);
-  }
-
-  openEdit(source: Documento) {
-    this.editingSource.set(source);
-    this.editingQuick.set(source.renovacion.frequency === 'variable' || source.category === 'otros');
-    this.formCategory.set(source.category);
-    this.formType.set(source.type);
-    this.formName.set(source.name);
-    this.formAmount.set(source.amount);
-    this.formNotes.set(source.notes || '');
-
-    const r = source.renovacion;
-    this.formFrequency.set(r.frequency);
-    this.formStartDate.set(r.startDate);
-    this.formWeeklyDay.set(r.weeklyDays?.[0] || 1);
-    this.formBiweeklyMode.set(r.biweeklyMode || 'two_dates');
-    this.formBiweeklyDates.set(r.biweeklyDates || [15, 30]);
-    if (r.monthlyRule) {
-      this.formMonthlyKind.set(r.monthlyRule.kind);
-      if (r.monthlyRule.kind === 'day') this.formMonthlyDay.set(r.monthlyRule.day);
-      if (r.monthlyRule.kind === 'first_weekday') this.formMonthlyWeekday.set(r.monthlyRule.weekday);
-    }
-    this.formAnnualMonth.set(r.annualMonth ?? 0);
-    this.formAnnualDay.set(r.annualDay ?? 15);
-
-    this.formAlertDays.set(source.alertarDiasAntes ?? null);
-    this.formAutoCreate.set(source.generarRegistroAuto ?? false);
-    this.showModal.set(true);
-  }
-
-  closeModal() {
-    this.showModal.set(false);
-    this.editingSource.set(null);
-    this.editingQuick.set(false);
-  }
-
-  private buildRecurrence(): Documento['renovacion'] {
-    const freq = this.formFrequency();
-    const base: Documento['renovacion'] = {
-      frequency: freq,
-      startDate: this.formStartDate()
     };
 
-    switch (freq) {
-      case 'weekly':
-        base.weeklyDays = [this.formWeeklyDay()];
-        break;
-      case 'biweekly':
-        base.biweeklyMode = this.formBiweeklyMode();
-        if (base.biweeklyMode === 'two_dates') {
-          base.biweeklyDates = this.formBiweeklyDates();
-        }
-        break;
-      case 'monthly':
-      case 'bimonthly':
-      case 'quarterly':
-      case 'semi_annual':
-        const kind = this.formMonthlyKind();
-        if (kind === 'day') base.monthlyRule = { kind: 'day', day: this.formMonthlyDay() };
-        else if (kind === 'last_day') base.monthlyRule = { kind: 'last_day' };
-        else if (kind === 'first_weekday') base.monthlyRule = { kind: 'first_weekday', weekday: this.formMonthlyWeekday() };
-        break;
-      case 'annual':
-        base.annualMonth = this.formAnnualMonth();
-        base.annualDay = this.formAnnualDay();
-        break;
-      case 'variable':
-        // No extra rules
-        break;
+    try {
+      const edit = this.editando();
+      if (edit) await this.documentService.update(edit.id, payload);
+      else      await this.documentService.create(payload);
+
+      await this.cargar();
+      this.cerrarModal();
+    } catch (e: any) {
+      log.error('Error guardando documento:', e);
+      this.errorMsg.set(e?.message ?? 'No se pudo guardar el documento.');
+    } finally {
+      this.guardando.set(false);
     }
-    return base;
   }
 
-  async saveSource() {
-    if (this.processing()) return;
-    const name = this.formName()?.trim();
-    const amount = this.formAmount();
-    if (!name) {
-      this.showErrorToast('El nombre no puede estar vacío');
+  // ============================================
+  // CICLO DE VIDA
+  // ============================================
+
+  accionesDe(d: Documento) {
+    return this.documentService.getTransicionesPosibles(d);
+  }
+
+  pedirCambioEstado(doc: Documento, destino: EstadoDocumental) {
+    this.motivoEstado.set('');
+    this.errorMsg.set('');
+    this.modalEstado.set({ doc, destino });
+  }
+
+  necesitaMotivo(destino: EstadoDocumental): boolean {
+    return destino === 'observado' || destino === 'rechazado';
+  }
+
+  async confirmarCambioEstado() {
+    const m = this.modalEstado();
+    if (!m || this.guardando()) return;
+
+    this.guardando.set(true);
+    this.errorMsg.set('');
+
+    try {
+      await this.documentService.cambiarEstado(m.doc, m.destino, { motivo: this.motivoEstado() });
+      await this.cargar();
+      this.modalEstado.set(null);
+    } catch (e: any) {
+      this.errorMsg.set(e?.message ?? 'No se pudo cambiar el estado.');
+    } finally {
+      this.guardando.set(false);
+    }
+  }
+
+  // ============================================
+  // VERSIONES
+  // ============================================
+
+  abrirNuevaVersion(d: Documento) {
+    this.resumenCambio.set('');
+    this.nuevoTamanio.set(d.tamanioMb || null);
+    this.errorMsg.set('');
+    this.modalVersion.set(d);
+  }
+
+  async confirmarNuevaVersion() {
+    const doc = this.modalVersion();
+    if (!doc || this.guardando()) return;
+
+    if (!this.resumenCambio().trim()) {
+      this.errorMsg.set('Describe qué cambió en esta versión.');
       return;
     }
-    if (!amount || amount <= 0) {
-      this.showErrorToast('El cantidad debe ser mayor a 0');
-      return;
-    }
-    this.processing.set(true);
 
+    this.guardando.set(true);
     try {
-      const isQ = this.esRapido();
-      const renovacion: Documento['renovacion'] = isQ
-        ? { frequency: 'variable', startDate: this.formQuickDate() }
-        : this.buildRecurrence();
-
-      let alertDays = this.formAlertDays();
-      if (!isQ && (alertDays == null || alertDays < 1)) {
-        alertDays = 3;
-      }
-
-      const payload: DocumentoPayload = {
-        category: this.formCategory(),
-        type: this.formType(),
-        name: this.formName(),
-        amount: this.formAmount()!,
-        renovacion,
-        alertarDiasAntes: isQ ? null : alertDays,
-        generarRegistroAuto: isQ ? false : this.formAutoCreate(),
-        notes: this.formNotes()
-      };
-
-      if (this.editingSource()) {
-        const editing = this.editingSource()!;
-        if (editing.renovacion.frequency === 'variable' || editing.category === 'otros' || editing.fechaUltimaVersion) {
-          await this.documentService.update(editing.id, {
-            name,
-            notes: this.formNotes()
-          } as Partial<DocumentoPayload>);
-        } else {
-          await this.documentService.update(editing.id, payload);
-        }
-      } else {
-        const newSource = await this.documentService.create(payload);
-        if (this.esRapido() && newSource) {
-          await this.documentService.registrarNuevaVersion(newSource.id, payload.amount);
-        }
-      }
-
-      this.closeModal();
-      await this.loadData();
-    } catch (e: any) {
-      log.error('Error saving income source:', e);
-      this.showErrorToast('Error al guardar: ' + (e.message || 'Error desconocido'));
-    } finally {
-      this.processing.set(false);
-    }
-  }
-
-  async toggleActive(source: Documento) {
-    if (this.processing()) return;
-    this.processing.set(true);
-    try {
-      if (source.activo) {
-        await this.documentService.deactivate(source.id);
-      } else {
-        await this.documentService.update(source.id, { activo: true } as Partial<DocumentoPayload>);
-      }
-      await this.loadData();
-    } catch (e: any) {
-      log.error('Error toggling income source:', e);
-      this.showErrorToast('Error al cambiar estado: ' + (e.message || 'Error desconocido'));
-    } finally {
-      this.processing.set(false);
-    }
-  }
-
-  openConfirmAlert(source: Documento) {
-    this.confirmAlertSource.set(source);
-    this.showConfirmAlert.set(true);
-  }
-
-  closeConfirmAlert() {
-    this.showConfirmAlert.set(false);
-    this.confirmAlertSource.set(null);
-  }
-
-  async confirmMarkReceived() {
-    if (this.processing()) return;
-    const source = this.confirmAlertSource();
-    if (!source) return;
-
-    this.processing.set(true);
-    this.confirmingId.set(source.id);
-    this.closeConfirmAlert();
-
-    try {
-      await this.documentService.registrarNuevaVersion(source.id, source.amount);
-
-      this.emailService.sendAprobacionConfirmacion({
-        sourceName: source.name,
-        amount: source.amount || 0,
-        currency: source.currency || 'PEN',
-        date: new Date().toLocaleDateString('es-PE'),
-        frequency: this.getFrequencyLabel(source),
-        fechaVencimiento: this.getNextDateLabel(source),
-        anticipationDays: this.getAnticipationDays(source)
-      }).catch(e => log.warn('Email skipped:', e.message || e));
-
-      this.skipCatchUpOnLoad.set(true);
-      await this.loadData();
-      this.showSuccessToast(`✅ ${source.name} confirmado como recibido`);
-    } catch (e: any) {
-      log.error('Error marking as received:', e);
-      this.showErrorToast('Error al confirmar: ' + (e.message || 'Error desconocido'));
-    } finally {
-      this.processing.set(false);
-      this.confirmingId.set(null);
-    }
-  }
-
-  async markReceived(source: Documento) {
-    this.openConfirmAlert(source);
-  }
-
-  // ── Catch-up handlers ──
-  openCatchUpAlert(source: Documento) {
-    this.catchUpSource.set(source);
-    this.catchUpMonths.set(source.vencimiento?.periodosOmitidos || []);
-    this.showCatchUpAlert.set(true);
-  }
-
-  closeCatchUpAlert() {
-    this.showCatchUpAlert.set(false);
-    this.catchUpSource.set(null);
-  }
-
-  async confirmCatchUp() {
-    if (this.processing()) return;
-    const source = this.catchUpSource();
-    if (!source) return;
-
-    this.processing.set(true);
-    this.confirmingId.set(source.id);
-    this.closeCatchUpAlert();
-
-    try {
-      await this.documentService.registrarNuevaVersion(source.id, source.amount);
-
-      this.catchUpConfirmedCount.update(c => c + 1);
-      const queue = this.catchUpQueue().filter(s => s.id !== source.id);
-      this.catchUpQueue.set(queue);
-
-      if (queue.length > 0) {
-        this.openCatchUpAlert(queue[0]);
-      } else {
-        this.skipCatchUpOnLoad.set(true);
-        await this.loadData();
-        const total = this.catchUpConfirmedCount();
-        this.showSuccessToast(`${total} de ${total} pagos confirmados`);
-        this.catchUpConfirmedCount.set(0);
-      }
-    } catch (e: any) {
-      log.error('Error confirming catch-up:', e);
-      this.showErrorToast('Error al confirmar: ' + (e.message || 'Error desconocido'));
-    } finally {
-      this.processing.set(false);
-      this.confirmingId.set(null);
-    }
-  }
-
-  skipCatchUp() {
-    const source = this.catchUpSource();
-    const queue = this.catchUpQueue().filter(s => s.id !== source?.id);
-    this.catchUpQueue.set(queue);
-
-    if (queue.length > 0) {
-      this.openCatchUpAlert(queue[0]);
-    } else {
-      this.closeCatchUpAlert();
-      const confirmed = this.catchUpConfirmedCount();
-      if (confirmed > 0) {
-        this.skipCatchUpOnLoad.set(true);
-        this.loadData();
-        const total = confirmed;
-        this.showSuccessToast(`${total} de ${total} pagos confirmados`);
-      }
-      this.catchUpConfirmedCount.set(0);
-    }
-  }
-
-  // ── Delete Alert handlers ──
-  openDeleteAlert(source: Documento) {
-    this.deleteAlertSource.set(source);
-    this.showDeleteAlert.set(true);
-  }
-
-  closeDeleteAlert() {
-    this.showDeleteAlert.set(false);
-    this.deleteAlertSource.set(null);
-  }
-
-  async confirmDelete() {
-    if (this.processing()) return;
-    this.processing.set(true);
-    const source = this.deleteAlertSource();
-    if (!source) { this.processing.set(false); return; }
-    try {
-      const userId = this.authService.getUserId();
-      await this.documentService.deactivate(source.id);
-
-      if (userId) {
-        const now = new Date();
-        const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        await this.firebaseService.agregarBitacora(userId, {
-          documentoId: source.id,
-          sourceName: source.name,
-          type: 'deletion',
-          amount: source.amount || 0,
-          date,
-          time,
-          category: source.category,
-          description: ''
-        });
-      }
-
-      this.closeDeleteAlert();
-      await this.loadData();
-    } catch (e: any) {
-      log.error('Error deleting income source:', e);
-      this.showErrorToast('Error al eliminar: ' + (e.message || 'Error desconocido'));
-    } finally {
-      this.processing.set(false);
-    }
-  }
-
-  // ── Edit Warning handlers ──
-  openEditWarning(source: Documento) {
-    this.editWarningSource.set(source);
-    this.showEditWarning.set(true);
-  }
-
-  closeEditWarning() {
-    this.showEditWarning.set(false);
-    this.editWarningSource.set(null);
-  }
-
-  proceedEdit() {
-    const source = this.editWarningSource();
-    this.closeEditWarning();
-    if (source) this.openEdit(source);
-  }
-
-  // ── Reopen Warning handlers ──
-  openReopenWarning(entry: EntradaBitacora) {
-    this.reopenWarningEntry.set(entry);
-    this.showReopenWarning.set(true);
-  }
-
-  closeReopenWarning() {
-    this.showReopenWarning.set(false);
-    this.reopenWarningEntry.set(null);
-  }
-
-  async proceedReopen() {
-    if (this.processing()) return;
-    this.processing.set(true);
-    const entry = this.reopenWarningEntry();
-    this.closeReopenWarning();
-    if (!entry) { this.processing.set(false); return; }
-
-    try {
-      const userId = this.authService.getUserId();
-      if (!userId) { this.processing.set(false); return; }
-
-      const sources = await this.documentService.getAll();
-      const source = sources.find(s => s.id === entry.documentoId);
-      if (!source) { this.processing.set(false); return; }
-
-      const alertDays = source.alertarDiasAntes ?? 1;
-      const proximasRenovaciones = generarOcurrencias(source.renovacion, 6);
-
-      await this.firebaseService.actualizarDocumento(userId, source.id, {
-        activo: true,
-        proximasRenovaciones,
-        vencimiento: calcularEstadoDocumento(source.renovacion, proximasRenovaciones, undefined, alertDays),
-        fechaUltimaVersion: null,
-        actualAmount: null,
-        updatedAt: new Date().toISOString()
+      await this.documentService.registrarNuevaVersion(doc, {
+        tamanioMb: this.nuevoTamanio() ?? doc.tamanioMb,
+        resumenCambio: this.resumenCambio()
       });
-
-      const now = new Date();
-      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      await this.firebaseService.agregarBitacora(userId, {
-        documentoId: source.id,
-        sourceName: source.name,
-        type: 'reactivation',
-        amount: 0,
-        date,
-        time,
-        category: source.category,
-        description: ''
-      });
-
-      await this.loadData();
+      await this.cargar();
+      this.modalVersion.set(null);
     } catch (e: any) {
-      log.error('Error reopening income source:', e);
-      this.showErrorToast('Error al reabrir: ' + (e.message || 'Error desconocido'));
+      this.errorMsg.set(e?.message ?? 'No se pudo registrar la versión.');
     } finally {
-      this.processing.set(false);
+      this.guardando.set(false);
     }
   }
 
-  updateDescription(entry: EntradaBitacora, description: string) {
-    this.descriptionSubject.next({ entry, description });
+  // ============================================
+  // PRESENTACION
+  // ============================================
+
+  textoVigencia(d: Documento): string {
+    const dias = d.vencimiento.diasParaVencer;
+    if (dias === null) return 'Sin vencimiento';
+    if (dias < 0)  return `Venció hace ${Math.abs(dias)} ${Math.abs(dias) === 1 ? 'día' : 'días'}`;
+    if (dias === 0) return 'Vence hoy';
+    if (dias === 1) return 'Vence mañana';
+    return `Vence en ${dias} días`;
   }
 
-  private async saveDescription(entry: EntradaBitacora, description: string) {
-    const userId = this.authService.getUserId();
-    if (!userId) return;
-    try {
-      await this.firebaseService.actualizarBitacora(userId, entry.id, { description });
-    } catch (e: any) {
-      log.error('Error updating history description:', e);
-    }
+  formatoMb(mb: number): string {
+    if (!mb) return '—';
+    if (mb < 1) return `${Math.round(mb * 1024)} KB`;
+    return `${mb.toLocaleString('es-PE', { maximumFractionDigits: 1 })} MB`;
   }
 
-  isSourceActive(documentoId: string): boolean {
-    return this.incomeSources().some(s => s.id === documentoId && s.activo);
-  }
-
-  getHistoryColor(type: string): string {
-    switch (type) {
-      case 'version': return '#2D7D5A';
-      case 'archivado': return '#A3342B';
-      case 'reactivacion': return '#B8791F';
-      default: return '#8A9295';
-    }
-  }
-
-  getHistoryIcon(type: string): string {
-    switch (type) {
-      case 'version': return 'file-check';
-      case 'archivado': return 'archive';
-      case 'reactivacion': return 'rotate-ccw';
-      default: return 'circle';
-    }
-  }
-
-  getHistoryLabel(type: string): string {
-    switch (type) {
-      case 'version': return 'Nueva version';
-      case 'archivado': return 'Archivado';
-      case 'reactivacion': return 'Reactivado';
-      default: return type;
-    }
-  }
-
-  private localToday(): string {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-
-  formatSol(n: number): string {
-    return `${(n || 0).toFixed(2)}`;
-  }
-
-  formatDays(days: number | null | undefined): string {
-    if (days === null || days === undefined) return '';
-    if (days === 0) return 'Hoy';
-    if (days === 1) return 'Mañana';
-    if (days < 0) return `Hace ${Math.abs(days)} días`;
-    return `En ${days} días`;
-  }
-
-  getPaymentStatusColor(status: string): string {
-    switch (status) {
-      case 'received': return '#2FA46A';
-      case 'upcoming': return '#f59e0b';
-      case 'overdue': return '#ef4444';
-      case 'scheduled': return '#3b82f6';
-      case 'registered': return '#71717a';
-      default: return '#8A9295';
-    }
-  }
-
-  getPaymentStatusLabel(status: string): string {
-    switch (status) {
-      case 'received': return 'Recibido';
-      case 'upcoming': return 'Próximo';
-      case 'overdue': return 'Atrasado';
-      case 'scheduled': return 'Programado';
-      case 'pending': return 'Pendiente';
-      default: return status;
-    }
-  }
-
-  // ── Toast ──
-  showSuccessToast(message: string) {
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.toastMessage.set(message);
-    this.toastType.set('success');
-    this.showToast.set(true);
-    this.toastTimer = setTimeout(() => this.showToast.set(false), 3500);
-  }
-
-  showErrorToast(message: string) {
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.toastMessage.set(message);
-    this.toastType.set('error');
-    this.showToast.set(true);
-    this.toastTimer = setTimeout(() => this.showToast.set(false), 4500);
-  }
-
-  closeToast() {
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.showToast.set(false);
-  }
-
-  ngOnDestroy() {
-    this.descriptionSubject.complete();
-    // Limpiar timers de toasts para evitar memory leaks
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-  }
-
-  // ── Anticipation days ──
-  private getAnticipationDays(source: Documento): number {
-    const fechaVencimiento = source.proximasRenovaciones?.[0];
-    if (!fechaVencimiento) return 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const next = new Date(fechaVencimiento + 'T00:00:00');
-    const diff = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return diff > 0 ? diff : 0;
-  }
-
-  private getNextDateLabel(source: Documento): string {
-    const fechaVencimiento = source.proximasRenovaciones?.[1];
-    if (!fechaVencimiento) return 'N/A';
-    const d = new Date(fechaVencimiento + 'T12:00:00');
-    return d.toLocaleDateString('es-PE', { day: 'numeric', month: 'short', year: 'numeric' });
-  }
-
-  private getFrequencyLabel(source: Documento): string {
-    switch (source.renovacion?.frequency) {
-      case 'weekly': return 'Semanal';
-      case 'biweekly': return 'Quincenal';
-      case 'monthly': return 'Mensual';
-      case 'bimonthly': return 'Bimestral';
-      case 'quarterly': return 'Trimestral';
-      case 'semi_annual': return 'Semestral';
-      case 'annual': return 'Anual';
-      case 'variable': return 'Variable';
-      default: return 'Mensual';
-    }
-  }
+  trackId(_: number, d: Documento) { return d.id; }
 }

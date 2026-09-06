@@ -6,18 +6,33 @@ import { log } from '../utils/logger';
 import {
   Documento,
   DocumentoPayload,
-  DocumentosPeriodo,
-  DocumentoPeriodo,
   CategoriaDocumental,
   TipoDocumental,
+  AreaEmisora,
+  EstadoDocumental,
   generarOcurrencias,
-  proximaOcurrencia,
-  calcularEstadoDocumento,
-  proyectarRenovaciones,
-  TIPOS_DOCUMENTALES,
-  esTipoRapido,
-  calcularDeducciones
+  calcularVigencia,
+  generarCodigo,
+  puedeTransicionar,
+  ESTADOS_DOCUMENTALES,
+  AREAS_EMISORAS,
+  TIPOS_DOCUMENTALES
 } from '../models/document.model';
+
+/** Resumen del acervo para el tablero y los indicadores. */
+export interface ResumenAcervo {
+  total: number;
+  porEstado: Record<EstadoDocumental, number>;
+  porCategoria: Record<string, number>;
+  vigentes: number;
+  porVencer: number;      // aprobados que vencen en 30 dias o menos
+  vencidos: number;
+  archivados: number;
+  observados: number;
+  indiceVigencia: number; // % del acervo controlado que esta aprobado
+  tamanioTotalMb: number;
+  diasPromedioAprobacion: number | null;
+}
 
 @Injectable({ providedIn: 'root' })
 export class DocumentService {
@@ -25,295 +40,336 @@ export class DocumentService {
   private authService = inject(Auth);
   private historyService = inject(HistoryService);
 
-  private localToday(): string {
+  private hoy(): string {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  // ── CRUD ──
+  // ============================================
+  // LECTURA
+  // ============================================
 
   async getAll(): Promise<Documento[]> {
     const userId = this.authService.getUserId();
     if (!userId) return [];
     const data = await this.firebase.getDocumentos(userId);
-    return data.map((src: any) => this.enrich(src));
+    return data.map((d: any) => this.normalizar(d));
   }
 
-  async getActive(): Promise<Documento[]> {
-    const sources = await this.getAll();
-    return sources.filter(s => s.activo);
+  /** Acervo activo: todo lo que no esta archivado. */
+  async getActivos(): Promise<Documento[]> {
+    return (await this.getAll()).filter(d => d.activo && d.estado !== 'archivado');
   }
+
+  async getPorEstado(estado: EstadoDocumental): Promise<Documento[]> {
+    return (await this.getAll()).filter(d => d.estado === estado);
+  }
+
+  /** Documentos aprobados que vencen dentro del plazo indicado. */
+  async getPorVencer(dias = 30): Promise<Documento[]> {
+    return (await this.getAll()).filter(d =>
+      d.estado === 'aprobado' &&
+      d.vencimiento.diasParaVencer !== null &&
+      d.vencimiento.diasParaVencer >= 0 &&
+      d.vencimiento.diasParaVencer <= dias
+    );
+  }
+
+  // ============================================
+  // ALTA Y EDICION
+  // ============================================
 
   async create(payload: DocumentoPayload): Promise<Documento> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    // Asegurar alertarDiasAntes mínimo 1 para recurrentes
+    const codigo = payload.codigo?.trim().toUpperCase()
+      || await this.siguienteCodigo(payload.category, payload.area);
+
     const alertarDiasAntes = payload.renovacion.frequency === 'variable'
       ? null
-      : (payload.alertarDiasAntes == null || payload.alertarDiasAntes < 1 ? 3 : payload.alertarDiasAntes);
+      : (payload.alertarDiasAntes == null || payload.alertarDiasAntes < 1 ? 30 : payload.alertarDiasAntes);
 
     const proximasRenovaciones = generarOcurrencias(payload.renovacion, 6);
-    const vencimiento = calcularEstadoDocumento(
-      payload.renovacion, proximasRenovaciones, undefined, alertarDiasAntes ?? 3
-    );
+    const ahora = new Date().toISOString();
 
-    const data = {
-      ...payload,
-      alertarDiasAntes,
+    // Todo documento nace en borrador: el ciclo de vida no se salta.
+    const doc: Omit<Documento, 'id'> = {
       userId,
-      activo: true,
-      actualAmount: 0,
-      currency: payload.currency || 'PEN',
+      codigo,
+      titulo: payload.titulo.trim(),
+      descripcion: payload.descripcion,
+      version: 1,
+      category: payload.category,
+      type: payload.type,
+      area: payload.area,
+      confidencialidad: payload.confidencialidad,
+      estado: 'borrador',
+      responsable: payload.responsable.trim(),
+      elaboradoPor: payload.responsable.trim(),
+      ubicacionReferencia: payload.ubicacionReferencia,
+      tamanioMb: payload.tamanioMb || 0,
+      renovacion: payload.renovacion,
       proximasRenovaciones,
-      vencimiento,
-      fechaUltimaVersion: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      vencimiento: {
+        ...calcularVigencia({ proximasRenovaciones, estado: 'borrador' }),
+        renovacionesOmitidas: 0,
+        periodosOmitidos: []
+      },
+      alertarDiasAntes,
+      activo: true,
+      notes: payload.notes,
+      createdAt: ahora,
+      updatedAt: ahora
     };
 
-    const result = await this.firebase.crearDocumento(userId, data);
-    return this.enrich(result);
+    const creado = await this.firebase.crearDocumento(userId, doc);
+    await this.registrarEnBitacora(userId, { ...doc, id: creado.id } as Documento, 'creacion');
+    return this.normalizar(creado);
   }
 
   async update(documentoId: string, payload: Partial<DocumentoPayload>): Promise<void> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    const updates: any = { ...payload, updatedAt: new Date().toISOString() };
+    const cambios: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+
+    for (const campo of ['titulo', 'descripcion', 'responsable', 'ubicacionReferencia',
+                         'confidencialidad', 'tamanioMb', 'notes', 'area', 'category', 'type'] as const) {
+      if (payload[campo] !== undefined) cambios[campo] = payload[campo];
+    }
 
     if (payload.renovacion) {
-      const alertDays = payload.alertarDiasAntes == null || payload.alertarDiasAntes < 1 ? 3 : payload.alertarDiasAntes;
-      updates.alertarDiasAntes = payload.renovacion.frequency === 'variable' ? null : alertDays;
-      updates.proximasRenovaciones = generarOcurrencias(payload.renovacion, 6);
-      updates.vencimiento = calcularEstadoDocumento(payload.renovacion, updates.proximasRenovaciones, undefined, alertDays);
+      cambios['renovacion'] = payload.renovacion;
+      cambios['proximasRenovaciones'] = generarOcurrencias(payload.renovacion, 6);
     }
 
-    await this.firebase.actualizarDocumento(userId, documentoId, updates);
+    await this.firebase.actualizarDocumento(userId, documentoId, cambios);
   }
 
-  async deactivate(documentoId: string): Promise<void> {
+  // ============================================
+  // CICLO DE VIDA
+  // ============================================
+
+  /**
+   * Aplica una transicion de estado.
+   *
+   * Rechaza los saltos no permitidos: sin esta comprobacion un documento
+   * podia pasar de borrador a aprobado sin revision de nadie.
+   */
+  async cambiarEstado(
+    doc: Documento,
+    nuevoEstado: EstadoDocumental,
+    opciones: { motivo?: string; responsable?: string } = {}
+  ): Promise<void> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
-    await this.firebase.actualizarDocumento(userId, documentoId, { activo: false, updatedAt: new Date().toISOString() });
-  }
 
-  // ── CÁLCULOS ──
+    if (!puedeTransicionar(doc.estado, nuevoEstado)) {
+      throw new Error(
+        `Un documento ${ESTADOS_DOCUMENTALES[doc.estado].label.toLowerCase()} ` +
+        `no puede pasar a ${ESTADOS_DOCUMENTALES[nuevoEstado].label.toLowerCase()}.`
+      );
+    }
 
-  async getDocumentosPeriodo(year: number, month: number, preloadedSources?: Documento[]): Promise<DocumentosPeriodo> {
-    const userId = this.authService.getUserId();
-    if (!userId) throw new Error('No autenticado');
+    // Observar y rechazar exigen justificacion: sin ella nadie sabe que corregir.
+    if ((nuevoEstado === 'observado' || nuevoEstado === 'rechazado') && !opciones.motivo?.trim()) {
+      throw new Error('Indica el motivo: quien reciba el documento necesita saber que corregir.');
+    }
 
-    const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    const sources = (preloadedSources ?? (await this.getActive())).filter(s => s.activo);
-
-    const byCategory: Record<CategoriaDocumental, number> = {
-      contrato: 0, factura: 0, orden_compra: 0, memorando: 0,
-      oficio: 0, informe: 0, resolucion: 0, convenio: 0,
-      manual: 0, politica: 0, procedimiento: 0, otros: 0
+    const cambios: Record<string, unknown> = {
+      estado: nuevoEstado,
+      motivoEstado: opciones.motivo?.trim() ?? '',
+      updatedAt: new Date().toISOString()
     };
 
-    const monthlySources: DocumentoPeriodo[] = [];
-    let totalBudgeted = 0;
-    let totalReceived = 0;
-
-    for (const source of sources) {
-      const budgeted = source.amount || 0;
-      const received = source.actualAmount || 0;
-
-      const deductionsTotal = calcularDeducciones(budgeted, source.deductions);
-      const netBudgeted = Math.max(0, budgeted - deductionsTotal);
-      const netReceived = received > 0 ? Math.max(0, received - deductionsTotal) : 0;
-
-      byCategory[source.category] += netBudgeted;
-      totalBudgeted += netBudgeted;
-      totalReceived += netReceived;
-
-      monthlySources.push({
-        documentoId: source.id,
-        name: source.name,
-        category: source.category,
-        type: source.type,
-        budgeted: netBudgeted,
-        received: netReceived,
-        expectedDate: source.vencimiento?.fechaVencimiento || null,
-        receivedDate: source.fechaUltimaVersion || null,
-        status: source.vencimiento?.status || 'pending',
-        daysUntilPayment: source.vencimiento?.diasParaVencer ?? null
-      });
+    if (nuevoEstado === 'en_revision')  cambios['fechaEnvioRevision'] = this.hoy();
+    if (nuevoEstado === 'aprobado') {
+      cambios['fechaAprobacion'] = this.hoy();
+      cambios['aprobadoPor'] = opciones.responsable ?? doc.responsable;
     }
+    if (nuevoEstado === 'archivado') cambios['activo'] = false;
 
-    const predictions = proyectarRenovaciones(
-      sources.map(s => ({ amount: s.amount, renovacion: s.renovacion, proximasRenovaciones: s.proximasRenovaciones })),
-      3
-    );
+    await this.firebase.actualizarDocumento(userId, doc.id, cambios);
 
-    return {
-      periodoId, year, month,
-      byCategory,
-      totalBudgeted,
-      totalReceived,
-      totalPending: totalBudgeted - totalReceived,
-      receivedPercentage: totalBudgeted > 0 ? (totalReceived / totalBudgeted) * 100 : 0,
-      sources: monthlySources,
-      predictions: {
-        nextPaymentDate: predictions[0]?.predicted ? `${predictions[0].month} ${predictions[0].year}` : null,
-        nextPaymentAmount: predictions[0]?.predicted || 0,
-        expectedEndOfMonth: totalBudgeted
-      },
-      initialBalance: 0,
-      availableNow: totalReceived,
-      lastUpdated: new Date().toISOString()
-    };
+    const accion = {
+      en_revision: 'envio_revision',
+      pendiente_aprobacion: 'envio_revision',
+      aprobado: 'aprobacion',
+      observado: 'observacion',
+      rechazado: 'rechazo',
+      archivado: 'archivado',
+      borrador: 'edicion',
+      vencido: 'edicion'
+    }[nuevoEstado];
+
+    await this.registrarEnBitacora(userId, { ...doc, estado: nuevoEstado }, accion);
   }
 
-  async registrarNuevaVersion(documentoId: string, actualAmount?: number): Promise<void> {
+  /** Registra una version nueva: incrementa el correlativo y reabre el ciclo. */
+  async registrarNuevaVersion(
+    doc: Documento,
+    datos: { tamanioMb?: number; resumenCambio: string }
+  ): Promise<void> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    // Fecha y hora local (no UTC)
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const proximasRenovaciones = generarOcurrencias(doc.renovacion, 6);
 
-    // Obtener fuente actual para recalcular próximas fechas
-    const sources = await this.getAll();
-    const source = sources.find(s => s.id === documentoId);
-    if (!source) throw new Error('Fuente no encontrada');
-
-    // Clonar recurrencia y avanzar startDate a la siguiente ocurrencia real
-    const updatedRecurrence = { ...source.renovacion };
-    const paidDate = source.proximasRenovaciones?.[0] ?? today;
-    const paid = new Date(paidDate + 'T12:00:00');
-
-    if (updatedRecurrence.frequency !== 'variable') {
-      const nextAfterPaid = proximaOcurrencia(updatedRecurrence, paid);
-      if (nextAfterPaid) {
-        const y = nextAfterPaid.getFullYear();
-        const m = String(nextAfterPaid.getMonth() + 1).padStart(2, '0');
-        const d = String(nextAfterPaid.getDate()).padStart(2, '0');
-        updatedRecurrence.startDate = `${y}-${m}-${d}`;
-      } else {
-        paid.setDate(paid.getDate() + 1);
-        const y = paid.getFullYear();
-        const m = String(paid.getMonth() + 1).padStart(2, '0');
-        const d = String(paid.getDate()).padStart(2, '0');
-        updatedRecurrence.startDate = `${y}-${m}-${d}`;
-      }
-    } else {
-      paid.setDate(paid.getDate() + 1);
-      const y = paid.getFullYear();
-      const m = String(paid.getMonth() + 1).padStart(2, '0');
-      const d = String(paid.getDate()).padStart(2, '0');
-      updatedRecurrence.startDate = `${y}-${m}-${d}`;
-    }
-
-    // Regenerar ocurrencias con el startDate actualizado
-    let proximasRenovaciones: string[] = [];
-    if (updatedRecurrence.frequency !== 'variable') {
-      proximasRenovaciones = generarOcurrencias(updatedRecurrence, 6);
-    }
-
-    // Recalcular estado con la nueva primera fecha
-    const alertDays = source.alertarDiasAntes == null || source.alertarDiasAntes < 1 ? 3 : source.alertarDiasAntes;
-    const vencimiento = calcularEstadoDocumento(
-      updatedRecurrence, proximasRenovaciones, today, alertDays
-    );
-
-    // Write 1: Update income source (critical — throws on failure)
-    await this.firebase.actualizarDocumento(userId, documentoId, {
-      actualAmount: actualAmount ?? null,
-      fechaUltimaVersion: today,
-      renovacion: updatedRecurrence,
+    await this.firebase.actualizarDocumento(userId, doc.id, {
+      version: doc.version + 1,
+      tamanioMb: datos.tamanioMb ?? doc.tamanioMb,
+      estado: 'en_revision',
+      motivoEstado: datos.resumenCambio,
+      fechaUltimaVersion: this.hoy(),
+      fechaEnvioRevision: this.hoy(),
       proximasRenovaciones,
-      vencimiento,
+      vencimiento: {
+        ...calcularVigencia({ proximasRenovaciones, estado: 'en_revision' }),
+        renovacionesOmitidas: 0,
+        periodosOmitidos: []
+      },
       updatedAt: new Date().toISOString()
     });
 
-    // Write 2: Create transaction (non-critical — log error but don't block)
-    // Always create transaction when user manually confirms receipt (actualAmount provided)
-    if (actualAmount && actualAmount > 0) {
-      try {
-        await this.historyService.create({
-          amount: actualAmount,
-          description: `Documento: ${source.name}`,
-          date: today,
-          type: 'income',
-          categoryId: null
-        });
-      } catch (txError) {
-        log.error('Error creating transaction after income confirmation:', txError);
-      }
-    }
-
-    // Write 3: Add history entry (non-critical — log error but don't block)
-    try {
-      await this.firebase.agregarBitacora(userId, {
-        documentoId: source.id,
-        sourceName: source.name,
-        type: 'version',
-        amount: actualAmount ?? 0,
-        date: today,
-        time,
-        category: source.category,
-        description: ''
-      });
-    } catch (histError) {
-      log.error('Error adding income history entry:', histError);
-    }
-  }
-
-  // ── HELPERS ──
-
-  private enrich(data: any): Documento {
-    const source = data as Documento;
-
-    // MIGRACIÓN: datos antiguos usaban 'paymentSchedule', ahora usamos 'renovacion'
-    const anySource = source as any;
-    if (!source.renovacion && anySource.paymentSchedule) {
-      const old = anySource.paymentSchedule;
-      source.renovacion = {
-        frequency: old.frequency || 'monthly',
-        startDate: old.firstPaymentDate || this.localToday()
-      };
-      // Mapear campos antiguos a nuevos
-      if (old.paymentDayOfWeek != null) {
-        source.renovacion.weeklyDays = [old.paymentDayOfWeek];
-      }
-      if (old.paymentDayOfMonth != null) {
-        source.renovacion.monthlyRule = { kind: 'day', day: old.paymentDayOfMonth };
-      }
-      if (old.secondPaymentDay != null) {
-        source.renovacion.biweeklyMode = 'two_dates';
-        source.renovacion.biweeklyDates = [old.paymentDayOfMonth || 15, old.secondPaymentDay];
-      }
-    }
-    // Asegurar que siempre haya renovacion
-    if (!source.renovacion) {
-      source.renovacion = { frequency: 'variable', startDate: this.localToday() };
-    }
-
-    // Siempre regenerar proximasRenovaciones desde la renovacion rule
-    if (source.renovacion.frequency !== 'variable') {
-      source.proximasRenovaciones = generarOcurrencias(source.renovacion, 6);
-    }
-
-    // Siempre recalcular vencimiento con auto-advance
-    const alertDays = source.alertarDiasAntes == null || source.alertarDiasAntes < 1 ? 3 : source.alertarDiasAntes;
-    source.vencimiento = calcularEstadoDocumento(
-      source.renovacion, source.proximasRenovaciones || [], source.fechaUltimaVersion, alertDays
+    await this.registrarEnBitacora(
+      userId, { ...doc, version: doc.version + 1 }, 'nueva_version'
     );
-
-    return source;
   }
 
-  getTiposDisponibles(category: CategoriaDocumental): { value: TipoDocumental; label: string; icon: string; esRapido?: boolean }[] {
+  async archivar(doc: Documento): Promise<void> {
+    return this.cambiarEstado(doc, 'archivado');
+  }
+
+  // ============================================
+  // INDICADORES
+  // ============================================
+
+  async getResumenAcervo(precargados?: Documento[]): Promise<ResumenAcervo> {
+    const docs = precargados ?? await this.getAll();
+
+    const porEstado = Object.keys(ESTADOS_DOCUMENTALES).reduce((acc, e) => {
+      acc[e as EstadoDocumental] = 0;
+      return acc;
+    }, {} as Record<EstadoDocumental, number>);
+
+    const porCategoria: Record<string, number> = {};
+    let tamanioTotalMb = 0;
+    const diasAprobacion: number[] = [];
+
+    for (const d of docs) {
+      porEstado[d.estado] = (porEstado[d.estado] ?? 0) + 1;
+      porCategoria[d.category] = (porCategoria[d.category] ?? 0) + 1;
+      tamanioTotalMb += d.tamanioMb || 0;
+
+      if (d.fechaAprobacion && d.fechaEnvioRevision) {
+        const dias = Math.round(
+          (new Date(d.fechaAprobacion).getTime() - new Date(d.fechaEnvioRevision).getTime()) / 86400000
+        );
+        if (dias >= 0) diasAprobacion.push(dias);
+      }
+    }
+
+    const controlados = docs.length - porEstado.archivado;
+    const porVencer = docs.filter(d =>
+      d.estado === 'aprobado' &&
+      d.vencimiento.diasParaVencer !== null &&
+      d.vencimiento.diasParaVencer >= 0 &&
+      d.vencimiento.diasParaVencer <= 30
+    ).length;
+
+    return {
+      total: docs.length,
+      porEstado,
+      porCategoria,
+      vigentes: porEstado.aprobado,
+      porVencer,
+      vencidos: porEstado.vencido,
+      archivados: porEstado.archivado,
+      observados: porEstado.observado,
+      indiceVigencia: controlados > 0 ? Math.round((porEstado.aprobado / controlados) * 100) : 0,
+      tamanioTotalMb: Math.round(tamanioTotalMb * 100) / 100,
+      diasPromedioAprobacion: diasAprobacion.length
+        ? Math.round(diasAprobacion.reduce((a, b) => a + b, 0) / diasAprobacion.length)
+        : null
+    };
+  }
+
+  // ============================================
+  // CATALOGOS
+  // ============================================
+
+  getTiposDisponibles(category: CategoriaDocumental) {
     return (Object.keys(TIPOS_DOCUMENTALES) as TipoDocumental[])
       .filter(t => TIPOS_DOCUMENTALES[t].category === category)
-      .map(t => ({ value: t, label: TIPOS_DOCUMENTALES[t].label, icon: TIPOS_DOCUMENTALES[t].icon, esRapido: TIPOS_DOCUMENTALES[t].esRapido }));
+      .map(t => ({ value: t, label: TIPOS_DOCUMENTALES[t].label, icon: TIPOS_DOCUMENTALES[t].icon }));
   }
 
-  esRapido(type: TipoDocumental): boolean {
-    return esTipoRapido(type);
+  getAreas() {
+    return (Object.keys(AREAS_EMISORAS) as AreaEmisora[])
+      .map(a => ({ value: a, ...AREAS_EMISORAS[a] }));
+  }
+
+  /** Acciones validas desde el estado actual, para no ofrecer lo imposible. */
+  getTransicionesPosibles(doc: Documento) {
+    const desde = doc.estado;
+    return (Object.keys(ESTADOS_DOCUMENTALES) as EstadoDocumental[])
+      .filter(e => puedeTransicionar(desde, e))
+      .map(e => ({ value: e, ...ESTADOS_DOCUMENTALES[e] }));
+  }
+
+  // ============================================
+  // INTERNO
+  // ============================================
+
+  /** Correlativo siguiente dentro de la misma categoria y area. */
+  private async siguienteCodigo(category: CategoriaDocumental, area: AreaEmisora): Promise<string> {
+    const docs = await this.getAll();
+    const mismos = docs.filter(d => d.category === category && d.area === area);
+    return generarCodigo(category, area, mismos.length + 1);
+  }
+
+  private async registrarEnBitacora(userId: string, doc: Documento, accion: string): Promise<void> {
+    try {
+      await this.firebase.agregarBitacora(userId, {
+        documentoId: doc.id,
+        codigo: doc.codigo,
+        titulo: doc.titulo,
+        accion,
+        version: doc.version,
+        category: doc.category,
+        responsable: doc.responsable,
+        date: this.hoy(),
+        time: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+      });
+    } catch (e) {
+      // La bitacora no debe impedir la operacion principal.
+      log.warn('No se pudo registrar en la bitacora:', e);
+    }
+  }
+
+  /** Rellena los campos que puedan faltar en documentos antiguos. */
+  private normalizar(data: any): Documento {
+    const proximasRenovaciones: string[] = data.proximasRenovaciones ?? [];
+    const estado: EstadoDocumental = data.estado ?? 'borrador';
+
+    return {
+      ...data,
+      codigo: data.codigo ?? '—',
+      titulo: data.titulo ?? data.name ?? 'Sin titulo',
+      version: data.version ?? 1,
+      area: data.area ?? 'otros',
+      confidencialidad: data.confidencialidad ?? 'interno',
+      responsable: data.responsable ?? '',
+      tamanioMb: data.tamanioMb ?? 0,
+      estado,
+      activo: data.activo ?? true,
+      proximasRenovaciones,
+      vencimiento: {
+        ...calcularVigencia({ proximasRenovaciones, estado }),
+        renovacionesOmitidas: data.vencimiento?.renovacionesOmitidas ?? 0,
+        periodosOmitidos: data.vencimiento?.periodosOmitidos ?? []
+      }
+    } as Documento;
   }
 }

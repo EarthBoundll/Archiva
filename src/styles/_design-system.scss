@@ -153,3 +153,60 @@
   color: var(--color-text-secondary);
   text-transform: uppercase;
 }
+
+// ============================================
+// TEMA OSCURO
+// ============================================
+// Tres estados, no dos. El bloque :root de arriba define la paleta clara
+// completa. Aqui solo se redefinen los tokens:
+//   1. @media prefers-color-scheme  → para quien no ha elegido nada
+//   2. [data-theme='dark']          → cuando la persona elige explicitamente
+// El guard :not([data-theme='light']) evita que el sistema gane a una
+// eleccion manual de tema claro.
+
+@mixin tokens-oscuros {
+  --color-primary:           #4E8FA6;
+  --color-primary-light:     #6FAFC4;
+  --color-primary-dark:      #0E2630;
+
+  --color-bg:                #10171A;
+  --color-surface:           #182126;
+  --color-surface-elevated:  #212D33;
+
+  --color-text:              #E8EDEF;
+  --color-text-secondary:    #A3B1B6;
+  --color-text-muted:        #7C8A90;
+
+  --color-accent:            #E0955A;
+  --color-gold:              #D4A34A;
+
+  --color-success:           #4CAF83;
+  --color-warning:           #D9A441;
+  --color-error:             #E0736A;
+
+  --color-border:            rgba(232, 237, 239, 0.14);
+  --color-border-hover:      rgba(232, 237, 239, 0.30);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.48);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.56);
+
+  --estado-borrador:     #8A979C;
+  --estado-en-revision:  #5E9BC0;
+  --estado-pendiente:    #D9A441;
+  --estado-aprobado:     #4CAF83;
+  --estado-observado:    #E0955A;
+  --estado-rechazado:    #E0736A;
+  --estado-archivado:    #6E7C82;
+  --estado-vencido:      #C4544B;
+}
+
+:root:not([data-theme='light']) {
+  @media (prefers-color-scheme: dark) {
+    @include tokens-oscuros;
+  }
+}
+
+:root[data-theme='dark'] {
+  @include tokens-oscuros;
+}

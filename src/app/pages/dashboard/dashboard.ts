@@ -5,7 +5,7 @@ import { RouterModule } from '@angular/router';
 import { Auth } from '../../core/services/auth';
 import { HistoryService } from '../../core/services/history';
 import { WorkflowService } from '../../core/services/workflow';
-import { DocumentService } from '../../core/services/document';
+import { DocumentService, type ResumenAcervo } from '../../core/services/document';
 import { FirebaseService } from '../../core/services/firebase';
 import { RegistroHistorial } from '../../core/models/history.model';
 import { FlujoAprobacion } from '../../core/models/workflow.model';
@@ -37,6 +37,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   transactions   = signal<RegistroHistorial[]>([]);
   goal           = signal<FlujoAprobacion | null>(null);
   monthlyIncome  = signal<DocumentosPeriodo | null>(null);
+  resumenAcervo  = signal<ResumenAcervo | null>(null);
   actualBalance  = signal<number>(0);
   incomeSources  = signal<any[]>([]);
   incomePopups   = signal<{message: string, type: 'alert' | 'tip' | 'info', icon: string}[]>([]);
@@ -331,25 +332,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
       const userId = this.authService.getUserId();
       if (!userId) return;
 
-      // Cargar fuentes de ingreso activas
+      // Acervo documental: el tablero se alimenta del estado real de los
+      // documentos, no de sumas de importes.
       let activeIncomes: any[] = [];
       let totalConfiguredIncome = 0;
       try {
-        activeIncomes = await this.documentService.getActive();
-        totalConfiguredIncome = activeIncomes.reduce((sum, src) => sum + (src.amount || 0), 0);
+        const todos = await this.documentService.getAll();
+        activeIncomes = todos.filter(d => d.estado !== 'archivado');
+        this.resumenAcervo.set(await this.documentService.getResumenAcervo(todos));
+        totalConfiguredIncome = todos.length;
       } catch (e) {
-        log.error('Error loading income sources:', e);
+        log.error('Error cargando el acervo documental:', e);
       }
       this.incomeSources.set(activeIncomes);
-
-      // Cargar ingreso mensual
-      try {
-        this.monthlyIncome.set(
-          await this.documentService.getDocumentosPeriodo(this.now.getFullYear(), this.now.getMonth() + 1)
-        );
-      } catch (e) {
-        log.error('Error loading monthly income:', e);
-      }
 
       // Cargar metas y registros
       const [txs, goals] = await Promise.all([

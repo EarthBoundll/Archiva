@@ -1,631 +1,366 @@
-<div class="income-page">
-  <div class="page-header">
-    <div class="header-left">
-      <h1>Documentos</h1>
-      <span class="month-label">{{ currentMonth() }}</span>
-    </div>
-    <button class="btn-add" (click)="openAddModal()">+ Nuevo</button>
-  </div>
+<div class="page">
 
-  @if (isLoading()) {
-    <div class="loading">Cargando...</div>
+  <header class="page-header">
+    <div>
+      <h1>Documentos</h1>
+      <p class="page-subtitle">Control de estado, versión y vigencia del acervo</p>
+    </div>
+    <button class="btn btn--primary" (click)="abrirNuevo()">
+      <app-icon name="file-plus" [size]="18"></app-icon>
+      Nuevo documento
+    </button>
+  </header>
+
+  @if (cargando()) {
+    <div class="skeleton-grid">
+      @for (i of [1,2,3,4]; track i) { <div class="skeleton skeleton--card"></div> }
+      <div class="skeleton skeleton--row"></div>
+      <div class="skeleton skeleton--row"></div>
+      <div class="skeleton skeleton--row"></div>
+    </div>
   } @else {
 
-    <div class="stats-bar">
-      <div class="stat">
-        <app-icon name="coins" [size]="14"></app-icon>
-        <div class="stat-col">
-          <span class="stat-label">Esperado</span>
-          <span class="stat-value">{{ formatSol(totalMonthly()) }}</span>
-        </div>
+    <!-- ===== Indicadores del acervo ===== -->
+    <section class="resumen" aria-label="Estado del acervo">
+      <div class="resumen__item">
+        <span class="resumen__label">Vigentes</span>
+        <span class="resumen__valor resumen__valor--ok">{{ resumen().vigentes }}</span>
+        <span class="resumen__pie">{{ resumen().indiceVigencia }}% del acervo</span>
       </div>
-      <div class="stat accent">
-        <app-icon name="check" [size]="14"></app-icon>
-        <div class="stat-col">
-          <span class="stat-label">Recibido</span>
-          <span class="stat-value">{{ formatSol(monthlyReceived()) }}</span>
-        </div>
+      <div class="resumen__item">
+        <span class="resumen__label">En proceso</span>
+        <span class="resumen__valor">{{ resumen().enProceso }}</span>
+        <span class="resumen__pie">borrador, revisión y aprobación</span>
       </div>
-      <div class="stat warn">
-        <app-icon name="clock" [size]="14"></app-icon>
-        <div class="stat-col">
-          <span class="stat-label">Pendiente</span>
-          <span class="stat-value">{{ formatSol(monthlyIncome()?.totalPending || 0) }}</span>
-        </div>
+      <div class="resumen__item">
+        <span class="resumen__label">Por vencer</span>
+        <span class="resumen__valor resumen__valor--aviso">{{ resumen().porVencer }}</span>
+        <span class="resumen__pie">en 30 días o menos</span>
       </div>
-    </div>
+      <div class="resumen__item">
+        <span class="resumen__label">Requieren acción</span>
+        <span class="resumen__valor resumen__valor--alerta">{{ resumen().observados + resumen().vencidos }}</span>
+        <span class="resumen__pie">observados, rechazados o vencidos</span>
+      </div>
+    </section>
 
-    <div class="filter-pills">
-      <button class="pill" [class.active]="selectedCategory() === 'all'" (click)="onSelectCategory('all')">Todos</button>
-      @for (cat of categoryList; track cat) {
-        <button class="pill" [class.active]="selectedCategory() === cat" (click)="onSelectCategory(cat)">
-          <app-icon [name]="getCategoryInfo(cat).icon" [size]="13"></app-icon>
-          <span>{{ getCategoryInfo(cat).label }}</span>
-          @if (totalByCategory()[cat]) {
-            <span class="pill-badge">{{ formatSol(totalByCategory()[cat]) }}</span>
-          }
+    <!-- ===== Filtros ===== -->
+    <div class="filtros">
+      <div class="filtros__estados" role="group" aria-label="Filtrar por estado">
+        <button class="pill" [class.pill--activa]="filtroEstado() === 'todos'"
+                (click)="filtroEstado.set('todos')">
+          Todos <span class="pill__n">{{ resumen().total }}</span>
         </button>
-      }
-    </div>
-
-    <div class="search-bar">
-      <app-icon name="search" [size]="16"></app-icon>
-      <input type="text"
-             placeholder="Buscar fuente de ingreso..."
-             [ngModel]="searchQuery()"
-             (ngModelChange)="searchQuery.set($event)" />
-      @if (searchQuery()) {
-        <button class="search-clear" (click)="searchQuery.set('')">
-          <app-icon name="x" [size]="14"></app-icon>
+        <button class="pill" [class.pill--activa]="filtroEstado() === 'por_vencer'"
+                (click)="filtroEstado.set('por_vencer')">
+          Por vencer <span class="pill__n">{{ resumen().porVencer }}</span>
         </button>
-      }
-    </div>
+        @for (e of listaEstados; track e) {
+          <button class="pill" [class.pill--activa]="filtroEstado() === e"
+                  (click)="filtroEstado.set(e)">
+            <span class="punto" [style.background]="estados[e].token"></span>
+            {{ estados[e].label }}
+          </button>
+        }
+      </div>
 
-    <!-- Para "Otros" solo mostramos Historial directamente -->
-    @if (isOtherCategory()) {
-      <div class="list-section">
-        <div class="list-header">
-          <h3>Historial de Documentos Puntuales</h3>
-          <span class="list-count">{{ searchedHistorySources().length }} registros</span>
-        </div>
+      <div class="filtros__fila">
+        <label class="campo campo--busqueda">
+          <span class="sr-only">Buscar documento</span>
+          <app-icon name="search" [size]="16"></app-icon>
+          <input type="search" [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)"
+                 placeholder="Buscar por código, título o responsable">
+        </label>
 
-        @if (searchedHistorySources().length === 0) {
-          <div class="empty-state">
-            <p>No hay documentos puntuales registrados</p>
-            <button class="btn-add" (click)="openAddModalForCurrentCategory()">Registrar ingreso puntual</button>
-          </div>
-        } @else {
-          <div class="income-list history-list">
-            @for (source of searchedHistorySources(); track source.id) {
-              <div class="income-row" [class.received]="source.vencimiento.status === 'received'">
-                <div class="row-icon">
-                  <app-icon [name]="getIconoTipo(source.type)" [size]="18"></app-icon>
-                </div>
-                <div class="row-main">
-                  <span class="row-name">{{ source.name }}</span>
-                  <span class="row-meta">
-                    {{ getEtiquetaTipo(source.type) }} · {{ formatSol(source.amount) }}
-                    @if (source.renovacion.frequency === 'variable') {
-                      · {{ source.renovacion.startDate | date:'d MMM yyyy' }}
-                    } @else if (source.fechaUltimaVersion) {
-                      · Recibido {{ source.fechaUltimaVersion | date:'d MMM yyyy' }}
-                    }
-                  </span>
-                </div>
-                <div class="row-status">
-                  @if (source.fechaUltimaVersion) {
-                    <span class="badge" [style.color]="getPaymentStatusColor('received')">Recibido</span>
-                  } @else {
-                    <span class="badge" [style.color]="getPaymentStatusColor(source.vencimiento.status)">
-                      {{ getPaymentStatusLabel(source.vencimiento.status) }}
-                    </span>
-                  }
-                </div>
-                <div class="row-actions">
-                  <button class="btn-icon" (click)="openEditWarning(source)" title="Editar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                  </button>
-                </div>
-              </div>
+        <label class="campo">
+          <span class="sr-only">Filtrar por categoría</span>
+          <select [ngModel]="filtroCategoria()" (ngModelChange)="filtroCategoria.set($event)">
+            <option value="todas">Todas las categorías</option>
+            @for (c of listaCategorias; track c) {
+              <option [value]="c">{{ categorias[c].label }}</option>
             }
-          </div>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- ===== Listado ===== -->
+    @if (filtrados().length === 0) {
+      <div class="vacio">
+        <app-icon name="folder-open" [size]="40"></app-icon>
+        @if (documentos().length === 0) {
+          <h2>Todavía no hay documentos</h2>
+          <p>Registra el primero y ARCHIVA controlará su estado, sus versiones y su vencimiento.</p>
+          <button class="btn btn--primary" (click)="abrirNuevo()">Registrar el primero</button>
+        } @else {
+          <h2>Ningún documento coincide</h2>
+          <p>Prueba con otro estado, otra categoría o cambia el texto de búsqueda.</p>
         }
       </div>
     } @else {
-      <div class="tab-bar">
-        <button class="tab" [class.active]="activeTab() === 'sources'" (click)="activeTab.set('sources')">
-          <app-icon name="calendar" [size]="14"></app-icon>
-          Fuentes Activas
-          <span class="tab-count">{{ searchedSources().length }}</span>
-        </button>
-        <button class="tab" [class.active]="activeTab() === 'history'" (click)="activeTab.set('history')">
-          <app-icon name="history" [size]="14"></app-icon>
-          Historial
-          <span class="tab-count">{{ searchedHistorySources().length }}</span>
-        </button>
-      </div>
+      <ul class="lista" role="list">
+        @for (d of filtrados(); track trackId($index, d)) {
+          <li class="doc" [class.doc--atencion]="d.estado === 'observado' || d.estado === 'rechazado' || d.estado === 'vencido'">
 
-      <!-- FUENTES ACTIVAS -->
-      @if (activeTab() === 'sources') {
-        <div class="list-section">
-          <div class="list-header">
-            <h3>{{ activeSourcesTitle() }}</h3>
-            <span class="list-count">{{ searchedSources().length }} activas</span>
-          </div>
-
-          @if (searchedSources().length === 0) {
-            <div class="empty-state">
-              <p>No hay fuentes de ingreso activas {{ selectedCategory() !== 'all' ? 'en esta categoría' : '' }}{{ searchQuery() ? ' para "' + searchQuery() + '"' : '' }}</p>
-              <button class="btn-add" (click)="openAddModalForCurrentCategory()">Agregar fuente</button>
-            </div>
-          } @else {
-            <div class="income-list">
-              @for (source of searchedSources(); track source.id) {
-                <div class="income-row" [class.received]="source.vencimiento.status === 'received'">
-                  <div class="row-icon">
-                    <app-icon [name]="getIconoTipo(source.type)" [size]="18"></app-icon>
-                  </div>
-                  <div class="row-main">
-                    <span class="row-name">{{ source.name }}</span>
-                    <span class="row-meta">{{ getEtiquetaTipo(source.type) }} · {{ formatSol(source.amount) }}</span>
-                  </div>
-                  <div class="row-status">
-                    @if (source.vencimiento.status === 'upcoming' || source.vencimiento.status === 'overdue') {
-                      <span class="badge urgent">{{ formatDays(source.vencimiento.diasParaVencer) }}</span>
-                    } @else if (source.vencimiento.status === 'scheduled') {
-                      <span class="badge" [style.color]="getPaymentStatusColor('scheduled')">
-                        {{ source.vencimiento.fechaVencimiento | date:'d MMM' }}
-                      </span>
-                    } @else {
-                      <span class="badge" [style.color]="getPaymentStatusColor(source.vencimiento.status)">
-                        {{ getPaymentStatusLabel(source.vencimiento.status) }}
-                      </span>
-                    }
-                  </div>
-                  <div class="row-actions">
-                    @if (source.vencimiento.status === 'upcoming' || source.vencimiento.status === 'overdue') {
-                      <button class="btn-icon success" (click)="markReceived(source)" [disabled]="processing()" title="Marcar recibido">
-                        @if (confirmingId() === source.id) {
-                          <span class="btn-spinner"></span>
-                        } @else {
-                          <app-icon name="check" [size]="14"></app-icon>
-                        }
-                      </button>
-                    }
-                    <button class="btn-icon" (click)="openEdit(source)" [disabled]="processing()" title="Editar">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                    </button>
-                    <button class="btn-icon danger" (click)="openDeleteAlert(source)" [disabled]="processing()" title="Eliminar del activo">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                    </button>
-                  </div>
-                </div>
-              }
-            </div>
-          }
-        </div>
-
-        @if (upcomingPayments().length > 0) {
-          <div class="upcoming-bar">
-            <span class="upcoming-title">Próximos</span>
-            <div class="upcoming-items">
-              @for (source of upcomingPayments().slice(0, 3); track source.id) {
-                <div class="upcoming-chip" [class.urgent]="source.vencimiento.diasParaVencer != null && source.vencimiento.diasParaVencer <= 3">
-                  <app-icon [name]="getIconoTipo(source.type)" [size]="13"></app-icon>
-                  <span class="chip-name">{{ source.name }}</span>
-                  <span class="chip-days">{{ formatDays(source.vencimiento.diasParaVencer) }}</span>
-                  <span class="chip-amt">{{ formatSol(source.amount) }}</span>
-                </div>
-              }
-            </div>
-          </div>
-        }
-      }
-
-      <!-- HISTORIAL DE MOVIMIENTOS -->
-      @if (activeTab() === 'history') {
-        <div class="list-section">
-          <div class="list-header">
-            <h3>Historial de Historial</h3>
-            <span class="list-count">{{ filteredHistory().length }} registros</span>
-          </div>
-
-          @if (filteredHistory().length === 0) {
-            <div class="empty-state">
-              <p>No hay movimientos registrados</p>
-            </div>
-          } @else {
-            <div class="income-list history-list">
-              @for (entry of filteredHistory(); track entry.id) {
-                <div class="history-entry" [style.border-left-color]="getHistoryColor(entry.type)">
-                  <div class="history-icon" [style.color]="getHistoryColor(entry.type)">
-                    <app-icon [name]="getHistoryIcon(entry.type)" [size]="16"></app-icon>
-                  </div>
-                  <div class="history-info">
-                    <div class="history-top">
-                      <span class="history-name">{{ entry.sourceName }}</span>
-                      <span class="history-type" [style.color]="getHistoryColor(entry.type)">
-                        {{ getHistoryLabel(entry.type) }}
-                      </span>
-                      @if (entry.amount > 0) {
-                        <span class="history-amount">{{ formatSol(entry.amount) }}</span>
-                      }
-                    </div>
-                    <div class="history-bottom">
-                      <span class="history-date">{{ entry.date | date:'d MMM yyyy' }}, {{ entry.time }}</span>
-                      <input type="text" class="history-desc-input" [ngModel]="entry.description"
-                             (ngModelChange)="updateDescription(entry, $event)"
-                             placeholder="Agregar nota..." />
-                    </div>
-                  </div>
-                  @if (entry.type === 'deletion' && !isSourceActive(entry.documentoId)) {
-                    <button class="btn-icon success" (click)="openReopenWarning(entry)" [disabled]="processing()" title="Reactivar">
-                      <app-icon name="rotate-ccw" [size]="14"></app-icon>
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          }
-        </div>
-      }
-    }
-
-    @if (monthlyIncome()) {
-      <div class="dist-section">
-        <h3>Distribución</h3>
-        <div class="dist-grid">
-          @for (cat of categoryList; track cat) {
-            @if (getCategoryAmount(cat) > 0) {
-              <div class="dist-cell">
-                <div class="dist-top">
-                  <app-icon [name]="getCategoryInfo(cat).icon" [size]="14"></app-icon>
-                  <span class="dist-name">{{ getCategoryInfo(cat).label }}</span>
-                  <span class="dist-pct">{{ formatSol(getCategoryAmount(cat)) }} · {{ ((getCategoryAmount(cat) / totalMonthly()) * 100).toFixed(0) }}%</span>
-                </div>
-                <div class="dist-track">
-                  <div class="dist-fill" [style.width.%]="(getCategoryAmount(cat) / totalMonthly()) * 100"></div>
-                </div>
+            <div class="doc__principal">
+              <div class="doc__cabecera">
+                <span class="codigo-doc">{{ d.codigo }}</span>
+                <span class="version">v{{ d.version }}</span>
+                <span class="estado" [style.background]="estados[d.estado].token">
+                  {{ estados[d.estado].label }}
+                </span>
               </div>
-            }
-          }
-        </div>
-      </div>
+
+              <h3 class="doc__titulo">{{ d.titulo }}</h3>
+
+              <div class="doc__meta">
+                <span><app-icon name="folder" [size]="14"></app-icon> {{ categorias[d.category].label }}</span>
+                <span><app-icon name="building-2" [size]="14"></app-icon> {{ areas[d.area].label }}</span>
+                <span><app-icon name="user" [size]="14"></app-icon> {{ d.responsable || 'Sin asignar' }}</span>
+                <span><app-icon name="hard-drive" [size]="14"></app-icon> {{ formatoMb(d.tamanioMb) }}</span>
+              </div>
+
+              @if (d.motivoEstado) {
+                <p class="doc__motivo">
+                  <app-icon name="message-square" [size]="14"></app-icon>
+                  {{ d.motivoEstado }}
+                </p>
+              }
+            </div>
+
+            <div class="doc__lateral">
+              <span class="vigencia"
+                    [class.vigencia--aviso]="venceProto(d)"
+                    [class.vigencia--alerta]="d.vencimiento.estaVencido">
+                {{ textoVigencia(d) }}
+              </span>
+
+              <div class="doc__acciones">
+                @for (a of accionesDe(d); track a.value) {
+                  <button class="btn-accion" (click)="pedirCambioEstado(d, a.value)"
+                          [title]="a.descripcion">
+                    {{ a.label }}
+                  </button>
+                }
+                <button class="btn-accion" (click)="abrirNuevaVersion(d)">Nueva versión</button>
+                <button class="btn-accion" (click)="abrirEdicion(d)">Editar</button>
+              </div>
+            </div>
+          </li>
+        }
+      </ul>
     }
   }
-</div>
 
-<!-- Confirm Alert Modal -->
-@if (showConfirmAlert()) {
-  <div class="confirm-overlay" (click)="closeConfirmAlert()">
-    <div class="confirm-dialog" (click)="$event.stopPropagation()">
-      <div class="confirm-icon">
-        <app-icon name="check" [size]="32"></app-icon>
-      </div>
-      <h4 class="confirm-title">{{ confirmAlertTitle() }}</h4>
-      <p class="confirm-message">
-        ¿Confirmas que recibiste
-        <strong>{{ confirmAlertSource()?.name }}</strong>
-        por <strong>{{ formatSol(confirmAlertSource()?.amount || 0) }}</strong>?
-      </p>
-      <div class="confirm-actions">
-        <button class="btn-secondary" (click)="closeConfirmAlert()" [disabled]="processing()">Cancelar</button>
-        <button class="btn-primary" (click)="confirmMarkReceived()" [disabled]="processing()">
-          @if (processing()) {
-            <span class="btn-spinner white"></span> Procesando...
-          } @else {
-            <app-icon name="check" [size]="16"></app-icon> Sí, confirmo
-          }
-        </button>
-      </div>
-    </div>
-  </div>
-}
+  <!-- ===== Modal: alta y edición ===== -->
+  @if (modalAbierto()) {
+    <div class="overlay" (click)="cerrarModal()">
+      <div class="modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+        <header class="modal__cabecera">
+          <h2>{{ editando() ? 'Editar documento' : 'Nuevo documento' }}</h2>
+          <button class="btn-cerrar" (click)="cerrarModal()" aria-label="Cerrar">
+            <app-icon name="x" [size]="20"></app-icon>
+          </button>
+        </header>
 
-<!-- Delete Alert Modal -->
-@if (showDeleteAlert()) {
-  <div class="confirm-overlay" (click)="closeDeleteAlert()">
-    <div class="confirm-dialog" (click)="$event.stopPropagation()">
-      <div class="confirm-icon" style="background:rgba(239,68,68,0.12);color:#ef4444">
-        <app-icon name="trash-2" [size]="32"></app-icon>
-      </div>
-      <h4 class="confirm-title">Eliminar fuente de ingreso</h4>
-      <p class="confirm-message">
-        Vas a eliminar <strong>{{ deleteAlertSource()?.name }}</strong>.
-        Esta acción la quitará de tus fuentes activas y recalculará tus documentos totales.
-        <br><br>
-        <strong style="color:#ef4444">No se puede deshacer.</strong>
-      </p>
-      <div class="confirm-actions">
-        <button class="btn-secondary" (click)="closeDeleteAlert()" [disabled]="processing()">Cancelar</button>
-        <button class="btn-primary" style="background:#ef4444" (click)="confirmDelete()" [disabled]="processing()">
-          @if (processing()) {
-            <span class="btn-spinner white"></span> Eliminando...
-          } @else {
-            <app-icon name="trash-2" [size]="16"></app-icon> Sí, eliminar
-          }
-        </button>
-      </div>
-    </div>
-  </div>
-}
+        <div class="modal__cuerpo">
+          <div class="rejilla">
+            <label class="campo-form campo-form--ancho">
+              <span>Título del documento</span>
+              <input type="text" [ngModel]="fTitulo()" (ngModelChange)="fTitulo.set($event)"
+                     placeholder="ej. Contrato de servicios de mantenimiento">
+            </label>
 
-<!-- Edit Warning Modal -->
-@if (showEditWarning()) {
-  <div class="confirm-overlay" (click)="closeEditWarning()">
-    <div class="confirm-dialog" (click)="$event.stopPropagation()">
-      <div class="confirm-icon" style="background:rgba(245,158,11,0.12);color:var(--color-warning)">
-        <app-icon name="alert-triangle" [size]="32"></app-icon>
-      </div>
-      <h4 class="confirm-title">Editar ingreso confirmado</h4>
-      <p class="confirm-message">
-        <strong>{{ editWarningSource()?.name }}</strong> ya fue confirmado como recibido.
-        <br><br>
-        Editarlo puede afectar tu historial y registros registradas.
-      </p>
-      <div class="confirm-actions">
-        <button class="btn-secondary" (click)="closeEditWarning()">Cancelar</button>
-        <button class="btn-primary" style="background:var(--color-warning);color:#fff" (click)="proceedEdit()">Entendido, editar</button>
-      </div>
-    </div>
-  </div>
-}
-
-<!-- Reopen Warning Modal -->
-@if (showReopenWarning()) {
-  <div class="confirm-overlay" (click)="closeReopenWarning()">
-    <div class="confirm-dialog" (click)="$event.stopPropagation()">
-      <div class="confirm-icon" style="background:rgba(245,158,11,0.12);color:var(--color-warning)">
-        <app-icon name="rotate-ccw" [size]="32"></app-icon>
-      </div>
-      <h4 class="confirm-title">Reactivar fuente de ingreso</h4>
-      <p class="confirm-message">
-        <strong>{{ reopenWarningEntry()?.sourceName }}</strong> volver&aacute; a tus fuentes activas.
-        <br><br>
-        Se recalcular&aacute; su pr&oacute;xima fecha de pago seg&uacute;n su patr&oacute;n original.
-        <br>
-        Se agregar&aacute; una entrada amarilla en el historial de movimientos.
-      </p>
-      <div class="confirm-actions">
-        <button class="btn-secondary" (click)="closeReopenWarning()" [disabled]="processing()">Cancelar</button>
-        <button class="btn-primary" style="background:var(--color-warning);color:#fff" (click)="proceedReopen()" [disabled]="processing()">{{ processing() ? 'Reactivando...' : 'Reactivar' }}</button>
-      </div>
-    </div>
-  </div>
-}
-
-<!-- Modal -->
-@if (showModal()) {
-  <div class="modal-overlay" (click)="closeModal()">
-    <div class="modal" (click)="$event.stopPropagation()">
-      <div class="modal-header">
-        <h3>{{ editingSource() ? 'Editar' : 'Agregar' }} Documento</h3>
-        <button class="close-btn" (click)="closeModal()">
-          <app-icon name="x" [size]="18"></app-icon>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        @if (!editingQuick() && editingSource()?.category !== 'oficio' && !editingSource()?.fechaUltimaVersion) {
-          <div class="form-group">
-            <label>Categoría</label>
-            <div class="category-selector">
-              @for (cat of categoryList; track cat) {
-                <button class="cat-btn" [class.active]="formCategory() === cat" (click)="formCategory.set(cat); onCategoryChange()">
-                  <app-icon [name]="categories[cat].icon" [size]="18"></app-icon>
-                  <span>{{ categories[cat].label }}</span>
-                </button>
-              }
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>Tipo de Documento</label>
-            <select [ngModel]="formType()" (ngModelChange)="formType.set($event); onTypeChange()" class="form-input">
-              @for (type of availableTypes(); track type.value) {
-                <option [value]="type.value">{{ type.label }}</option>
-              }
-            </select>
-          </div>
-        }
-
-        <div class="form-row">
-          <div class="form-group">
-            <label>Nombre</label>
-            <input type="text" [ngModel]="formName()" (ngModelChange)="formName.set($event)" placeholder="ej. Sueldo Empresa ABC" class="form-input" />
-          </div>
-          @if (!editingQuick()) {
-            <div class="form-group">
-              <label>Tamaño (MB)</label>
-              <input type="number" inputmode="decimal" pattern="[0-9]*" [ngModel]="formAmount()" (ngModelChange)="onAmountInput($event)" min="0" step="0.01" placeholder="0.00" class="form-input" [class.input-error]="amountError()" />
-              @if (amountError()) {
-                <span class="field-error">{{ amountError() }}</span>
-              }
-            </div>
-          }
-        </div>
-
-        @if (esRapido() && !editingQuick()) {
-          <div class="form-group">
-            <label>Fecha del ingreso</label>
-            <input type="date" [ngModel]="formQuickDate()" (ngModelChange)="formQuickDate.set($event)" class="form-input" />
-          </div>
-        }
-
-        @if (!esRapido()) {
-          <div class="form-group">
-            <label>Primera fecha de pago</label>
-            <input type="date" [ngModel]="formStartDate()" (ngModelChange)="formStartDate.set($event)" class="form-input" />
-          </div>
-
-          <div class="form-group">
-            <label>Frecuencia</label>
-            <select [ngModel]="formFrequency()" (ngModelChange)="formFrequency.set($event)" class="form-input">
-              <option value="weekly">Semanal</option>
-              <option value="biweekly">Quincenal</option>
-              <option value="monthly">Mensual</option>
-              <option value="bimonthly">Bimestral</option>
-              <option value="quarterly">Trimestral</option>
-              <option value="semi_annual">Semestral</option>
-              <option value="annual">Anual</option>
-              <option value="variable">Variable / Puntual</option>
-            </select>
-          </div>
-
-          @if (formFrequency() === 'weekly') {
-            <div class="form-group">
-              <label>Día de la semana</label>
-              <select [ngModel]="formWeeklyDay()" (ngModelChange)="formWeeklyDay.set(+$event)" class="form-input">
-                <option [value]="1">Lunes</option>
-                <option [value]="2">Martes</option>
-                <option [value]="3">Miércoles</option>
-                <option [value]="4">Jueves</option>
-                <option [value]="5">Viernes</option>
-                <option [value]="6">Sábado</option>
-                <option [value]="0">Domingo</option>
+            <label class="campo-form">
+              <span>Categoría</span>
+              <select [ngModel]="fCategoria()" (ngModelChange)="fCategoria.set($event); onCategoriaChange()">
+                @for (c of listaCategorias; track c) {
+                  <option [value]="c">{{ categorias[c].label }}</option>
+                }
               </select>
-            </div>
-          }
+            </label>
 
-          @if (formFrequency() === 'biweekly') {
-            <div class="form-group">
-              <label>Modo quincenal</label>
-              <select [ngModel]="formBiweeklyMode()" (ngModelChange)="formBiweeklyMode.set($event)" class="form-input">
-                <option value="two_dates">Dos días fijos del mes</option>
-                <option value="every_15">Cada 15 días desde la fecha inicial</option>
+            <label class="campo-form">
+              <span>Tipo documental</span>
+              <select [ngModel]="fTipo()" (ngModelChange)="fTipo.set($event)">
+                @for (t of tiposDisponibles(); track t.value) {
+                  <option [value]="t.value">{{ t.label }}</option>
+                }
               </select>
-            </div>
-            @if (formBiweeklyMode() === 'two_dates') {
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Primer pago (día)</label>
-                  <input type="number" [ngModel]="formBiweeklyDates()[0]" (ngModelChange)="formBiweeklyDates.set([+$event, formBiweeklyDates()[1]])" min="1" max="31" class="form-input" />
-                </div>
-                <div class="form-group">
-                  <label>Segundo pago (día)</label>
-                  <input type="number" [ngModel]="formBiweeklyDates()[1]" (ngModelChange)="formBiweeklyDates.set([formBiweeklyDates()[0], +$event])" min="1" max="31" class="form-input" />
-                </div>
-              </div>
-            }
-          }
+            </label>
 
-          @if (['monthly','bimonthly','quarterly','semi_annual'].includes(formFrequency())) {
-            <div class="form-group">
-              <label>Regla del mes</label>
-              <select [ngModel]="formMonthlyKind()" (ngModelChange)="formMonthlyKind.set($event)" class="form-input">
-                <option value="day">Día específico del mes</option>
-                <option value="last_day">Último día del mes</option>
-                <option value="first_weekday">Primer día de la semana</option>
+            <label class="campo-form">
+              <span>Área emisora</span>
+              <select [ngModel]="fArea()" (ngModelChange)="fArea.set($event)">
+                @for (a of listaAreas; track a) {
+                  <option [value]="a">{{ areas[a].label }}</option>
+                }
               </select>
-            </div>
-            @if (formMonthlyKind() === 'day') {
-              <div class="form-group">
-                <label>Día del mes</label>
-                <input type="number" [ngModel]="formMonthlyDay()" (ngModelChange)="formMonthlyDay.set(+$event)" min="1" max="31" class="form-input" />
-              </div>
-            }
-            @if (formMonthlyKind() === 'first_weekday') {
-              <div class="form-group">
-                <label>Día de la semana</label>
-                <select [ngModel]="formMonthlyWeekday()" (ngModelChange)="formMonthlyWeekday.set(+$event)" class="form-input">
-                  <option [value]="1">Lunes</option>
-                  <option [value]="2">Martes</option>
-                  <option [value]="3">Miércoles</option>
-                  <option [value]="4">Jueves</option>
-                  <option [value]="5">Viernes</option>
+            </label>
+
+            <label class="campo-form">
+              <span>Código <em>(opcional)</em></span>
+              <input type="text" class="mono" [ngModel]="fCodigo()" (ngModelChange)="fCodigo.set($event)"
+                     placeholder="Se genera solo" maxlength="14">
+              <small>Formato CAT-ÁREA-0001. Si lo dejas vacío se asigna el siguiente correlativo.</small>
+            </label>
+
+            <label class="campo-form">
+              <span>Responsable</span>
+              <input type="text" [ngModel]="fResponsable()" (ngModelChange)="fResponsable.set($event)"
+                     placeholder="Nombre y apellidos">
+            </label>
+
+            <label class="campo-form">
+              <span>Confidencialidad</span>
+              <select [ngModel]="fConfid()" (ngModelChange)="fConfid.set($event)">
+                @for (c of listaConfid; track c) {
+                  <option [value]="c">{{ confidencialidades[c].label }}</option>
+                }
+              </select>
+            </label>
+
+            <label class="campo-form">
+              <span>Tamaño en MB</span>
+              <input type="number" min="0" step="0.1" [ngModel]="fTamanio()"
+                     (ngModelChange)="fTamanio.set($event)" placeholder="0.0">
+            </label>
+
+            <label class="campo-form">
+              <span>Ciclo de renovación</span>
+              <select [ngModel]="fFrecuencia()" (ngModelChange)="fFrecuencia.set($event)">
+                @for (f of frecuencias; track f.value) {
+                  <option [value]="f.value">{{ f.label }}</option>
+                }
+              </select>
+            </label>
+
+            @if (fFrecuencia() !== 'variable') {
+              <label class="campo-form">
+                <span>Avisar con antelación</span>
+                <select [ngModel]="fAlerta()" (ngModelChange)="fAlerta.set($event)">
+                  <option [value]="7">7 días antes</option>
+                  <option [value]="15">15 días antes</option>
+                  <option [value]="30">30 días antes</option>
+                  <option [value]="60">60 días antes</option>
                 </select>
-              </div>
+              </label>
             }
-          }
 
-          @if (formFrequency() === 'annual') {
-            <div class="form-row">
-              <div class="form-group">
-                <label>Mes</label>
-                <select [ngModel]="formAnnualMonth()" (ngModelChange)="formAnnualMonth.set(+$event)" class="form-input">
-                  <option [value]="0">Enero</option>
-                  <option [value]="1">Febrero</option>
-                  <option [value]="2">Marzo</option>
-                  <option [value]="3">Abril</option>
-                  <option [value]="4">Mayo</option>
-                  <option [value]="5">Junio</option>
-                  <option [value]="6">Julio</option>
-                  <option [value]="7">Agosto</option>
-                  <option [value]="8">Septiembre</option>
-                  <option [value]="9">Octubre</option>
-                  <option [value]="10">Noviembre</option>
-                  <option [value]="11">Diciembre</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Día</label>
-                <input type="number" [ngModel]="formAnnualDay()" (ngModelChange)="formAnnualDay.set(+$event)" min="1" max="31" class="form-input" />
-              </div>
-            </div>
-          }
+            <label class="campo-form campo-form--ancho">
+              <span>Ubicación de referencia <em>(opcional)</em></span>
+              <input type="text" [ngModel]="fUbicacion()" (ngModelChange)="fUbicacion.set($event)"
+                     placeholder="ej. Archivador 3, gaveta B — o una ruta compartida">
+            </label>
 
-          <div class="form-group checkbox-group">
-            <label>
-              <input type="checkbox" [ngModel]="formAutoCreate()" (ngModelChange)="formAutoCreate.set($event)" />
-              Crear registro automáticamente al recibir
+            <label class="campo-form campo-form--ancho">
+              <span>Descripción <em>(opcional)</em></span>
+              <textarea rows="2" [ngModel]="fDescripcion()" (ngModelChange)="fDescripcion.set($event)"
+                        placeholder="Qué contiene y para qué sirve"></textarea>
             </label>
           </div>
 
-          <div class="form-group">
-            <label>Alertar antes de (días)</label>
-            <input type="number" [ngModel]="formAlertDays()" (ngModelChange)="formAlertDays.set($event ? +$event : null)" min="1" max="30" class="form-input" />
-            <small class="form-hint">Mínimo 1 día. Si dejas vacío se usará 3 días.</small>
-          </div>
-        }
-
-        <div class="form-group">
-          <label>Notas</label>
-          <textarea [ngModel]="formNotes()" (ngModelChange)="formNotes.set($event)" placeholder="Detalles adicionales..." class="form-input" rows="2"></textarea>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn-secondary" (click)="closeModal()">Cancelar</button>
-        <button class="btn-primary" (click)="saveSource()" [disabled]="!formName() || !formAmount()">
-          {{ editingSource() ? 'Actualizar' : 'Guardar' }}
-        </button>
-      </div>
-    </div>
-  </div>
-}
-
-<!-- Catch-up Alert Modal -->
-@if (showCatchUpAlert()) {
-  <div class="confirm-overlay" (click)="closeCatchUpAlert()">
-    <div class="confirm-dialog" (click)="$event.stopPropagation()">
-      <div class="confirm-icon" style="background:rgba(245,158,11,0.12);color:var(--color-warning)">
-        <app-icon name="alert-triangle" [size]="32"></app-icon>
-      </div>
-      <h4 class="confirm-title">
-        Pagos no confirmados
-        @if (catchUpProgress()) {
-          <span class="catch-up-progress">{{ catchUpProgress() }}</span>
-        }
-      </h4>
-      <p class="confirm-message">
-        <strong>{{ catchUpSource()?.name }}</strong> tiene
-        <strong>{{ catchUpMonths().length }}</strong> pago(s) no confirmado(s):
-      </p>
-      <div class="missed-list">
-        @for (month of catchUpMonths(); track month) {
-          <span class="missed-badge">{{ month }}</span>
-        }
-      </div>
-      <p class="confirm-submessage" style="font-size:13px;color:var(--text-secondary);margin:12px 0 0">
-        ¿Confirmar que recibiste este pago?
-      </p>
-      <div class="confirm-actions">
-        <button class="btn-secondary" (click)="skipCatchUp()" [disabled]="processing()">Omitir</button>
-        <button class="btn-primary" (click)="confirmCatchUp()" [disabled]="processing()">
-          @if (processing()) {
-            <span class="btn-spinner white"></span> Procesando...
-          } @else {
-            <app-icon name="check" [size]="16"></app-icon> Sí, confirmo
+          @if (errorMsg()) {
+            <p class="error" role="alert">{{ errorMsg() }}</p>
           }
-        </button>
+        </div>
+
+        <footer class="modal__pie">
+          <button class="btn" (click)="cerrarModal()">Cancelar</button>
+          <button class="btn btn--primary" (click)="guardar()" [disabled]="guardando()">
+            {{ guardando() ? 'Guardando…' : (editando() ? 'Guardar cambios' : 'Registrar documento') }}
+          </button>
+        </footer>
       </div>
     </div>
-  </div>
-}
+  }
 
-<!-- Success/Error Toast -->
-@if (showToast()) {
-  <div class="toast" [class.toast-success]="toastType() === 'success'" [class.toast-error]="toastType() === 'error'" [class.toast-info]="toastType() === 'info'" (click)="closeToast()">
-    @if (toastType() === 'success') {
-      <app-icon name="check-circle" [size]="18"></app-icon>
-    } @else if (toastType() === 'error') {
-      <app-icon name="alert-circle" [size]="18"></app-icon>
-    } @else {
-      <app-icon name="info" [size]="18"></app-icon>
-    }
-    <span class="toast-message">{{ toastMessage() }}</span>
-    <button class="toast-close" (click)="closeToast(); $event.stopPropagation()">
-      <app-icon name="x" [size]="14"></app-icon>
-    </button>
-  </div>
-}
+  <!-- ===== Modal: cambio de estado ===== -->
+  @if (modalEstado(); as m) {
+    <div class="overlay" (click)="modalEstado.set(null)">
+      <div class="modal modal--estrecho" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+        <header class="modal__cabecera">
+          <h2>{{ estados[m.destino].label }}</h2>
+          <button class="btn-cerrar" (click)="modalEstado.set(null)" aria-label="Cerrar">
+            <app-icon name="x" [size]="20"></app-icon>
+          </button>
+        </header>
+
+        <div class="modal__cuerpo">
+          <p class="modal__contexto">
+            <span class="codigo-doc">{{ m.doc.codigo }}</span> · {{ m.doc.titulo }}
+          </p>
+          <p class="modal__ayuda">{{ estados[m.destino].descripcion }}</p>
+
+          @if (necesitaMotivo(m.destino)) {
+            <label class="campo-form campo-form--ancho">
+              <span>Motivo</span>
+              <textarea rows="3" [ngModel]="motivoEstado()" (ngModelChange)="motivoEstado.set($event)"
+                        placeholder="Qué debe corregirse antes de continuar"></textarea>
+              <small>Obligatorio: quien reciba el documento necesita saber qué cambiar.</small>
+            </label>
+          }
+
+          @if (errorMsg()) {
+            <p class="error" role="alert">{{ errorMsg() }}</p>
+          }
+        </div>
+
+        <footer class="modal__pie">
+          <button class="btn" (click)="modalEstado.set(null)">Cancelar</button>
+          <button class="btn btn--primary" (click)="confirmarCambioEstado()" [disabled]="guardando()">
+            {{ guardando() ? 'Aplicando…' : 'Confirmar' }}
+          </button>
+        </footer>
+      </div>
+    </div>
+  }
+
+  <!-- ===== Modal: nueva versión ===== -->
+  @if (modalVersion(); as v) {
+    <div class="overlay" (click)="modalVersion.set(null)">
+      <div class="modal modal--estrecho" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+        <header class="modal__cabecera">
+          <h2>Nueva versión</h2>
+          <button class="btn-cerrar" (click)="modalVersion.set(null)" aria-label="Cerrar">
+            <app-icon name="x" [size]="20"></app-icon>
+          </button>
+        </header>
+
+        <div class="modal__cuerpo">
+          <p class="modal__contexto">
+            <span class="codigo-doc">{{ v.codigo }}</span> ·
+            v{{ v.version }} <app-icon name="arrow-right" [size]="14"></app-icon> <strong>v{{ v.version + 1 }}</strong>
+          </p>
+          <p class="modal__ayuda">
+            La versión anterior deja de ser la vigente y el documento vuelve a revisión.
+          </p>
+
+          <label class="campo-form campo-form--ancho">
+            <span>Qué cambió</span>
+            <textarea rows="3" [ngModel]="resumenCambio()" (ngModelChange)="resumenCambio.set($event)"
+                      placeholder="ej. Se actualizó la cláusula quinta y se añadió el anexo B"></textarea>
+          </label>
+
+          <label class="campo-form">
+            <span>Tamaño en MB</span>
+            <input type="number" min="0" step="0.1" [ngModel]="nuevoTamanio()"
+                   (ngModelChange)="nuevoTamanio.set($event)">
+          </label>
+
+          @if (errorMsg()) {
+            <p class="error" role="alert">{{ errorMsg() }}</p>
+          }
+        </div>
+
+        <footer class="modal__pie">
+          <button class="btn" (click)="modalVersion.set(null)">Cancelar</button>
+          <button class="btn btn--primary" (click)="confirmarNuevaVersion()" [disabled]="guardando()">
+            {{ guardando() ? 'Registrando…' : 'Registrar versión' }}
+          </button>
+        </footer>
+      </div>
+    </div>
+  }
+
+</div>

@@ -51,13 +51,11 @@ export class ArchiveComponent implements OnInit {
       const activeGoal = goals.find(g => g.status === 'active') || goals[0] || null;
       this.currentGoal.set(activeGoal);
 
-      // Get monthly income for 20% target
-      const income = await this.documentService.getDocumentosPeriodo(
-        this.now.getFullYear(),
-        this.now.getMonth() + 1
-      );
-      this.monthlyIncome = income?.totalBudgeted ?? 0;
-      this.target20Percent = this.monthlyIncome * 0.2;
+      // Acervo total y meta de archivado del periodo: el 20% del acervo
+      // controlado es el objetivo de depuracion sugerido por periodo.
+      const acervo = await this.documentService.getResumenAcervo();
+      this.monthlyIncome = acervo?.total ?? 0;
+      this.target20Percent = Math.ceil(this.monthlyIncome * 0.2);
 
       // Calculate this month savings
       const currentMonthTx = await this.historyService.getPorPeriodo(

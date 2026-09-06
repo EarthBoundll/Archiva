@@ -261,6 +261,37 @@
               <textarea rows="2" [ngModel]="fDescripcion()" (ngModelChange)="fDescripcion.set($event)"
                         placeholder="Qué contiene y para qué sirve"></textarea>
             </label>
+
+            <!-- Adjuntar el archivo aquí y no después: es lo primero que
+                 quiere hacer quien registra un documento. -->
+            <div class="campo-form campo-form--ancho">
+              <span>Archivo <em>(opcional)</em></span>
+
+              @if (archivoPendiente(); as f) {
+                <div class="archivo-elegido">
+                  <app-icon [name]="iconoArchivo(f.type)" [size]="20"></app-icon>
+                  <div class="archivo-elegido__datos">
+                    <span class="archivo-elegido__nombre">{{ f.name }}</span>
+                    <span class="archivo-elegido__peso">{{ formatoBytes(f.size) }}</span>
+                  </div>
+                  <button type="button" class="btn-accion" (click)="quitarArchivoPendiente()">
+                    Quitar
+                  </button>
+                </div>
+              } @else {
+                <label class="zona-carga zona-carga--compacta"
+                       [class.zona-carga--activa]="arrastrando()"
+                       (dragover)="onArrastrar($event, true)"
+                       (dragleave)="onArrastrar($event, false)"
+                       (drop)="onSoltarEnAlta($event)">
+                  <input type="file" class="sr-only" (change)="onArchivoEnAlta($event)"
+                         accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv">
+                  <app-icon name="upload" [size]="24"></app-icon>
+                  <strong>Arrastra un archivo o pulsa para elegirlo</strong>
+                  <span>PDF, Word, Excel, texto, CSV o imagen · hasta {{ maxKb }} KB</span>
+                </label>
+              }
+            </div>
           </div>
 
           @if (errorMsg()) {

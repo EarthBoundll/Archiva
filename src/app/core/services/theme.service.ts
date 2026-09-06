@@ -1,4 +1,4 @@
-import { Injectable, effect, signal } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 
 export type Tema = 'claro' | 'oscuro' | 'sistema';
 
@@ -24,12 +24,12 @@ export class ThemeService {
     ? matchMedia('(prefers-color-scheme: dark)')
     : null;
 
+  private mqMovimiento = typeof matchMedia !== 'undefined'
+    ? matchMedia('(prefers-reduced-motion: reduce)')
+    : null;
+
   constructor() {
-    effect(() => {
-      const t = this.tema();
-      this.aplicar(t);
-      try { localStorage.setItem(CLAVE, t); } catch { /* modo privado */ }
-    });
+    this.aplicar(this.tema());
 
     // Si sigue al sistema, hay que reaccionar cuando el sistema cambia.
     this.mq?.addEventListener?.('change', () => {
@@ -37,15 +37,64 @@ export class ThemeService {
     });
   }
 
-  alternar(): void {
-    // Desde "sistema" se salta al contrario de lo que se este viendo,
-    // que es lo que la persona espera al pulsar el boton.
-    const actual = this.temaAplicado();
-    this.tema.set(actual === 'oscuro' ? 'claro' : 'oscuro');
+  /**
+   * Cambia de tema con un barrido circular desde el punto pulsado.
+   *
+   * Usa la View Transitions API: el navegador toma una instantanea del
+   * estado anterior y la del nuevo, y aqui se revela la segunda con un
+   * circulo que crece desde el interruptor. Donde no esta disponible, o
+   * si la persona pidio menos movimiento, el cambio es instantaneo.
+   */
+  alternar(origen?: { x: number; y: number }): void {
+    const siguiente: Tema = this.temaAplicado() === 'oscuro' ? 'claro' : 'oscuro';
+
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { ready: Promise<void> };
+    };
+
+    const sinMovimiento = this.mqMovimiento?.matches ?? false;
+
+    if (!doc.startViewTransition || sinMovimiento || !origen) {
+      this.fijar(siguiente);
+      return;
+    }
+
+    // El cambio debe ocurrir de forma sincrona dentro del callback, o el
+    // navegador captura la instantanea antes de que el tema haya cambiado.
+    const transicion = doc.startViewTransition(() => this.fijar(siguiente));
+
+    transicion.ready.then(() => {
+      const { x, y } = origen;
+      // Radio hasta la esquina mas lejana: el circulo debe cubrir la pantalla.
+      const radio = Math.hypot(
+        Math.max(x, innerWidth - x),
+        Math.max(y, innerHeight - y)
+      );
+
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(0px at ${x}px ${y}px)`,
+            `circle(${radio}px at ${x}px ${y}px)`
+          ]
+        },
+        {
+          duration: 560,
+          easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+          pseudoElement: '::view-transition-new(root)'
+        }
+      );
+    }).catch(() => { /* si la transicion se cancela, el tema ya cambio */ });
   }
 
   seguirAlSistema(): void {
-    this.tema.set('sistema');
+    this.fijar('sistema');
+  }
+
+  private fijar(t: Tema): void {
+    this.tema.set(t);
+    this.aplicar(t);
+    try { localStorage.setItem(CLAVE, t); } catch { /* modo privado */ }
   }
 
   private aplicar(t: Tema): void {

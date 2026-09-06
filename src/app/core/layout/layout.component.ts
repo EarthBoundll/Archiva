@@ -132,7 +132,7 @@ import { ThemeService } from '../services/theme.service';
             [class.interruptor-tema--oscuro]="theme.temaAplicado() === 'oscuro'"
             role="switch"
             [attr.aria-checked]="theme.temaAplicado() === 'oscuro'"
-            (click)="theme.alternar()"
+            (click)="alternarTema($event)"
             [attr.aria-label]="theme.temaAplicado() === 'oscuro' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'">
 
             <span class="interruptor-tema__pista" aria-hidden="true">
@@ -288,6 +288,12 @@ export class LayoutComponent {
     return this.auth.currentUser()?.photoURL ?? null;
   }
   
+  /** Pasa el punto pulsado para que el barrido nazca del interruptor. */
+  alternarTema(e: MouseEvent) {
+    const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    this.theme.alternar({ x: b.left + b.width / 2, y: b.top + b.height / 2 });
+  }
+
   confirmandoSalida = signal(false);
   saliendo = signal(false);
 

@@ -712,3 +712,44 @@
     &__datos { flex-basis: 100%; }
   }
 }
+
+// ------------------------------------------
+// ARCHIVO EN EL ALTA
+// ------------------------------------------
+.zona-carga--compacta {
+  min-height: 110px;
+  margin-bottom: 0;
+  padding: var(--space-4);
+}
+
+.archivo-elegido {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-elevated);
+  color: var(--color-primary);
+
+  &__datos {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__nombre {
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__peso {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+}

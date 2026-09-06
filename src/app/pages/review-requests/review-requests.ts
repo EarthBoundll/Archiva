@@ -172,7 +172,7 @@ const SUBCATEGORY_META: Record<string, SubcategoryMeta> = {
     type: 'fixed', frequency: 'monthly', hasDueDate: true, dueDateRequired: true, typicalDueDay: 15,
     metadataFields: [
       { key: 'banco', label: 'Banco/Entidad', type: 'text', icon: 'landmark',
-        description: 'Banco o entidad financiera que otorgó el crédito',
+        description: 'Área o persona que emitió la solicitud',
         placeholder: 'Ej: BCP, Interbank' },
       { key: 'cuotaActual', label: 'Días de atención', type: 'number', icon: 'coins',
         description: 'Cantidad de la cuota mensual actual',
@@ -497,7 +497,7 @@ const SUBCATEGORY_META: Record<string, SubcategoryMeta> = {
         description: 'Banco emisor de la tarjeta de crédito',
         options: ['BCP', 'Interbank', 'BBVA', 'Scotiabank', 'MiBanco', 'Ripley', 'Otro'] },
       { key: 'cantidadTotal', label: 'Documentos afectados', type: 'number', icon: 'coins',
-        description: 'Cantidad total adeudado en la tarjeta',
+        description: 'Documentos afectados por la solicitud',
         placeholder: 'Saldo total de la tarjeta' },
       { key: 'cuotaMinima', label: 'Días mínimos', type: 'number', icon: 'coins',
         description: 'Cuota mínima a pagar este mes' }
@@ -507,7 +507,7 @@ const SUBCATEGORY_META: Record<string, SubcategoryMeta> = {
     type: 'fixed', frequency: 'monthly', hasDueDate: true, dueDateRequired: true, typicalDueDay: 1,
     metadataFields: [
       { key: 'banco', label: 'Banco/Entidad', type: 'text', icon: 'landmark',
-        description: 'Banco o entidad financiera que otorgó el préstamo',
+        description: 'Área que originó la solicitud',
         placeholder: 'Ej: BCP, Credinka' },
       { key: 'cantidadOriginal', label: 'Días estimados', type: 'number', icon: 'coins',
         description: 'Cantidad total del préstamo al momento de solicitarlo' },
@@ -535,7 +535,7 @@ const SUBCATEGORY_META: Record<string, SubcategoryMeta> = {
         description: 'Descripción de la cuota que estás pagando',
         placeholder: 'Ej: Cuota de auto, cuota de muebles' },
       { key: 'entidad', label: 'Entidad', type: 'text', icon: 'landmark',
-        description: 'Banco o entidad financiera' }
+        description: 'Área responsable' }
     ]
   },
   // ── Streaming ──
@@ -702,7 +702,7 @@ const SUBCATEGORY_META: Record<string, SubcategoryMeta> = {
         description: 'Plataforma o consola',
         options: ['Steam', 'PlayStation', 'Xbox', 'Nintendo', 'Epic Games', 'Mobile', 'Otra'] },
       { key: 'tipo', label: 'Tipo', type: 'select', icon: 'package',
-        description: 'Si es juego base, DLC o suscripción',
+        description: 'Si es solicitud puntual o periódica',
         options: ['Juego base', 'DLC', 'Pase de temporada', 'Suscripción online', 'Moneda virtual'] }
     ]
   },

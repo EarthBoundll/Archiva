@@ -174,6 +174,7 @@ export class DocumentsComponent implements OnInit {
     this.fUbicacion.set('');
     this.fFrecuencia.set('annual');
     this.fAlerta.set(30);
+    this.archivoPendiente.set(null);
     this.modalAbierto.set(true);
   }
 
@@ -192,11 +193,13 @@ export class DocumentsComponent implements OnInit {
     this.fUbicacion.set(d.ubicacionReferencia ?? '');
     this.fFrecuencia.set(d.renovacion.frequency);
     this.fAlerta.set(d.alertarDiasAntes ?? 30);
+    this.archivoPendiente.set(null);
     this.modalAbierto.set(true);
   }
 
   cerrarModal() {
     this.modalAbierto.set(false);
+    this.archivoPendiente.set(null);
     this.editando.set(null);
     this.errorMsg.set('');
   }
@@ -204,6 +207,46 @@ export class DocumentsComponent implements OnInit {
   onCategoriaChange() {
     const tipos = this.tiposDisponibles();
     if (tipos.length) this.fTipo.set(tipos[0].value);
+  }
+
+  /**
+   * Archivo elegido en el alta, antes de que el documento exista.
+   *
+   * No se puede subir hasta tener el id, asi que se retiene aqui y se
+   * adjunta en cuanto create() devuelve el documento creado.
+   */
+  archivoPendiente = signal<File | null>(null);
+
+  onArchivoEnAlta(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.errorMsg.set('');
+
+    if (file && file.size > DocumentService.MAX_ARCHIVO_BYTES) {
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      this.errorMsg.set(`El archivo pesa ${mb} MB y el máximo son ${this.maxKb} KB.`);
+      input.value = '';
+      return;
+    }
+
+    this.archivoPendiente.set(file);
+    if (file) this.fTamanio.set(Math.round((file.size / 1024 / 1024) * 100) / 100);
+  }
+
+  onSoltarEnAlta(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.arrastrando.set(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      this.onArchivoEnAlta({ target: { files: dt.files, value: '' } } as unknown as Event);
+    }
+  }
+
+  quitarArchivoPendiente() {
+    this.archivoPendiente.set(null);
   }
 
   async guardar() {
@@ -252,8 +295,19 @@ export class DocumentsComponent implements OnInit {
 
     try {
       const edit = this.editando();
-      if (edit) await this.documentService.update(edit.id, payload);
-      else      await this.documentService.create(payload);
+
+      if (edit) {
+        await this.documentService.update(edit.id, payload);
+        if (this.archivoPendiente()) {
+          await this.documentService.adjuntarArchivo(edit.id, this.archivoPendiente()!);
+        }
+      } else {
+        // El adjunto necesita el id, asi que se sube en cuanto existe.
+        const creado = await this.documentService.create(payload);
+        if (this.archivoPendiente()) {
+          await this.documentService.adjuntarArchivo(creado.id, this.archivoPendiente()!);
+        }
+      }
 
       await this.cargar();
       this.cerrarModal();

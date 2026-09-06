@@ -255,3 +255,26 @@ a.btn {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+
+// ============================================
+// BARRIDO AL CAMBIAR DE TEMA
+// ============================================
+// Por defecto el navegador funde una instantanea sobre la otra. Aqui se
+// anula ese fundido para revelar la nueva con un circulo que crece desde
+// el interruptor, animado desde ThemeService.
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

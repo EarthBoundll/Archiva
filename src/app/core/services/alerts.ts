@@ -204,13 +204,13 @@ export class AlertsService {
       new Date().getMonth() + 1
     );
 
-    if (estadoDocumental?.savingsRate !== undefined && estadoDocumental.savingsRate < 10) {
+    if (estadoDocumental?.indiceVigencia !== undefined && estadoDocumental.indiceVigencia < 10) {
       alerts.push({
         id: 'low-savings-rate',
         type: 'low_savings_rate',
         severity: 'high',
         title: 'Tasa de archivo baja',
-        message: `El ${estadoDocumental.savingsRate}% del acervo esta archivado. Revisa los documentos pendientes de archivar.`,
+        message: `El ${estadoDocumental.indiceVigencia}% del acervo esta archivado. Revisa los documentos pendientes de archivar.`,
         createdAt: new Date().toISOString()
       });
     }

@@ -92,7 +92,7 @@ export interface SolicitudRevision {
   // Registro asociada (cuando se marca como pagado)
   registroId?: string;
   
-  // Para suscripciones
+  // Para solicitudes reincidentes
   esReincidente?: boolean;
   prioridadSolicitud?: number;
   periodicidadSolicitud?: 'monthly' | 'yearly';

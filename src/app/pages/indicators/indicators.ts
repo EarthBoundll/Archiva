@@ -64,7 +64,7 @@ export class IndicatorsComponent implements OnInit {
     return `${(t.salidas / total) * 47.5}, 100`;
   }
 
-  get savingsRate(): number {
+  get tasaVigencia(): number {
     const t = this.totals();
     if (t.entradas === 0) return 0;
     return Math.round(((t.entradas - t.salidas) / t.entradas) * 100);
@@ -77,22 +77,22 @@ export class IndicatorsComponent implements OnInit {
     if (t.salidas > t.entradas) {
       list.push({
         title: 'Solicitudes exceden documentos',
-        description: 'Considera reducir solicitudes no esenciales',
+        description: 'Atiende primero las solicitudes prioritarias',
         type: 'warning'
       });
     }
 
-    if (this.savingsRate > 20) {
+    if (this.tasaVigencia > 20) {
       list.push({
-        title: '¡Excelente archivo!',
-        description: `Estás ahorrando ${this.savingsRate}% de tus documentos`,
+        title: 'Acervo bajo control',
+        description: `El ${this.tasaVigencia}% de tus documentos está aprobado y vigente`,
         type: 'positive'
       });
     }
 
     list.push({
       title: 'Consejo del día',
-      description: 'Revisa tus suscripciones mensualmente',
+      description: 'Revisa cada mes los documentos por vencer',
       type: 'info'
     });
 

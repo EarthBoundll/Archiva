@@ -308,7 +308,7 @@
                         <app-icon name="calendar" [size]="10"></app-icon>
                         {{ exp.fechaAtencion || 'Sin fecha' }}
                       </span>
-                      @if (exp.esReincidente) { <span class="phm-tag sub">Suscripción</span> }
+                      @if (exp.esReincidente) { <span class="phm-tag sub">Reincidente</span> }
                       @if (exp.isVariable) { <span class="phm-tag var">Variable</span> }
                       @if (exp.actualAmount && exp.actualAmount !== exp.budgetedAmount) {
                         <span class="phm-tag" [class.under]="exp.actualAmount < exp.budgetedAmount" [class.over]="exp.actualAmount > exp.budgetedAmount">
@@ -423,7 +423,7 @@
           <div class="type-selector">
             <button class="type-btn" [class.active]="formType() === 'subscription'" (click)="onTypeChange('subscription')">
               <app-icon name="repeat" [size]="14"></app-icon>
-              <span>Suscripción</span>
+              <span>Reincidente</span>
             </button>
             <button class="type-btn" [class.active]="formType() === 'fixed'" (click)="onTypeChange('fixed')">
               <app-icon name="shield" [size]="14"></app-icon>

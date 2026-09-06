@@ -88,7 +88,7 @@ export class FirebaseService {
 
   async createUserProfile(userId: string, data: any) {
     const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    return setDoc(docRef, data, { merge: true });
+    return setDoc(docRef, this.limpiar(data), { merge: true });
   }
 
   // ============================================
@@ -102,7 +102,7 @@ export class FirebaseService {
 
   async saveUserProfile(userId: string, data: any) {
     const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    return setDoc(docRef, data, { merge: true });
+    return setDoc(docRef, this.limpiar(data), { merge: true });
   }
 
   // ============================================
@@ -200,7 +200,7 @@ export class FirebaseService {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    await setDoc(docRef, txData);
+    await setDoc(docRef, this.limpiar(txData));
     
     // Update financial state
     await this.actualizarEstadoDocumental(userId, periodoId);
@@ -439,7 +439,7 @@ export class FirebaseService {
       createdAt: now,
       updatedAt: now
     };
-    await setDoc(docRef, goalData);
+    await setDoc(docRef, this.limpiar(goalData));
     return goalData;
   }
 
@@ -519,7 +519,7 @@ export class FirebaseService {
       createdAt: now,
       updatedAt: now
     };
-    await setDoc(docRef, sourceData);
+    await setDoc(docRef, this.limpiar(sourceData));
     return sourceData;
   }
 
@@ -604,7 +604,7 @@ export class FirebaseService {
 
   async actualizarBitacora(userId: string, entryId: string, data: any): Promise<void> {
     const docRef = doc(this.firestore, `users/${userId}/bitacora/${entryId}`);
-    await setDoc(docRef, data, { merge: true });
+    await setDoc(docRef, this.limpiar(data), { merge: true });
   }
 
   // ============================================
@@ -755,7 +755,7 @@ export class FirebaseService {
       createdAt: now,
       updatedAt: now
     };
-    await setDoc(docRef, expenseData);
+    await setDoc(docRef, this.limpiar(expenseData));
     return expenseData;
   }
 
@@ -921,7 +921,7 @@ export class FirebaseService {
       updatedAt: now
     };
     
-    await setDoc(docRef, budgetData, { merge: true });
+    await setDoc(docRef, this.limpiar(budgetData), { merge: true });
     return budgetData;
   }
 
@@ -1062,7 +1062,7 @@ export class FirebaseService {
   // ============================================
   async guardarRegistroCuota(userId: string, id: string, data: any) {
     const docRef = doc(this.firestore, `users/${userId}/cuotas/${id}`);
-    return setDoc(docRef, data, { merge: true });
+    return setDoc(docRef, this.limpiar(data), { merge: true });
   }
 
   async getRegistroCuota(userId: string, id: string): Promise<any> {
@@ -1081,7 +1081,7 @@ export class FirebaseService {
   async saveNotification(userId: string, notification: any) {
     const id = `${notification.year}-${String(notification.month).padStart(2, '0')}-${Date.now()}`;
     const docRef = doc(this.firestore, `users/${userId}/notifications/${id}`);
-    return setDoc(docRef, notification, { merge: true });
+    return setDoc(docRef, this.limpiar(notification), { merge: true });
   }
 
   async getNotifications(userId: string, unreadOnly: boolean = false): Promise<any[]> {

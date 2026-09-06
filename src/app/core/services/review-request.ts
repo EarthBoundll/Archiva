@@ -1,14 +1,19 @@
 import { Injectable, inject } from '@angular/core';
 import { FirebaseService } from './firebase';
 import { Auth } from './auth';
-import { 
-  SolicitudRevision, 
-  SolicitudRevisionPayload, 
+import { log } from '../utils/logger';
+import {
+  SolicitudRevision,
+  SolicitudRevisionPayload,
   ResumenSolicitudes,
-  calcularEstadoSolicitud,
+  EstadoSolicitud,
+  TipoSolicitud,
+  TipoSolicitudPrioritaria,
+  TipoSolicitudOrdinaria,
   TIPOS_PRIORITARIOS,
   TIPOS_ORDINARIOS,
-  getAllTiposSolicitud
+  calcularEstadoSolicitud,
+  esTipoPrioritario
 } from '../models/review-request.model';
 
 @Injectable({ providedIn: 'root' })
@@ -16,224 +21,217 @@ export class ReviewRequestService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
 
+  private hoy(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // ============================================
+  // LECTURA
+  // ============================================
+
   async getAll(): Promise<SolicitudRevision[]> {
     const userId = this.authService.getUserId();
     if (!userId) return [];
-
     const data = await this.firebase.getSolicitudes(userId);
-    return data as SolicitudRevision[];
+    return (data as any[]).map(s => this.normalizar(s));
   }
 
-  async getActive(): Promise<SolicitudRevision[]> {
-    const userId = this.authService.getUserId();
-    if (!userId) return [];
-
-    const data = await this.firebase.getSolicitudesActivas(userId);
-    return data as SolicitudRevision[];
+  async getAbiertas(): Promise<SolicitudRevision[]> {
+    return (await this.getAll()).filter(
+      s => s.status === 'pendiente' || s.status === 'en_proceso' || s.status === 'vencida'
+    );
   }
+
+  /** Solicitudes que recaen sobre un documento concreto. */
+  async getPorDocumento(documentoId: string): Promise<SolicitudRevision[]> {
+    return (await this.getAll()).filter(s => s.documentoId === documentoId);
+  }
+
+  // ============================================
+  // ALTA Y CICLO
+  // ============================================
 
   async create(payload: SolicitudRevisionPayload): Promise<SolicitudRevision> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    // Calculate status based on due date
-    const status = calcularEstadoSolicitud(
-      payload.diaLimiteMes,
-      0,
-      payload.budgetedAmount
-    );
+    // Reincidencia: ya hubo una solicitud igual, y atendida, sobre este mismo
+    // documento. Repetir un hallazgo indica que la correccion no fue de fondo.
+    const previas = (await this.getPorDocumento(payload.documentoId))
+      .filter(s => s.category === payload.category && s.status === 'atendida');
 
-    // Use fechaDisponible as startDate, or default to first day of current month
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const startDate = payload.fechaDisponible || `${currentMonth}-01`;
+    const ahora = new Date().toISOString();
 
-    const data = {
-      ...payload,
-      status,
-      actualAmount: 0,
-      startDate
+    const solicitud = {
+      userId,
+      documentoId: payload.documentoId,
+      codigoDocumento: payload.codigoDocumento,
+      tituloDocumento: payload.tituloDocumento,
+      esPrioritaria: payload.esPrioritaria,
+      category: payload.category,
+      titulo: payload.titulo.trim(),
+      detalle: payload.detalle?.trim(),
+      solicitante: payload.solicitante.trim(),
+      revisor: payload.revisor?.trim(),
+      origen: payload.origen,
+      diasEstimados: payload.diasEstimados || 1,
+      diasReales: 0,
+      fechaSolicitud: this.hoy(),
+      fechaLimiteAtencion: payload.fechaLimiteAtencion,
+      status: 'pendiente' as EstadoSolicitud,
+      esPeriodica: payload.esPeriodica ?? false,
+      frequency: payload.frequency ?? 'unica',
+      esReincidente: previas.length > 0,
+      vecesRepetida: previas.length,
+      activo: true,
+      notes: payload.notes,
+      createdAt: ahora,
+      updatedAt: ahora
     };
 
-    const result = await this.firebase.crearSolicitud(userId, data);
-    return result as SolicitudRevision;
+    const creada = await this.firebase.crearSolicitud(userId, solicitud);
+    return this.normalizar(creada);
   }
 
-  async update(solicitudId: string, payload: Partial<SolicitudRevisionPayload>): Promise<void> {
+  async update(solicitudId: string, cambios: Partial<SolicitudRevisionPayload>): Promise<void> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    await this.firebase.actualizarSolicitud(userId, solicitudId, payload);
+    await this.firebase.actualizarSolicitud(userId, solicitudId, {
+      ...cambios,
+      updatedAt: new Date().toISOString()
+    });
   }
 
-  async marcarAtendida(solicitudId: string, amount: number): Promise<void> {
+  /** Pasa a en proceso: alguien la tomó y está trabajando en ella. */
+  async tomar(s: SolicitudRevision, revisor: string): Promise<void> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    // Obtener el solicitud antes de marcarlo para saber si es recurrente
-    const allExpenses = await this.firebase.getSolicitudes(userId);
-    const expense = allExpenses.find(e => e.id === solicitudId);
-
-    await this.firebase.marcarSolicitudAtendida(userId, solicitudId, amount);
-    await this.firebase.actualizarSolicitud(userId, solicitudId, { activo: false } as any);
-
-    // Si es solicitud recurrente mensual, crear la siguiente ocurrencia para el mes próximo
-    if (expense && expense.isRecurring && expense.frequency === 'monthly') {
-      const now = new Date();
-      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
-
-      const newStartDate = `${nextMonthStr}-01`;
-      const newDueDate = expense.diaLimiteMes
-        ? `${nextMonthStr}-${String(expense.diaLimiteMes).padStart(2, '0')}`
-        : undefined;
-
-      const newStatus = calcularEstadoSolicitud(
-        expense.diaLimiteMes,
-        0,
-        expense.budgetedAmount
-      );
-
-      await this.firebase.crearSolicitud(userId, {
-        esPrioritaria: expense.esPrioritaria,
-        category: expense.category,
-        subcategory: expense.subcategory || '',
-        name: expense.name,
-        provider: expense.provider || '',
-        description: expense.description || '',
-        budgetedAmount: expense.budgetedAmount,
-        diaLimiteMes: expense.diaLimiteMes,
-        fechaDisponible: newStartDate,
-        fechaLimite: newDueDate,
-        startDate: newStartDate,
-        isRecurring: true,
-        frequency: 'monthly',
-        esReincidente: expense.esReincidente || false,
-        isVariable: expense.isVariable || false,
-        ...(expense.umbralAlerta != null ? { umbralAlerta: expense.umbralAlerta } : {}),
-        ...(expense.metadata ? { metadata: { ...expense.metadata } } : {}),
-        notes: expense.notes || '',
-        status: newStatus,
-        actualAmount: 0,
-        activo: true
-      });
+    if (s.status === 'atendida' || s.status === 'anulada') {
+      throw new Error('Una solicitud ya cerrada no puede volver a tomarse.');
     }
+
+    await this.firebase.actualizarSolicitud(userId, s.id, {
+      status: 'en_proceso',
+      revisor: revisor.trim() || s.revisor || '',
+      updatedAt: new Date().toISOString()
+    });
   }
 
-  async cancel(solicitudId: string): Promise<void> {
+  async marcarAtendida(s: SolicitudRevision, diasReales: number): Promise<void> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    await this.firebase.anularSolicitud(userId, solicitudId);
-  }
+    if (s.status === 'anulada') {
+      throw new Error('Una solicitud anulada no puede marcarse como atendida.');
+    }
 
-  async renovarSolicitudesPeriodicas(allExpenses: SolicitudRevision[]): Promise<void> {
-    const userId = this.authService.getUserId();
-    if (!userId) throw new Error('No autenticado');
-
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    // También calcular mes siguiente para detectar si ya fue creado por marcarAtendida
-    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}`;
-
-    const recurring = allExpenses.filter(e =>
-      e.isRecurring && e.frequency === 'monthly' && e.activo
+    await this.firebase.marcarSolicitudAtendida(
+      userId, s.id, diasReales, this.hoy()
     );
-
-    for (const exp of recurring) {
-      const existing = await this.firebase.getSolicitudes(userId);
-      const alreadyRenewed = existing.some(e =>
-        e.name === exp.name &&
-        e.category === exp.category &&
-        (e.startDate?.startsWith(currentMonth) || e.startDate?.startsWith(nextMonth)) &&
-        e.activo === true
-      );
-      if (alreadyRenewed) continue;
-
-      if (exp.status === 'pending' && exp.startDate?.startsWith(currentMonth)) {
-        continue;
-      }
-
-      if (exp.status !== 'paid' && exp.startDate && !exp.startDate.startsWith(currentMonth)) {
-        await this.firebase.actualizarSolicitud(userId, exp.id, {
-          status: 'overdue'
-        } as any);
-      }
-
-      const newStartDate = `${currentMonth}-01`;
-      const newDueDate = exp.diaLimiteMes
-        ? `${currentMonth}-${String(exp.diaLimiteMes).padStart(2, '0')}`
-        : undefined;
-
-      const newStatus = calcularEstadoSolicitud(
-        exp.diaLimiteMes,
-        0,
-        exp.budgetedAmount
-      );
-
-      await this.firebase.crearSolicitud(userId, {
-        esPrioritaria: exp.esPrioritaria,
-        category: exp.category,
-        subcategory: exp.subcategory || '',
-        name: exp.name,
-        provider: exp.provider || '',
-        description: exp.description || '',
-        budgetedAmount: exp.budgetedAmount,
-        diaLimiteMes: exp.diaLimiteMes,
-        fechaDisponible: newStartDate,
-        fechaLimite: newDueDate,
-        startDate: newStartDate,
-        isRecurring: true,
-        frequency: 'monthly',
-        esReincidente: exp.esReincidente || false,
-        isVariable: exp.isVariable || false,
-        ...(exp.umbralAlerta != null ? { umbralAlerta: exp.umbralAlerta } : {}),
-        ...(exp.metadata ? { metadata: { ...exp.metadata } } : {}),
-        notes: exp.notes || ''
-      });
-    }
   }
 
-  async getResumenPeriodo(year: number, month: number): Promise<ResumenSolicitudes> {
+  async anular(s: SolicitudRevision, motivo: string): Promise<void> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    const data = await this.firebase.calcularSolicitudesPeriodo(userId, year, month);
-    return data as ResumenSolicitudes;
+    if (!motivo.trim()) {
+      throw new Error('Indica por qué se anula: queda registrado en la solicitud.');
+    }
+
+    await this.firebase.actualizarSolicitud(userId, s.id, {
+      status: 'anulada',
+      activo: false,
+      notes: motivo.trim(),
+      updatedAt: new Date().toISOString()
+    });
   }
 
-  // Helper methods
+  // ============================================
+  // AGREGADOS
+  // ============================================
+
+  async getResumenPeriodo(precargadas?: SolicitudRevision[]): Promise<ResumenSolicitudes> {
+    const todas = precargadas ?? await this.getAll();
+
+    const cuenta = (e: EstadoSolicitud) => todas.filter(s => s.status === e).length;
+
+    const atendidas = todas.filter(s => s.status === 'atendida');
+    const dias = atendidas
+      .map(s => s.diasReales)
+      .filter(d => typeof d === 'number' && d >= 0);
+
+    const d = new Date();
+
+    return {
+      periodoId: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      total: todas.length,
+      pendientes: cuenta('pendiente'),
+      enProceso: cuenta('en_proceso'),
+      atendidas: atendidas.length,
+      vencidas: cuenta('vencida'),
+      prioritariasAbiertas: todas.filter(
+        s => s.esPrioritaria && s.status !== 'atendida' && s.status !== 'anulada'
+      ).length,
+      reincidentes: todas.filter(s => s.esReincidente).length,
+      tasaAtencion: todas.length > 0
+        ? Math.round((atendidas.length / todas.length) * 100)
+        : 0,
+      diasPromedioAtencion: dias.length
+        ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length)
+        : null,
+      ultimaActualizacion: new Date().toISOString()
+    };
+  }
+
+  // ============================================
+  // CATALOGOS
+  // ============================================
+
   getTiposPrioritarios() {
-    return TIPOS_PRIORITARIOS;
+    return (Object.keys(TIPOS_PRIORITARIOS) as TipoSolicitudPrioritaria[])
+      .map(t => ({ value: t as TipoSolicitud, ...TIPOS_PRIORITARIOS[t] }));
   }
 
   getTiposOrdinarios() {
-    return TIPOS_ORDINARIOS;
+    return (Object.keys(TIPOS_ORDINARIOS) as TipoSolicitudOrdinaria[])
+      .map(t => ({ value: t as TipoSolicitud, ...TIPOS_ORDINARIOS[t] }));
   }
 
-  getAllCategories() {
-    return getAllTiposSolicitud();
-  }
-  // Solicitudes prioritarias sugeridas al iniciar
-  getSolicitudesPrioritariasPorDefecto(): Partial<SolicitudRevisionPayload>[] {
-    return [
-      { esPrioritaria: true, category: 'aprobacion_gerencial',      subcategory: 'Visto bueno gerencia', budgetedAmount: 3, diaLimiteMes: 5,  isRecurring: false, frequency: 'monthly' },
-      { esPrioritaria: true, category: 'revision_legal',            subcategory: 'Clausulas',            budgetedAmount: 5, diaLimiteMes: 10, isRecurring: false, frequency: 'monthly' },
-      { esPrioritaria: true, category: 'actualizacion_vencimiento', subcategory: 'Renovacion anual',     budgetedAmount: 7, diaLimiteMes: 15, isRecurring: true,  frequency: 'monthly' },
-      { esPrioritaria: true, category: 'validacion_firma',          subcategory: 'Firma responsable',    budgetedAmount: 2, diaLimiteMes: 20, isRecurring: false, frequency: 'monthly' },
-      { esPrioritaria: true, category: 'subsanacion_observacion',   subcategory: 'Contenido',            budgetedAmount: 4, diaLimiteMes: 25, isRecurring: false, frequency: 'monthly' }
-    ];
+  getTodosLosTipos() {
+    return [...this.getTiposPrioritarios(), ...this.getTiposOrdinarios()];
   }
 
-  // Solicitudes ordinarias sugeridas al iniciar
-  getSolicitudesOrdinariasPorDefecto(): Partial<SolicitudRevisionPayload>[] {
-    return [
-      { esPrioritaria: false, category: 'revision_formato',     subcategory: 'Plantilla',       budgetedAmount: 2, diaLimiteMes: 10, isRecurring: false, frequency: 'monthly' },
-      { esPrioritaria: false, category: 'revision_ortografica', subcategory: 'Redaccion',       budgetedAmount: 1, diaLimiteMes: 12, isRecurring: false, frequency: 'monthly' },
-      { esPrioritaria: false, category: 'actualizacion_anexos', subcategory: 'Agregar anexo',   budgetedAmount: 2, diaLimiteMes: 15, isRecurring: false, frequency: 'monthly' },
-      { esPrioritaria: false, category: 'digitalizacion',       subcategory: 'Escaneo',         budgetedAmount: 3, diaLimiteMes: 18, isRecurring: true,  frequency: 'monthly' },
-      { esPrioritaria: false, category: 'traslado_archivo',     subcategory: 'Archivo pasivo',  budgetedAmount: 5, diaLimiteMes: 28, isRecurring: true,  frequency: 'monthly' }
-    ];
+  // ============================================
+  // INTERNO
+  // ============================================
+
+  /** Rellena y recalcula lo que pueda faltar en registros antiguos. */
+  private normalizar(s: any): SolicitudRevision {
+    const base: SolicitudRevision = {
+      ...s,
+      documentoId: s.documentoId ?? '',
+      codigoDocumento: s.codigoDocumento ?? '—',
+      tituloDocumento: s.tituloDocumento ?? '',
+      esPrioritaria: s.esPrioritaria ?? esTipoPrioritario(s.category),
+      titulo: s.titulo ?? s.name ?? 'Sin título',
+      solicitante: s.solicitante ?? '',
+      origen: s.origen ?? 'reporte_usuario',
+      diasEstimados: s.diasEstimados ?? 1,
+      diasReales: s.diasReales ?? 0,
+      fechaSolicitud: s.fechaSolicitud ?? s.startDate ?? '',
+      fechaLimiteAtencion: s.fechaLimiteAtencion ?? s.fechaLimite ?? '',
+      status: s.status ?? 'pendiente',
+      esPeriodica: s.esPeriodica ?? s.isRecurring ?? false,
+      frequency: s.frequency ?? 'unica',
+      activo: s.activo ?? true
+    };
+
+    // El vencimiento se deriva de la fecha, no se guarda: si se guardara,
+    // una solicitud vencida seguiria pareciendo pendiente hasta que alguien
+    // la abriera.
+    return { ...base, status: calcularEstadoSolicitud(base) };
   }
 }

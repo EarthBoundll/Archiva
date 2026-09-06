@@ -50,6 +50,10 @@ No es un repositorio de archivos. Es un sistema de **control**: responde en todo
 - **Filtros** por acción, categoría, documento y texto libre
 
 ### Flujos de Aprobación
+- **Alta, edición y anulación** con motivo registrado
+- **Resolución por etapas** en orden: aprobar avanza, observar devuelve, rechazar suspende
+- **Reanudación** de un flujo suspendido, conservando lo ya resuelto
+- **Historial de aprobaciones** con quién resolvió cada etapa y cuándo
 - **12 tipos de flujo**: aprobación de contrato, de factura, de presupuesto, revisión legal, visto bueno de gerencia, validación técnica, firma de convenio, publicación de política, homologación de proveedor, cierre de expediente, renovación documental y otros
 - **Control por etapas**: etapas completadas sobre etapas totales, con porcentaje de avance
 - **Proyección de cierre** según el ritmo real de aprobación
@@ -78,8 +82,9 @@ No es un repositorio de archivos. Es un sistema de **control**: responde en todo
 - Documentos archivados acumulados, con evolución temporal y meta de archivado del periodo
 
 ### Configuración Empresarial
-- Razón social, RUC, sector, áreas y responsable del archivo
-- Días de alerta por defecto y prefijo de codificación
+- Razón social, RUC validado, sector, área que custodia el archivo y responsable
+- **Prefijo de codificación** que entra en el código de cada documento: `CON-ADM-0001`
+- Días de aviso previo al vencimiento, aplicados a los documentos nuevos
 - Perfil de usuario y panel de desarrollador
 
 ---
@@ -92,11 +97,12 @@ src/app/
 │   ├── components/        # Icon, PasswordStrength
 │   ├── guards/            # Guard de autenticación
 │   ├── layout/            # Sidebar, Topbar y navegación móvil
+│   ├── directives/        # Diálogo accesible: Escape, foco y retorno
 │   ├── models/
-│   │   ├── company.model.ts        # Empresa y áreas
+│   │   ├── company.model.ts        # Empresa, RUC, sector y prefijo
 │   │   ├── document.model.ts       # Documentos, estados y vencimiento
 │   │   ├── review-request.model.ts # Solicitudes de revisión
-│   │   ├── history.model.ts        # Historial documental
+│   │   ├── history.model.ts        # Bitácora documental
 │   │   ├── workflow.model.ts       # Flujos de aprobación
 │   │   └── storage.model.ts        # Cuotas de almacenamiento
 │   ├── services/
@@ -108,7 +114,7 @@ src/app/
 │   │   ├── workflow.ts             # Flujos de aprobación
 │   │   ├── storage.ts              # Almacenamiento
 │   │   ├── alerts.ts               # Motor de alertas
-│   │   ├── email.ts                # Notificaciones
+│   │   ├── company.ts              # Configuración de la empresa
 │   │   └── dev-settings.ts
 │   └── utils/
 └── pages/
@@ -117,7 +123,7 @@ src/app/
     ├── review-requests/   # Solicitudes de revisión
     ├── history/           # Historial documental
     ├── workflows/         # Flujos de aprobación
-    ├── workflow/          # Detalle de flujo
+    ├── workflow/          # Detalle: etapas, resoluciones e historial
     ├── storage/           # Gestión de almacenamiento
     ├── archive/           # Archivo histórico
     ├── indicators/        # Indicadores documentales
@@ -134,11 +140,26 @@ src/app/
 ```bash
 git clone https://github.com/<usuario>/archiva.git
 cd archiva
-npm install
-npm start
+pnpm install
+pnpm start
 ```
 
 Disponible en `http://localhost:4200`.
+
+> Se usa **pnpm**, no npm. `@angular/fire@20` declara Angular 20 como dependencia
+> de pares y el proyecto va con Angular 21: `npm install` aborta por ese conflicto.
+
+### Pruebas
+
+```bash
+pnpm exec ng test --watch=false
+```
+
+134 casos sobre el motor de renovación, la máquina de estados, los flujos de
+aprobación, la configuración de la empresa, el saneado de escrituras, las
+guardas de sesión, la iconografía y el contraste WCAG de ambos temas. La
+integración continua los ejecuta **antes** de compilar: un fallo no llega a
+producción.
 
 ## Configuración de Firebase
 
@@ -146,7 +167,8 @@ Disponible en `http://localhost:4200`.
 2. Habilitar Authentication con Email/Password y Google.
 3. Crear una base de datos Cloud Firestore.
 4. Copiar las credenciales en `src/environments/environment.ts`.
-5. Desplegar reglas: `firebase deploy --only firestore:rules`.
+5. Copiar el contenido de `firestore.rules` en la consola, o desplegarlo con
+   `firebase deploy --only firestore:rules` si tienes la CLI configurada.
 
 ## Build y despliegue
 

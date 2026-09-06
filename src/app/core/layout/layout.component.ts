@@ -4,11 +4,12 @@ import { RouterModule } from '@angular/router';
 import { Auth } from '../services/auth';
 import { LayoutService } from '../services/layout.service';
 import { ThemeService } from '../services/theme.service';
+import { DialogoDirective } from '../directives/dialogo.directive';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [CommonModule, RouterModule, DialogoDirective],
   template: `
     <a href="#main-content" class="skip-nav">Saltar al contenido principal</a>
     <div class="layout" [class.sidebar-open]="layoutService.sidebarOpen()" [class.sidebar-collapsed]="layoutService.sidebarCollapsed()">
@@ -223,7 +224,7 @@ import { ThemeService } from '../services/theme.service';
       <!-- Confirmacion de cierre de sesion -->
       @if (confirmandoSalida()) {
         <div class="salida-overlay" (click)="confirmandoSalida.set(false)">
-          <div class="salida" (click)="$event.stopPropagation()" role="alertdialog" aria-modal="true" aria-labelledby="salida-titulo">
+          <div class="salida" appDialogo (cerrar)="confirmandoSalida.set(false)" (click)="$event.stopPropagation()" aria-labelledby="salida-titulo">
             <div class="salida__icono" aria-hidden="true">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>

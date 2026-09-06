@@ -143,7 +143,9 @@ export interface Documento {
   userId: string;
 
   // Identificacion
-  codigo: string;                  // CON-LEG-0001
+  codigo: string;
+  /** Codigo que tenia antes de reclasificarse. */
+  codigoAnterior?: string;                  // CON-LEG-0001
   titulo: string;
   descripcion?: string;
   version: number;
@@ -663,18 +665,42 @@ const PREFIJO_CATEGORIA: Record<CategoriaDocumental, string> = {
 };
 
 /** Formato normalizado CAT-AREA-CORRELATIVO, p. ej. CON-LEG-0001. */
+/**
+ * Codigo normalizado de un documento: CATEGORIA-PREFIJO-CORRELATIVO.
+ *
+ * El prefijo sale de la configuracion de la empresa cuando existe. El
+ * asistente inicial promete al usuario que sus documentos se codificaran
+ * con el prefijo que elige —«CON-ADM-0001»— y hasta ahora esa promesa no se
+ * cumplia: el generador tomaba siempre las siglas del area del documento y
+ * el prefijo configurado no llegaba a ninguna parte.
+ *
+ * Sin configuracion se conserva el comportamiento anterior, que sigue
+ * siendo razonable para los documentos ya registrados.
+ */
 export function generarCodigo(
   category: CategoriaDocumental,
   area: AreaEmisora,
-  correlativo: number
+  correlativo: number,
+  prefijoArchivo?: string
 ): string {
   const cat = PREFIJO_CATEGORIA[category] ?? 'DOC';
-  const ar  = AREAS_EMISORAS[area]?.siglas ?? 'GEN';
+  const pref = prefijoArchivo?.trim().toUpperCase();
+  const ar = (pref && /^[A-ZÑ]{2,5}$/.test(pref))
+    ? pref
+    : (AREAS_EMISORAS[area]?.siglas ?? 'GEN');
   return `${cat}-${ar}-${String(correlativo).padStart(4, '0')}`;
 }
 
+/**
+ * Formato del codigo normalizado: CAT-PREFIJO-CORRELATIVO.
+ *
+ * El segmento central admite de dos a cinco letras. Se quedaba en cuatro y
+ * rechazaba prefijos que el validador de la empresa daba por buenos
+ * —«LEGAL» tiene cinco—: la misma regla escrita dos veces con dos limites
+ * distintos, y un documento legitimo marcado como mal codificado.
+ */
 export function esCodigoValido(codigo: string): boolean {
-  return /^[A-Z]{3}-[A-Z]{2,4}-\d{4}$/.test(codigo.trim().toUpperCase());
+  return /^[A-ZÑ]{3}-[A-ZÑ]{2,5}-\d{4}$/.test(codigo.trim().toUpperCase());
 }
 
 /**

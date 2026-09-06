@@ -85,7 +85,7 @@ import { RouterModule } from '@angular/router';
       padding: 0 var(--space-6);
       border-radius: var(--radius-lg);
       background: var(--color-primary);
-      color: #FFFFFF;
+      color: var(--color-sobre-primario);
       font-family: var(--font-heading);
       font-weight: var(--font-semibold);
       text-decoration: none;

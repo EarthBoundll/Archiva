@@ -61,14 +61,68 @@ export interface FlujoAprobacion {
   
   // Notas
   notes?: string;
-  
+  /** Por que se retiro del seguimiento. */
+  motivoAnulacion?: string;
+
   // Metadata
   tags?: string[];
   version?: number;
 }
 
-/** Resultado de una etapa. Observar devuelve el flujo, no lo detiene. */
-export type ResultadoEtapa = 'aprobada' | 'observada';
+/**
+ * Resultado de una etapa.
+ *
+ * Aprobar hace avanzar el contador. Observar devuelve el documento a quien
+ * lo presento sin detener el flujo: se corrige y se vuelve a presentar la
+ * misma etapa. Rechazar es la negativa firme del aprobador y suspende el
+ * flujo hasta que alguien decida reanudarlo.
+ */
+export type ResultadoEtapa = 'aprobada' | 'observada' | 'rechazada';
+
+export const RESULTADOS_ETAPA: Record<ResultadoEtapa, {
+  label: string;
+  icon: string;
+  token: string;
+  /** Que le ocurre al flujo despues de este resultado. */
+  efecto: string;
+}> = {
+  aprobada: {
+    label: 'Aprobada', icon: 'file-check', token: 'var(--estado-aprobado)',
+    efecto: 'El flujo avanza a la etapa siguiente'
+  },
+  observada: {
+    label: 'Observada', icon: 'file-warning', token: 'var(--estado-observado)',
+    efecto: 'Vuelve a quien lo presentó; la etapa sigue pendiente'
+  },
+  rechazada: {
+    label: 'Rechazada', icon: 'file-x', token: 'var(--estado-rechazado)',
+    efecto: 'El flujo queda suspendido hasta que se reanude'
+  }
+};
+
+export const ESTADOS_FLUJO: Record<EstadoFlujo, {
+  label: string;
+  icon: string;
+  token: string;
+  descripcion: string;
+}> = {
+  active: {
+    label: 'En curso', icon: 'git-branch', token: 'var(--estado-en-revision)',
+    descripcion: 'Recorriendo sus etapas'
+  },
+  completed: {
+    label: 'Completado', icon: 'check-circle', token: 'var(--estado-aprobado)',
+    descripcion: 'Todas las etapas aprobadas'
+  },
+  paused: {
+    label: 'Suspendido', icon: 'file-x', token: 'var(--estado-rechazado)',
+    descripcion: 'Detenido tras un rechazo'
+  },
+  cancelled: {
+    label: 'Anulado', icon: 'archive', token: 'var(--estado-archivado)',
+    descripcion: 'Retirado del seguimiento'
+  }
+};
 
 export interface EtapaAprobacion {
   id: string;
@@ -162,3 +216,127 @@ export const PRIORIDADES_FLUJO: Record<PrioridadFlujo, { label: string; color: s
   medium: { label: 'Media', color: 'var(--color-warning)' },
   low:    { label: 'Baja',  color: 'var(--color-success)' }
 };
+// ============================================
+// SECUENCIA DE ETAPAS
+// ============================================
+
+/**
+ * Orden de la etapa que toca resolver.
+ *
+ * Un flujo con dos etapas aprobadas espera la tercera. La secuencia importa:
+ * la etapa 2 no se firma antes que la 1, y sin esta cuenta cualquiera podia
+ * registrar la ultima etapa de un flujo recien creado.
+ */
+export function siguienteOrden(flujo: Pick<FlujoAprobacion, 'etapasCompletadas'>): number {
+  return (flujo.etapasCompletadas ?? 0) + 1;
+}
+
+/** Nombre declarado para una etapa, o uno derivado de su posicion. */
+export function nombreDeEtapa(
+  flujo: Pick<FlujoAprobacion, 'nombresEtapas' | 'etapasTotales'>,
+  orden: number
+): string {
+  const declarado = flujo.nombresEtapas?.[orden - 1]?.trim();
+  return declarado || `Etapa ${orden} de ${flujo.etapasTotales}`;
+}
+
+/** Solo un flujo en curso y con etapas pendientes admite resoluciones. */
+export function admiteResolucion(flujo: Pick<FlujoAprobacion, 'status' | 'etapasCompletadas' | 'etapasTotales'>): boolean {
+  return flujo.status === 'active' && flujo.etapasCompletadas < flujo.etapasTotales;
+}
+
+/** Un flujo suspendido por rechazo puede volver al curso. */
+export function admiteReanudacion(flujo: Pick<FlujoAprobacion, 'status'>): boolean {
+  return flujo.status === 'paused';
+}
+
+// ============================================
+// VALIDACION DEL ALTA
+// ============================================
+
+/**
+ * Devuelve el primer motivo por el que el flujo no puede guardarse, o null
+ * si esta completo. Se valida aqui, en el modelo, para que la pantalla y
+ * el servicio compartan exactamente las mismas reglas.
+ */
+export function validarFlujo(p: Partial<FlujoAprobacionPayload>): string | null {
+  if (!p.name?.trim()) {
+    return 'Ponle un nombre al flujo: es como se le reconoce en el listado.';
+  }
+  if (p.name.trim().length < 3) {
+    return 'El nombre necesita al menos tres caracteres.';
+  }
+  if (!p.category) {
+    return 'Elige el tipo de flujo.';
+  }
+  if (!p.etapasTotales || p.etapasTotales < 1) {
+    return 'Un flujo necesita al menos una etapa.';
+  }
+  if (p.etapasTotales > 20) {
+    return 'Veinte etapas es el máximo: por encima de eso conviene partirlo en varios flujos.';
+  }
+  if (!p.etapasPorPeriodo || p.etapasPorPeriodo < 1) {
+    return 'Indica cuántas etapas se resuelven por periodo, al menos una.';
+  }
+  if (p.etapasPorPeriodo > p.etapasTotales) {
+    return 'No se pueden resolver más etapas por periodo que las que tiene el flujo.';
+  }
+  if (p.fechaLimiteCierre && p.fechaLimiteCierre < hoyIso()) {
+    return 'La fecha límite ya pasó.';
+  }
+  return null;
+}
+
+function hoyIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Ajusta la lista de nombres al numero de etapas declarado. */
+export function ajustarNombresEtapas(nombres: string[], total: number): string[] {
+  const salida = nombres.slice(0, total);
+  while (salida.length < total) salida.push('');
+  return salida;
+}
+
+// ============================================
+// RESUMEN DEL CONJUNTO
+// ============================================
+
+export interface ResumenFlujos {
+  total: number;
+  enCurso: number;
+  completados: number;
+  suspendidos: number;
+  anulados: number;
+  /** Etapas aprobadas sobre etapas previstas, en los flujos no anulados. */
+  avanceGlobal: number;
+  /** Flujos que pasaron su fecha limite sin cerrarse. */
+  vencidos: number;
+}
+
+export function resumirFlujos(flujos: FlujoAprobacion[]): ResumenFlujos {
+  const hoy = hoyIso();
+  const vivos = flujos.filter(f => f.status !== 'cancelled');
+
+  const etapasPrevistas = vivos.reduce((s, f) => s + (f.etapasTotales || 0), 0);
+  const etapasHechas    = vivos.reduce((s, f) => s + (f.etapasCompletadas || 0), 0);
+
+  const cuenta = (e: EstadoFlujo) => flujos.filter(f => f.status === e).length;
+
+  return {
+    total: flujos.length,
+    enCurso: cuenta('active'),
+    completados: cuenta('completed'),
+    suspendidos: cuenta('paused'),
+    anulados: cuenta('cancelled'),
+    avanceGlobal: etapasPrevistas > 0
+      ? Math.round((etapasHechas / etapasPrevistas) * 100)
+      : 0,
+    vencidos: flujos.filter(f =>
+      f.status === 'active' &&
+      f.fechaLimiteCierre &&
+      f.fechaLimiteCierre < hoy
+    ).length
+  };
+}

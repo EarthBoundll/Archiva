@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { FirebaseService } from './firebase';
 import { Auth } from './auth';
 import { HistoryService } from './history';
+import { CompanyService } from './company';
 import { log } from '../utils/logger';
 import {
   Documento,
@@ -49,6 +50,7 @@ export class DocumentService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
   private historyService = inject(HistoryService);
+  private company = inject(CompanyService);
 
   private hoy(): string {
     const d = new Date();
@@ -97,9 +99,15 @@ export class DocumentService {
     // dato que deba teclear quien registra el documento.
     const codigo = await this.siguienteCodigo(payload.category, payload.area);
 
+    // El aviso previo por defecto lo fija la empresa en su configuracion.
+    await this.company.cargar();
+    const porDefecto = this.company.diasAlertaPorDefecto();
+
     const alertarDiasAntes = payload.renovacion.frequency === 'variable'
       ? null
-      : (payload.alertarDiasAntes == null || payload.alertarDiasAntes < 1 ? 30 : payload.alertarDiasAntes);
+      : (payload.alertarDiasAntes == null || payload.alertarDiasAntes < 1
+          ? porDefecto
+          : payload.alertarDiasAntes);
 
     const proximasRenovaciones = generarOcurrencias(payload.renovacion, 6);
     const ahora = new Date().toISOString();
@@ -149,6 +157,15 @@ export class DocumentService {
     for (const campo of ['titulo', 'descripcion', 'responsable', 'documentoReferencia',
                          'confidencialidad', 'folios', 'notes', 'area', 'category', 'type'] as const) {
       if (payload[campo] !== undefined) cambios[campo] = payload[campo];
+    }
+
+    // La categoria forma parte del codigo. Cambiarla sin regenerarlo dejaba
+    // un contrato reclasificado como factura conservando el codigo CON-,
+    // es decir, un identificador que miente sobre lo que identifica.
+    const actual = (await this.getAll()).find(d => d.id === documentoId);
+    if (actual && payload.category && payload.category !== actual.category) {
+      cambios['codigo'] = await this.siguienteCodigo(payload.category, payload.area ?? actual.area);
+      cambios['codigoAnterior'] = actual.codigo;
     }
 
     if (payload.renovacion) {
@@ -433,22 +450,47 @@ export class DocumentService {
   /** Correlativo siguiente dentro de la misma categoria y area. */
   private async siguienteCodigo(category: CategoriaDocumental, area: AreaEmisora): Promise<string> {
     const docs = await this.getAll();
-    const mismos = docs.filter(d => d.category === category && d.area === area);
-    return generarCodigo(category, area, mismos.length + 1);
+
+    // El prefijo configurado por la empresa entra en el codigo. Se asegura
+    // de estar cargado: en un arranque en frio la señal aun puede estar
+    // vacia cuando se registra el primer documento.
+    await this.company.cargar();
+    const prefijo = this.company.prefijo();
+
+    // El correlativo cuenta sobre el prefijo que de verdad va a usarse, no
+    // sobre el area: si no, dos areas distintas con el mismo prefijo
+    // generarian el mismo codigo.
+    const raiz = generarCodigo(category, area, 0, prefijo).slice(0, -5);
+    const mismos = docs.filter(d => (d.codigo ?? '').startsWith(raiz + '-'));
+
+    // Se continua desde el mayor correlativo existente, no desde el numero
+    // de documentos: contar deja huecos cuando alguno cambia de categoria.
+    const mayor = mismos.reduce((max, d) => {
+      const n = parseInt((d.codigo ?? '').slice(-4), 10);
+      return Number.isFinite(n) && n > max ? n : max;
+    }, 0);
+
+    return generarCodigo(category, area, mayor + 1, prefijo);
   }
 
+  /**
+   * Deja asiento del movimiento.
+   *
+   * Pasa por HistoryService y no por Firestore directamente: la bitacora
+   * tiene una sola puerta de entrada, y asi el asiento se normaliza igual
+   * venga de donde venga.
+   */
   private async registrarEnBitacora(userId: string, doc: Documento, accion: string): Promise<void> {
     try {
-      await this.firebase.agregarBitacora(userId, {
+      await this.historyService.create({
         documentoId: doc.id,
         codigo: doc.codigo,
         titulo: doc.titulo,
-        accion,
+        accion: accion as any,
         version: doc.version,
         category: doc.category,
         responsable: doc.responsable,
-        date: this.hoy(),
-        time: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+        date: this.hoy()
       });
     } catch (e) {
       // La bitacora no debe impedir la operacion principal.

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { StorageService } from '../../core/services/storage';
 import { CATEGORIAS_DOCUMENTALES, type CategoriaDocumental } from '../../core/models/document.model';
 import { IconComponent } from '../../core/components/icon/icon.component';
+import { DialogoDirective } from '../../core/directives/dialogo.directive';
 
 interface BudgetCategory {
   id: string;
@@ -20,7 +21,7 @@ interface BudgetCategory {
 @Component({
   selector: 'app-almacenamiento',
   standalone: true,
-  imports: [CommonModule, FormsModule, IconComponent],
+  imports: [CommonModule, FormsModule, IconComponent, DialogoDirective],
   templateUrl: './storage.html',
   styleUrl: './storage.scss'
 })

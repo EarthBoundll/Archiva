@@ -177,7 +177,7 @@
   <!-- ===== Modal: alta y edición ===== -->
   @if (modalAbierto()) {
     <div class="overlay" (click)="cerrarModal()">
-      <div class="modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="modal" appDialogo (cerrar)="cerrarModal()" (click)="$event.stopPropagation()">
         <header class="modal__cabecera">
           <h2>{{ editando() ? 'Editar solicitud' : 'Nueva solicitud' }}</h2>
           <button class="btn-cerrar" (click)="cerrarModal()" aria-label="Cerrar">
@@ -280,7 +280,7 @@
   <!-- ===== Modal: tomar ===== -->
   @if (modalTomar(); as t) {
     <div class="overlay" (click)="modalTomar.set(null)">
-      <div class="modal modal--estrecho" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="modal modal--estrecho" appDialogo (cerrar)="modalTomar.set(null)" (click)="$event.stopPropagation()">
         <header class="modal__cabecera">
           <h2>Tomar solicitud</h2>
           <button class="btn-cerrar" (click)="modalTomar.set(null)" aria-label="Cerrar">
@@ -309,7 +309,7 @@
   <!-- ===== Modal: atender ===== -->
   @if (modalAtender(); as a) {
     <div class="overlay" (click)="modalAtender.set(null)">
-      <div class="modal modal--estrecho" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="modal modal--estrecho" appDialogo (cerrar)="modalAtender.set(null)" (click)="$event.stopPropagation()">
         <header class="modal__cabecera">
           <h2>Marcar como atendida</h2>
           <button class="btn-cerrar" (click)="modalAtender.set(null)" aria-label="Cerrar">
@@ -340,7 +340,7 @@
   <!-- ===== Modal: anular ===== -->
   @if (modalAnular(); as n) {
     <div class="overlay" (click)="modalAnular.set(null)">
-      <div class="modal modal--estrecho" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="modal modal--estrecho" appDialogo (cerrar)="modalAnular.set(null)" (click)="$event.stopPropagation()">
         <header class="modal__cabecera">
           <h2>Anular solicitud</h2>
           <button class="btn-cerrar" (click)="modalAnular.set(null)" aria-label="Cerrar">

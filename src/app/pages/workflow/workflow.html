@@ -1,241 +1,291 @@
 <div class="page">
 
-  <header class="header">
-    <a routerLink="/dashboard" class="btn-back">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="15 18 9 12 15 6"/>
-      </svg>
-      Volver
-    </a>
-    <h1>Detalle del Flujo</h1>
-    <span></span>
-  </header>
+  <a class="volver" routerLink="/flujos">
+    <app-icon name="arrow-right" [size]="16" />
+    Todos los flujos
+  </a>
 
-  @if (isLoading()) {
-    <div class="loading"><div class="spinner-lg"></div></div>
-  }
-
-  @if (!isLoading() && goal()) {
-  <main class="main">
-
-    @if (successMsg()) {
-      <div class="toast">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-        {{ successMsg() }}
+  @if (cargando()) {
+    <div class="cargando">
+      <div class="skeleton skeleton--alto"></div>
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+    </div>
+  } @else if (error()) {
+    <div class="aviso aviso--error" role="alert">
+      <app-icon name="shield-alert" [size]="20" />
+      <div>
+        <p>{{ error() }}</p>
+        <a class="btn" routerLink="/flujos">Volver al listado</a>
       </div>
+    </div>
+  } @else if (flujo(); as f) {
+
+    <!-- Cabecera -->
+    <header class="cabecera">
+      <div class="cabecera__texto">
+        <div class="cabecera__meta">
+          <span class="estado" [style.color]="estados[f.status].token">
+            <app-icon [name]="estados[f.status].icon" [size]="14" />
+            {{ estados[f.status].label }}
+          </span>
+          <span>{{ tipos[f.category].name }}</span>
+          <span [style.color]="prioridades[f.priority].color">
+            Prioridad {{ prioridades[f.priority].label.toLowerCase() }}
+          </span>
+        </div>
+        <h1>{{ f.name }}</h1>
+        @if (f.description) { <p class="cabecera__desc">{{ f.description }}</p> }
+      </div>
+
+      <div class="anillo" role="img"
+           [attr.aria-label]="'Avance del ' + avance() + ' por ciento'">
+        <svg viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.9" fill="none"
+                  stroke="var(--color-surface-elevated)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15.9" fill="none"
+                  [attr.stroke]="estados[f.status].token" stroke-width="3"
+                  [attr.stroke-dasharray]="arco" stroke-linecap="round"
+                  transform="rotate(-90 18 18)"/>
+        </svg>
+        <span class="anillo__pct">{{ avance() }}%</span>
+      </div>
+    </header>
+
+    <!-- Cifras -->
+    <section class="cifras">
+      <div class="cifra">
+        <span class="cifra__k">Etapas aprobadas</span>
+        <span class="cifra__v">{{ f.etapasCompletadas }} <small>de {{ f.etapasTotales }}</small></span>
+      </div>
+      <div class="cifra">
+        <span class="cifra__k">Ritmo previsto</span>
+        <span class="cifra__v">{{ f.etapasPorPeriodo }} <small>por periodo</small></span>
+      </div>
+      <div class="cifra">
+        <span class="cifra__k">Cierre estimado</span>
+        <span class="cifra__v cifra__v--texto">{{ cierreEstimado() }}</span>
+      </div>
+      @if (f.fechaLimiteCierre) {
+        <div class="cifra">
+          <span class="cifra__k">Fecha límite</span>
+          <span class="cifra__v cifra__v--texto" [class.cifra__v--alerta]="vencido()">
+            {{ fechaLarga(f.fechaLimiteCierre) }}
+          </span>
+        </div>
+      }
+    </section>
+
+    <!-- Acción sobre la etapa en curso -->
+    @if (puedeResolver() && siguiente(); as sig) {
+      <section class="turno">
+        <div class="turno__texto">
+          <span class="turno__k">Etapa en curso</span>
+          <h2>{{ sig.nombre }}</h2>
+          <p>Etapa {{ sig.orden }} de {{ f.etapasTotales }}. Nadie puede resolver la siguiente antes que esta.</p>
+        </div>
+        <button class="btn btn--primary" (click)="abrirResolver()">
+          <app-icon name="stamp" [size]="16" />
+          Resolver etapa
+        </button>
+      </section>
+    } @else if (puedeReanudar()) {
+      <section class="turno turno--suspendido">
+        <div class="turno__texto">
+          <span class="turno__k">Flujo suspendido</span>
+          <h2>Un aprobador rechazó la etapa {{ f.etapasCompletadas + 1 }}</h2>
+          <p>Revisa el motivo en el historial. Reanudar devuelve el flujo al curso sin borrar lo registrado.</p>
+        </div>
+        <button class="btn btn--primary" (click)="reanudar()">
+          <app-icon name="repeat" [size]="16" />
+          Reanudar flujo
+        </button>
+      </section>
+    } @else if (f.status === 'completed') {
+      <section class="turno turno--completo">
+        <div class="turno__texto">
+          <span class="turno__k">Flujo completado</span>
+          <h2>Las {{ f.etapasTotales }} etapas quedaron aprobadas</h2>
+          <p>El expediente conserva quién resolvió cada una y cuándo.</p>
+        </div>
+      </section>
+    } @else if (f.status === 'cancelled') {
+      <section class="turno turno--anulado">
+        <div class="turno__texto">
+          <span class="turno__k">Flujo anulado</span>
+          <h2>Retirado del seguimiento</h2>
+          <p>{{ f.motivoAnulacion || 'Sin motivo registrado.' }}</p>
+        </div>
+      </section>
     }
 
-    <section class="hero">
-      <div class="hero__cifras">
-        <div>
-          <p class="hero__current">{{ goal()!.etapasCompletadas }}</p>
-          <p class="hero__label">etapas completadas</p>
-        </div>
-        <div class="hero__right">
-          <p class="hero__target">{{ goal()!.etapasTotales }}</p>
-          <p class="hero__label">etapas en total</p>
-        </div>
-      </div>
-
-      <div class="progress-track">
-        <div class="progress-fill" [style.width.%]="progress"></div>
-        @for (m of milestonesWithStatus; track m.label) {
-          <div
-            class="milestone-marker"
-            [style.left.%]="m.fraccion * 100"
-            [class.reached]="m.reached"
-            [title]="m.label">
-          </div>
-        }
-      </div>
-
-      <div class="hero__pct">{{ progress.toFixed(1) }}% completado</div>
-      <p class="hero__remaining">
-        Faltan <strong>{{ (goal()!.etapasTotales - goal()!.etapasCompletadas) }}</strong> etapas para cerrar el flujo
-      </p>
-    </section>
-
-    <section class="stats">
-      <div class="stat-card">
-        <span class="stat-card__icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-            <line x1="16" y1="2" x2="16" y2="6"/>
-            <line x1="8" y1="2" x2="8" y2="6"/>
-            <line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-        </span>
-        <span class="stat-card__value">{{ formatMonth(goal()!.periodosParaCierre ?? 0) }}</span>
-        <span class="stat-card__label">tiempo estimado</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-card__icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
-            <polyline points="9 14 12 17 15 14"/>
-            <line x1="12" y1="12" x2="12" y2="17"/>
-          </svg>
-        </span>
-        <span class="stat-card__value">{{ estimatedDate }}</span>
-        <span class="stat-card__label">fecha estimada</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-card__icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-          </svg>
-        </span>
-        <span class="stat-card__value">{{ goal()!.etapasPorPeriodo }}</span>
-        <span class="stat-card__label">etapas por periodo</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-card__icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-            <polyline points="7.5 4.21 12 6.81 16.5 4.21"/>
-            <polyline points="7.5 19.79 7.5 14.6 3 12"/>
-            <polyline points="21 12 16.5 14.6 16.5 19.79"/>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-            <line x1="12" y1="22.08" x2="12" y2="12"/>
-          </svg>
-        </span>
-        <span class="stat-card__value">{{ documentosEnFlujo }}</span>
-        <span class="stat-card__label">documentos este mes</span>
-      </div>
-    </section>
-
-    <section class="section">
-      <h2 class="section__title">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
-          <line x1="4" y1="22" x2="4" y2="15"/>
-        </svg>
-        Hitos
-      </h2>
-      <div class="milestones">
-        @for (m of milestonesWithStatus; track m.label) {
-          <div class="milestone" [class.reached]="m.reached">
-            <span class="milestone__icon">
-              @if (m.reached) {
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
+    <!-- Recorrido por etapas -->
+    <section class="bloque">
+      <h2 class="bloque__titulo">Recorrido</h2>
+      <ol class="recorrido">
+        @for (e of recorrido(); track e.orden) {
+          <li class="etapa" [class]="'etapa--' + e.estado">
+            <div class="etapa__marca" aria-hidden="true">
+              @if (e.estado === 'aprobada') {
+                <app-icon name="check" [size]="14" />
               } @else {
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                </svg>
+                <span>{{ e.orden }}</span>
               }
-            </span>
-            <span class="milestone__label">{{ m.label }}</span>
-            @if (m.reached) {
-              <span class="milestone__badge">Logrado</span>
-            }
-          </div>
-        }
-      </div>
-    </section>
-
-    <section class="section">
-      <h2 class="section__title">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 3v18h18"/>
-          <path d="m19 9-5 5-4-4-3 3"/>
-        </svg>
-        Escenarios de archivo
-      </h2>
-      <div class="scenarios">
-        @for (s of scenarios; track s.label) {
-          <div class="scenario" [class.active]="s.contribution === goal()!.etapasPorPeriodo">
-            <div class="scenario__left">
-              <span class="scenario__label">{{ s.label }}</span>
-              <span class="scenario__contribution">{{ s.contribution }} etapas/mes</span>
             </div>
-            <span class="scenario__months">{{ formatMonth(s.months) }}</span>
-          </div>
+
+            <div class="etapa__cuerpo">
+              <div class="etapa__cabecera">
+                <h3>{{ e.nombre }}</h3>
+                <span class="etapa__estado">
+                  @switch (e.estado) {
+                    @case ('aprobada')   { Aprobada }
+                    @case ('actual')     { En curso }
+                    @case ('suspendida') { Rechazada }
+                    @default             { Pendiente }
+                  }
+                </span>
+              </div>
+
+              @if (e.resoluciones.length > 0) {
+                <ul class="resoluciones">
+                  @for (r of e.resoluciones; track r.id) {
+                    <li class="resolucion">
+                      <span class="resolucion__tipo" [style.color]="resultados[r.resultado].token">
+                        <app-icon [name]="resultados[r.resultado].icon" [size]="13" />
+                        {{ resultados[r.resultado].label }}
+                      </span>
+                      <span class="resolucion__quien">{{ r.aprobador }}</span>
+                      <span class="resolucion__cuando">{{ fechaHora(r.date) }}</span>
+                      @if (r.observacion) {
+                        <p class="resolucion__nota">{{ r.observacion }}</p>
+                      }
+                    </li>
+                  }
+                </ul>
+              } @else if (e.estado === 'pendiente') {
+                <p class="etapa__vacia">Aún no le toca.</p>
+              }
+            </div>
+          </li>
         }
-      </div>
+      </ol>
     </section>
 
-    <section class="section">
-      <h2 class="section__title">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-          <circle cx="12" cy="12" r="3"/>
-        </svg>
-        Ajustar parámetros
+    <!-- Historial de aprobaciones -->
+    <section class="bloque">
+      <h2 class="bloque__titulo">
+        Historial de aprobaciones
+        <span class="bloque__n">{{ historial().length }}</span>
       </h2>
-      <div class="edit-cards">
 
-        <div class="edit-card">
-          <div class="edit-card__info">
-            <span class="edit-card__label">Etapas por periodo</span>
-            <span class="edit-card__value">{{ goal()!.etapasPorPeriodo }}</span>
-          </div>
-          <button class="btn-edit" (click)="showEditContribution.set(!showEditContribution())">
-            {{ showEditContribution() ? 'Cancelar' : 'Editar' }}
-          </button>
+      @if (historial().length > 0) {
+        <div class="marco">
+          <table class="tabla">
+            <caption class="sr-only">Resoluciones registradas sobre este flujo</caption>
+            <thead>
+              <tr>
+                <th scope="col">Etapa</th>
+                <th scope="col">Resultado</th>
+                <th scope="col">Resolvió</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Observación</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of historial(); track r.id) {
+                <tr>
+                  <td><span class="td-orden">{{ r.orden }}</span> {{ r.nombre }}</td>
+                  <td>
+                    <span class="td-resultado" [style.color]="resultados[r.resultado].token">
+                      {{ resultados[r.resultado].label }}
+                    </span>
+                  </td>
+                  <td>{{ r.aprobador }}</td>
+                  <td class="td-fecha">{{ fechaHora(r.date) }}</td>
+                  <td class="td-nota">{{ r.observacion || '—' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
         </div>
-
-        @if (showEditContribution()) {
-          <div class="edit-form">
-            <input
-              type="number"
-              class="form-input"
-              [(ngModel)]="newContribution"
-              placeholder="240"
-              min="1"
-            />
-            @if (errorMsg()) { <p class="error">{{ errorMsg() }}</p> }
-            <button class="btn-primary" (click)="saveContribution()" [disabled]="isSaving()">
-              @if (isSaving()) { <span class="spinner"></span> } @else { Guardar y recalcular }
-            </button>
-          </div>
-        }
-
-        <div class="edit-card">
-          <div class="edit-card__info">
-            <span class="edit-card__label">Etapas totales</span>
-            <span class="edit-card__value">{{ goal()!.etapasTotales }}</span>
-          </div>
-          <button class="btn-edit" (click)="showEditTarget.set(!showEditTarget())">
-            {{ showEditTarget() ? 'Cancelar' : 'Editar' }}
-          </button>
-        </div>
-
-        @if (showEditTarget()) {
-          <div class="edit-form">
-            <input
-              type="number"
-              class="form-input"
-              [(ngModel)]="newTarget"
-              placeholder="10000"
-              min="1"
-            />
-            @if (errorMsg()) { <p class="error">{{ errorMsg() }}</p> }
-            <button class="btn-primary" (click)="saveTarget()" [disabled]="isSaving()">
-              @if (isSaving()) { <span class="spinner"></span> } @else { Guardar }
-            </button>
-          </div>
-        }
-
-      </div>
+      } @else {
+        <p class="bloque__vacio">Todavía no se ha resuelto ninguna etapa.</p>
+      }
     </section>
 
-  </main>
+    @if (f.notes) {
+      <section class="bloque">
+        <h2 class="bloque__titulo">Notas</h2>
+        <p class="bloque__nota">{{ f.notes }}</p>
+      </section>
+    }
   }
-
-  @if (!isLoading() && !goal()) {
-    <div class="empty">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <circle cx="12" cy="12" r="6"/>
-        <circle cx="12" cy="12" r="2"/>
-      </svg>
-      <p>No hay ningún flujo de aprobación en curso.</p>
-      <p class="empty__sub">Recarga la pagina — el sistema la crea automaticamente.</p>
-    </div>
-  }
-
 </div>
+
+<!-- ============ RESOLVER ETAPA ============ -->
+@if (modalResolver() && siguiente(); as sig) {
+  <div class="overlay" (click)="cerrarResolver()">
+    <div class="modal" appDialogo (cerrar)="cerrarResolver()"
+         aria-labelledby="titulo-resolver" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-resolver">Resolver: {{ sig.nombre }}</h3>
+        <button class="btn-cerrar" (click)="cerrarResolver()" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        <div class="campo-form">
+          <label for="re-aprobador">Quién resuelve</label>
+          <input id="re-aprobador" type="text" [value]="fAprobador()"
+                 (input)="fAprobador.set($any($event.target).value)"
+                 placeholder="Nombre y apellidos">
+        </div>
+
+        <fieldset class="opciones">
+          <legend>Resultado</legend>
+          @for (r of listaResultados; track r.value) {
+            <label class="opcion" [class.opcion--elegida]="fResultado() === r.value">
+              <input type="radio" name="resultado" [value]="r.value"
+                     [checked]="fResultado() === r.value"
+                     (change)="fResultado.set(r.value)">
+              <span class="opcion__marca" [style.color]="r.token">
+                <app-icon [name]="r.icon" [size]="16" />
+              </span>
+              <span class="opcion__texto">
+                <strong>{{ r.label }}</strong>
+                <small>{{ r.efecto }}</small>
+              </span>
+            </label>
+          }
+        </fieldset>
+
+        <div class="campo-form">
+          <label for="re-obs">
+            {{ fResultado() === 'aprobada' ? 'Comentario' : 'Motivo' }}
+            @if (!exigeMotivo) { <span class="opcional">opcional</span> }
+          </label>
+          <textarea id="re-obs" rows="3" [value]="fObservacion()"
+                    (input)="fObservacion.set($any($event.target).value)"
+                    [placeholder]="fResultado() === 'observada'
+                      ? 'Qué hay que corregir para volver a presentarla'
+                      : (fResultado() === 'rechazada'
+                          ? 'Por qué no procede'
+                          : 'Cualquier constancia adicional')"></textarea>
+        </div>
+
+        @if (errorForm()) {
+          <p class="error-form" role="alert">{{ errorForm() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="cerrarResolver()">Cancelar</button>
+        <button class="btn btn--primary" (click)="resolver()" [disabled]="resolviendo()">
+          {{ resolviendo() ? 'Registrando…' : 'Registrar resolución' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

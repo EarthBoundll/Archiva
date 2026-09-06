@@ -60,8 +60,9 @@ function ratio(a: string, b: string): number {
 
 const OBLIGATORIOS = [
   'color-text', 'color-text-secondary', 'color-text-muted',
-  'color-surface', 'color-bg', 'color-primary',
-  'color-success', 'color-warning', 'color-error', 'color-accent'
+  'color-surface', 'color-bg', 'color-primary', 'color-primary-light',
+  'color-success', 'color-warning', 'color-error', 'color-accent',
+  'color-sobre-primario', 'color-sobre-error'
 ];
 
 const ESTADOS = [
@@ -99,6 +100,24 @@ describe('Design system · contraste', () => {
           .toBeGreaterThanOrEqual(minimo);
       });
     }
+
+
+    it('el texto sobre los botones se lee en reposo y al pasar el ratón', () => {
+      // Este par era el hueco de la bateria: se median diez combinaciones y
+      // ninguna comprobaba el color que llevan encima los botones de accion.
+      // En tema oscuro el blanco daba 3,62:1 en reposo y 2,44:1 en hover.
+      const casos: [string, string, string][] = [
+        ['color-sobre-primario', 'color-primary',       'texto sobre botón primario'],
+        ['color-sobre-primario', 'color-primary-light', 'texto sobre botón primario, hover'],
+        ['color-sobre-error',    'color-error',         'texto sobre botón destructivo']
+      ];
+
+      for (const [fg, bg, nombre] of casos) {
+        const v = ratio(tokens[fg], tokens[bg]);
+        expect(v, nombre + ': ' + tokens[fg] + ' sobre ' + tokens[bg] + ' da ' + v.toFixed(2) + ':1')
+          .toBeGreaterThanOrEqual(4.5);
+      }
+    });
 
     it('los ocho estados documentales se distinguen entre si', () => {
       for (const e of ESTADOS) {
@@ -138,6 +157,24 @@ describe('Design system · contraste', () => {
           .toBeGreaterThanOrEqual(minimo);
       });
     }
+
+
+    it('el texto sobre los botones se lee en reposo y al pasar el ratón', () => {
+      // Este par era el hueco de la bateria: se median diez combinaciones y
+      // ninguna comprobaba el color que llevan encima los botones de accion.
+      // En tema oscuro el blanco daba 3,62:1 en reposo y 2,44:1 en hover.
+      const casos: [string, string, string][] = [
+        ['color-sobre-primario', 'color-primary',       'texto sobre botón primario'],
+        ['color-sobre-primario', 'color-primary-light', 'texto sobre botón primario, hover'],
+        ['color-sobre-error',    'color-error',         'texto sobre botón destructivo']
+      ];
+
+      for (const [fg, bg, nombre] of casos) {
+        const v = ratio(tokensOscuros[fg], tokensOscuros[bg]);
+        expect(v, nombre + ': ' + tokensOscuros[fg] + ' sobre ' + tokensOscuros[bg] + ' da ' + v.toFixed(2) + ':1')
+          .toBeGreaterThanOrEqual(4.5);
+      }
+    });
 
     it('los ocho estados tambien se distinguen en oscuro', () => {
       for (const e of ESTADOS) {

@@ -97,7 +97,7 @@ button {
 
 .btn-primary {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
-  color: white;
+  color: var(--color-sobre-primario);
   box-shadow: var(--shadow-md);
   
   &:hover:not(:disabled) {

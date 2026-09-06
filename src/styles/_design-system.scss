@@ -30,6 +30,13 @@
   --color-success: #2D7D5A;
   --color-warning: #B8791F;
   --color-error: #A3342B;
+
+  // Texto que va ENCIMA de un fondo primario o de error. No es un blanco
+  // fijo: en tema oscuro el primario es claro, y el blanco sobre el daba
+  // 3,62:1 —por debajo del 4,5:1 que WCAG pide para texto normal— y 2,44:1
+  // al pasar el raton. Aqui el par se resuelve por tema.
+  --color-sobre-primario: #FFFFFF;
+  --color-sobre-error:    #FFFFFF;
   
   // Borders
   --color-border: rgba(31, 73, 89, 0.16);
@@ -183,6 +190,11 @@
   --color-success:           #4CAF83;
   --color-warning:           #D9A441;
   --color-error:             #E0736A;
+
+  // Sobre un primario claro, tinta oscura: 5,01:1 en reposo y 7,42:1 en
+  // hover, frente al 3,62:1 y 2,44:1 que daba el blanco.
+  --color-sobre-primario:    #10171A;
+  --color-sobre-error:       #10171A;
 
   --color-border:            rgba(232, 237, 239, 0.14);
   --color-border-hover:      rgba(232, 237, 239, 0.30);

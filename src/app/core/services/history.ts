@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { FirebaseService } from './firebase';
 import { Auth } from './auth';
+import { log } from '../utils/logger';
 import {
   RegistroHistorial,
   RegistroHistorialPayload,
@@ -25,8 +26,9 @@ export class HistoryService {
     const userId = this.authService.getUserId();
     if (!userId) return [];
 
+    await this.asegurarUnificada(userId);
     const data = await this.firebase.getHistorialPorPeriodo(userId, year, month);
-    return (data as any[]).map(r => this.normalizar(r));
+    return (data as any[]).filter(r => !r.anulado).map(r => this.normalizar(r));
   }
 
   /** Bitacora completa, para la vista de auditoria. */
@@ -34,8 +36,12 @@ export class HistoryService {
     const userId = this.authService.getUserId();
     if (!userId) return [];
 
+    await this.asegurarUnificada(userId);
     const data = await this.firebase.getBitacora(userId);
     return (data as any[])
+      // Un asiento retirado sigue en la coleccion como evidencia, pero no
+      // cuenta en la bitacora que se lee.
+      .filter(r => !r.anulado)
       .map(r => this.normalizar(r))
       .sort((a, b) => (b.date + (b.time ?? '')).localeCompare(a.date + (a.time ?? '')));
   }
@@ -116,6 +122,30 @@ export class HistoryService {
   // ============================================
   // INTERNO
   // ============================================
+
+  /** Promesa compartida: varias pantallas piden la bitacora a la vez. */
+  private migracion: Promise<void> | null = null;
+
+  /**
+   * Traslada, la primera vez, los asientos que quedaron en la estructura
+   * por periodos. Es idempotente y deja marca en el perfil, asi que en los
+   * arranques siguientes no cuesta nada.
+   */
+  private async asegurarUnificada(userId: string): Promise<void> {
+    if (this.migracion) return this.migracion;
+
+    this.migracion = (async () => {
+      try {
+        const movidos = await this.firebase.migrarHistorialAntiguo(userId);
+        if (movidos > 0) log.debug('[Bitacora] asientos trasladados: ' + movidos);
+      } catch (e) {
+        // Si la migracion falla, la bitacora nueva sigue siendo legible.
+        log.warn('[Bitacora] no se pudo unificar el historial antiguo:', e);
+      }
+    })();
+
+    return this.migracion;
+  }
 
   /** Rellena los registros antiguos que no tienen la forma nueva. */
   private normalizar(r: any): RegistroHistorial {

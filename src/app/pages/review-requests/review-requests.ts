@@ -20,13 +20,14 @@ import {
   esTipoPrioritario
 } from '../../core/models/review-request.model';
 import { Documento } from '../../core/models/document.model';
+import { DialogoDirective } from '../../core/directives/dialogo.directive';
 
 type Filtro = EstadoSolicitud | 'todas' | 'prioritarias';
 
 @Component({
   selector: 'app-review-requests',
   standalone: true,
-  imports: [CommonModule, FormsModule, IconComponent],
+  imports: [CommonModule, FormsModule, IconComponent, DialogoDirective],
   templateUrl: './review-requests.html',
   styleUrl: './review-requests.scss'
 })

@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { OnboardingService } from '../../core/services/onboarding';
-import { sugerirPrefijo as sugerirPrefijoDeArea, esPrefijoValido } from '../../core/models/onboarding.model';
+import { esPrefijoValido, sugerirPrefijo as sugerirPrefijoDeArea } from '../../core/models/company.model';
 
 @Component({
   selector: 'app-onboarding',
@@ -180,7 +180,7 @@ import { sugerirPrefijo as sugerirPrefijoDeArea, esPrefijoValido } from '../../c
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
+        color: var(--color-sobre-primario);
         box-shadow: 0 8px 32px color-mix(in srgb, var(--color-primary) 40%, transparent);
       }
     }
@@ -224,7 +224,7 @@ import { sugerirPrefijo as sugerirPrefijoDeArea, esPrefijoValido } from '../../c
       font-weight: var(--font-semibold);
       border-radius: var(--radius-lg);
       background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
-      color: white;
+      color: var(--color-sobre-primario);
       border: none;
       cursor: pointer;
       box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary) 40%, transparent);
@@ -269,7 +269,7 @@ import { sugerirPrefijo as sugerirPrefijoDeArea, esPrefijoValido } from '../../c
       &.selected {
         background: var(--color-primary);
         border-color: var(--color-primary);
-        color: white;
+        color: var(--color-sobre-primario);
         box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 40%, transparent);
       }
     }
@@ -341,9 +341,8 @@ export class OnboardingComponent {
 
     try {
       await this.onboarding.guardarConfiguracionEmpresa({
-        responsable:         this.fullName.trim(),
+        responsableArchivo:  this.fullName.trim(),
         razonSocial:         this.razonSocial.trim(),
-        areaArchivo:         this.areaArchivo.trim(),
         prefijoCodificacion: this.prefijoCodificacion.trim().toUpperCase()
       });
       await this.router.navigate(['/dashboard'], { replaceUrl: true });

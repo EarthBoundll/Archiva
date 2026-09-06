@@ -18,13 +18,14 @@ import {
   AREAS_EMISORAS,
   NIVELES_CONFIDENCIALIDAD
 } from '../../core/models/document.model';
+import { DialogoDirective } from '../../core/directives/dialogo.directive';
 
 type FiltroEstado = EstadoDocumental | 'todos' | 'por_vencer';
 
 @Component({
   selector: 'app-documents',
   standalone: true,
-  imports: [CommonModule, FormsModule, IconComponent],
+  imports: [CommonModule, FormsModule, IconComponent, DialogoDirective],
   templateUrl: './documents.html',
   styleUrl: './documents.scss'
 })

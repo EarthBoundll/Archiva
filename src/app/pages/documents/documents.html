@@ -164,7 +164,7 @@
   <!-- ===== Modal: alta y edición ===== -->
   @if (modalAbierto()) {
     <div class="overlay" (click)="cerrarModal()">
-      <div class="modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="modal" appDialogo (cerrar)="cerrarModal()" (click)="$event.stopPropagation()">
         <header class="modal__cabecera">
           <h2>{{ editando() ? 'Editar documento' : 'Nuevo documento' }}</h2>
           <button class="btn-cerrar" (click)="cerrarModal()" aria-label="Cerrar">
@@ -324,7 +324,7 @@
   <!-- ===== Modal: cambio de estado ===== -->
   @if (modalEstado(); as m) {
     <div class="overlay" (click)="modalEstado.set(null)">
-      <div class="modal modal--estrecho" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="modal modal--estrecho" appDialogo (cerrar)="modalEstado.set(null)" (click)="$event.stopPropagation()">
         <header class="modal__cabecera">
           <h2>{{ estados[m.destino].label }}</h2>
           <button class="btn-cerrar" (click)="modalEstado.set(null)" aria-label="Cerrar">
@@ -365,7 +365,7 @@
   <!-- ===== Modal: archivos adjuntos ===== -->
   @if (modalArchivos(); as ma) {
     <div class="overlay" (click)="modalArchivos.set(null)">
-      <div class="modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="modal" appDialogo (cerrar)="modalArchivos.set(null)" (click)="$event.stopPropagation()">
         <header class="modal__cabecera">
           <h2>Archivos del documento</h2>
           <button class="btn-cerrar" (click)="modalArchivos.set(null)" aria-label="Cerrar">
@@ -439,7 +439,7 @@
   <!-- ===== Modal: nueva versión ===== -->
   @if (modalVersion(); as v) {
     <div class="overlay" (click)="modalVersion.set(null)">
-      <div class="modal modal--estrecho" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="modal modal--estrecho" appDialogo (cerrar)="modalVersion.set(null)" (click)="$event.stopPropagation()">
         <header class="modal__cabecera">
           <h2>Nueva versión</h2>
           <button class="btn-cerrar" (click)="modalVersion.set(null)" aria-label="Cerrar">

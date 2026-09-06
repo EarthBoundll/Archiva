@@ -97,7 +97,7 @@
 
 @if (showModal()) {
   <div class="overlay" (click)="closeModal()">
-    <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal" appDialogo (cerrar)="closeModal()" (click)="$event.stopPropagation()">
       <div class="modal__header">
         <h3>{{ editingCategory() ? 'Editar cuota' : 'Nueva cuota' }}</h3>
         <button class="modal__close" (click)="closeModal()" aria-label="Cerrar">

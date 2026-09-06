@@ -1,0 +1,316 @@
+<div class="page">
+
+  <header class="page-header">
+    <div>
+      <h1>Flujos de Aprobación</h1>
+      <p class="page-subtitle">Recorrido por etapas de cada documento que necesita conformidad</p>
+    </div>
+    <button class="btn btn--primary" (click)="nuevo()">
+      <app-icon name="file-plus" [size]="16" />
+      Nuevo flujo
+    </button>
+  </header>
+
+  @if (error()) {
+    <div class="aviso aviso--error" role="alert">
+      <app-icon name="shield-alert" [size]="20" />
+      <p>{{ error() }}</p>
+    </div>
+  }
+
+  @if (cargando()) {
+    <div class="cargando">
+      <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+    </div>
+  } @else {
+
+    <!-- Resumen -->
+    @if (resumen(); as r) {
+      <section class="resumen">
+        <div class="resumen__item">
+          <span class="resumen__label">En curso</span>
+          <span class="resumen__valor">{{ r.enCurso }}</span>
+          <span class="resumen__pie">de {{ r.total }} flujos</span>
+        </div>
+        <div class="resumen__item">
+          <span class="resumen__label">Avance global</span>
+          <span class="resumen__valor resumen__valor--ok">{{ r.avanceGlobal }}%</span>
+          <span class="resumen__pie">etapas aprobadas</span>
+        </div>
+        <div class="resumen__item">
+          <span class="resumen__label">Suspendidos</span>
+          <span class="resumen__valor" [class.resumen__valor--alerta]="r.suspendidos > 0">
+            {{ r.suspendidos }}
+          </span>
+          <span class="resumen__pie">tras un rechazo</span>
+        </div>
+        <div class="resumen__item">
+          <span class="resumen__label">Fuera de plazo</span>
+          <span class="resumen__valor" [class.resumen__valor--aviso]="r.vencidos > 0">
+            {{ r.vencidos }}
+          </span>
+          <span class="resumen__pie">pasaron su fecha límite</span>
+        </div>
+      </section>
+    }
+
+    <!-- Filtros -->
+    @if (flujos().length > 0) {
+      <div class="filtros">
+        <div class="filtros__estados" role="group" aria-label="Filtrar por estado">
+          @for (e of listaEstados; track e.value) {
+            @if (conteoPorEstado()[e.value] > 0) {
+              <button class="pill" [class.pill--activa]="filtro() === e.value"
+                      [attr.aria-pressed]="filtro() === e.value"
+                      (click)="alternarFiltro(e.value)">
+                <span class="punto" [style.background]="e.token"></span>
+                {{ e.label }}
+                <span class="pill__n">{{ conteoPorEstado()[e.value] }}</span>
+              </button>
+            }
+          }
+        </div>
+
+        <label class="campo campo--busqueda">
+          <span class="sr-only">Buscar flujo</span>
+          <app-icon name="search" [size]="16" />
+          <input type="search" placeholder="Buscar por nombre o tipo…"
+                 [value]="busqueda()" (input)="busqueda.set($any($event.target).value)">
+        </label>
+      </div>
+    }
+
+    <!-- Listado -->
+    @if (visibles().length > 0) {
+      <ul class="lista">
+        @for (f of visibles(); track f.id) {
+          <li class="flujo" [class.flujo--atencion]="vencido(f) || f.status === 'paused'">
+
+            <div class="flujo__icono" [style.color]="estados[f.status].token">
+              <app-icon [name]="tipos[f.category].icon" [size]="20" />
+            </div>
+
+            <div class="flujo__cuerpo">
+              <div class="flujo__cabecera">
+                <span class="flujo__estado" [style.color]="estados[f.status].token">
+                  {{ estados[f.status].label }}
+                </span>
+                <span class="flujo__tipo">{{ tipos[f.category].name }}</span>
+                <span class="flujo__prioridad" [style.color]="prioridades[f.priority].color">
+                  Prioridad {{ prioridades[f.priority].label.toLowerCase() }}
+                </span>
+              </div>
+
+              <h2 class="flujo__titulo">
+                <a [routerLink]="['/flujos', f.id]">{{ f.name }}</a>
+              </h2>
+
+              @if (f.description) {
+                <p class="flujo__descripcion">{{ f.description }}</p>
+              }
+
+              <div class="flujo__barra">
+                <div class="flujo__barra-relleno"
+                     [style.width.%]="avance(f)"
+                     [style.background]="estados[f.status].token"></div>
+              </div>
+
+              <div class="flujo__meta">
+                <span>
+                  <strong>{{ f.etapasCompletadas }}</strong> de {{ f.etapasTotales }} etapas
+                  · {{ avance(f) }}%
+                </span>
+                @if (siguiente(f); as sig) {
+                  <span class="flujo__siguiente">Toca: {{ sig }}</span>
+                }
+                @if (f.fechaLimiteCierre) {
+                  <span [class.flujo__vencido]="vencido(f)">
+                    Límite {{ fechaCorta(f.fechaLimiteCierre) }}
+                  </span>
+                }
+                @if (f.status === 'active' && !f.fechaLimiteCierre) {
+                  <span>Cierre estimado: {{ cierreEstimado(f) }}</span>
+                }
+              </div>
+
+              @if (f.status === 'cancelled' && f.motivoAnulacion) {
+                <p class="flujo__motivo">Anulado: {{ f.motivoAnulacion }}</p>
+              }
+            </div>
+
+            <div class="flujo__acciones">
+              <a class="btn-accion" [routerLink]="['/flujos', f.id]">Ver etapas</a>
+              @if (f.status !== 'cancelled') {
+                <button class="btn-accion" (click)="editar(f)">Editar</button>
+              }
+              @if (f.status === 'paused') {
+                <button class="btn-accion btn-accion--destacada" (click)="reanudar(f)">Reanudar</button>
+              }
+              @if (f.status !== 'cancelled') {
+                <button class="btn-accion btn-accion--peligro" (click)="pedirAnular(f)">Anular</button>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    } @else if (flujos().length > 0) {
+      <div class="vacio">
+        <app-icon name="search" [size]="40" />
+        <p>Ningún flujo coincide con el filtro.</p>
+        <button class="btn" (click)="filtro.set(null); busqueda.set('')">Ver todos</button>
+      </div>
+    } @else {
+      <div class="vacio">
+        <app-icon name="git-branch" [size]="48" />
+        <h2>Todavía no hay flujos de aprobación</h2>
+        <p>
+          Un flujo describe el recorrido que hace un documento hasta quedar conforme:
+          cuántas etapas tiene, quién resuelve cada una y a qué ritmo avanzan.
+        </p>
+        <button class="btn btn--primary" (click)="nuevo()">Crear el primero</button>
+      </div>
+    }
+  }
+</div>
+
+<!-- ============ ALTA Y EDICIÓN ============ -->
+@if (modalAbierto()) {
+  <div class="overlay" (click)="cerrarModal()">
+    <div class="modal" appDialogo (cerrar)="cerrarModal()"
+         aria-labelledby="titulo-flujo" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-flujo">{{ editando() ? 'Editar flujo' : 'Nuevo flujo de aprobación' }}</h3>
+        <button class="btn-cerrar" (click)="cerrarModal()" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+
+        <div class="campo-form">
+          <label for="fl-nombre">Nombre del flujo</label>
+          <input id="fl-nombre" type="text" [value]="fNombre()"
+                 (input)="fNombre.set($any($event.target).value)"
+                 placeholder="ej. Aprobación del contrato de mantenimiento">
+        </div>
+
+        <div class="campo-form">
+          <label for="fl-tipo">Tipo</label>
+          <select id="fl-tipo" [value]="fTipo()" (change)="fTipo.set($any($event.target).value)">
+            @for (t of listaTipos; track t.value) {
+              <option [value]="t.value">{{ t.name }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="campo-form">
+          <label for="fl-desc">Descripción <span class="opcional">opcional</span></label>
+          <textarea id="fl-desc" rows="2" [value]="fDescripcion()"
+                    (input)="fDescripcion.set($any($event.target).value)"
+                    placeholder="Qué se aprueba y para qué"></textarea>
+        </div>
+
+        <div class="campo-form__fila">
+          <div class="campo-form">
+            <label for="fl-totales">Etapas del flujo</label>
+            <input id="fl-totales" type="number" min="1" max="20" [value]="fTotales()"
+                   (input)="cambiarTotales($any($event.target).valueAsNumber)">
+          </div>
+          <div class="campo-form">
+            <label for="fl-ritmo">Etapas por periodo</label>
+            <input id="fl-ritmo" type="number" min="1" [max]="fTotales()" [value]="fPorPeriodo()"
+                   (input)="fPorPeriodo.set($any($event.target).valueAsNumber || 1)">
+          </div>
+        </div>
+
+        <fieldset class="etapas">
+          <legend>Nombre de cada etapa <span class="opcional">opcional</span></legend>
+          <p class="etapas__nota">
+            Si las dejas en blanco se numeran solas. Ponerles nombre ayuda a saber
+            quién debe resolver cada una.
+          </p>
+          @for (nombre of fEtapas(); track $index) {
+            <div class="etapas__fila">
+              <span class="etapas__n">{{ $index + 1 }}</span>
+              <input type="text" [value]="nombre"
+                     [attr.aria-label]="'Nombre de la etapa ' + ($index + 1)"
+                     (input)="cambiarNombreEtapa($index, $any($event.target).value)"
+                     placeholder="ej. Visto bueno de gerencia">
+            </div>
+          }
+        </fieldset>
+
+        <div class="campo-form__fila">
+          <div class="campo-form">
+            <label for="fl-prioridad">Prioridad</label>
+            <select id="fl-prioridad" [value]="fPrioridad()"
+                    (change)="fPrioridad.set($any($event.target).value)">
+              @for (p of listaPrioridades; track p.value) {
+                <option [value]="p.value">{{ p.label }}</option>
+              }
+            </select>
+          </div>
+          <div class="campo-form">
+            <label for="fl-limite">Fecha límite <span class="opcional">opcional</span></label>
+            <input id="fl-limite" type="date" [value]="fLimite()"
+                   (input)="fLimite.set($any($event.target).value)">
+          </div>
+        </div>
+
+        <div class="campo-form">
+          <label for="fl-notas">Notas <span class="opcional">opcional</span></label>
+          <textarea id="fl-notas" rows="2" [value]="fNotas()"
+                    (input)="fNotas.set($any($event.target).value)"></textarea>
+        </div>
+
+        @if (errorForm()) {
+          <p class="error-form" role="alert">{{ errorForm() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="cerrarModal()">Cancelar</button>
+        <button class="btn btn--primary" (click)="guardar()" [disabled]="guardando()">
+          {{ guardando() ? 'Guardando…' : (editando() ? 'Guardar cambios' : 'Crear flujo') }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ ANULACIÓN ============ -->
+@if (modalAnular(); as f) {
+  <div class="overlay" (click)="modalAnular.set(null)">
+    <div class="modal modal--estrecho" appDialogo (cerrar)="modalAnular.set(null)"
+         aria-labelledby="titulo-anular" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-anular">Anular «{{ f.name }}»</h3>
+        <button class="btn-cerrar" (click)="modalAnular.set(null)" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        <p class="aclaracion">
+          El flujo se retira del seguimiento pero no se borra: sigue consultable como
+          parte del expediente, con sus etapas ya resueltas.
+        </p>
+        <div class="campo-form">
+          <label for="fl-motivo">Motivo de la anulación</label>
+          <textarea id="fl-motivo" rows="3" [value]="motivoAnular()"
+                    (input)="motivoAnular.set($any($event.target).value)"
+                    placeholder="Por qué se retira"></textarea>
+        </div>
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="modalAnular.set(null)">Conservar</button>
+        <button class="btn btn--peligro" (click)="confirmarAnular()" [disabled]="anulando()">
+          {{ anulando() ? 'Anulando…' : 'Anular flujo' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

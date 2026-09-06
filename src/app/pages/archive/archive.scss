@@ -33,7 +33,7 @@
     
     &:hover {
       background: var(--color-primary);
-      color: white;
+      color: var(--color-sobre-primario);
     }
     
     &:active {
@@ -291,7 +291,7 @@
 
   &--primary {
     background: var(--color-primary);
-    color: white;
+    color: var(--color-sobre-primario);
 
     &:hover {
       background: var(--color-accent);

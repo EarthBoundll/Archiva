@@ -2,7 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { onAuthStateChanged, User } from '@angular/fire/auth';
 import { FirebaseService } from './firebase';
-import { borrarCacheLocal } from './offline-sync.service';
+import { borrarCacheLocal } from '../utils/cache-local';
 
 @Injectable({
   providedIn: 'root'

@@ -116,272 +116,105 @@ export class FirebaseService {
     return `${year}-${month}`;
   }
 
-  // Get or create month document
-  async getOrCreatePeriodo(userId: string, year: number, month: number): Promise<string> {
-    const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    const monthRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}`);
-    const monthSnap = await getDoc(monthRef);
-    
-    if (!monthSnap.exists()) {
-      await setDoc(monthRef, this.limpiar({
-        id: periodoId,
-        year,
-        month,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }));
-    }
-    
-    return periodoId;
-  }
 
   // Get all months for user
-  async getPeriodosUsuario(userId: string): Promise<any[]> {
-    const q = query(
-      collection(this.firestore, `users/${userId}/periodos`),
-      orderBy('year', 'desc'),
-      orderBy('month', 'desc')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  }
 
-  // Get transactions from months structure (with legacy fallback)
+  // ============================================
+  // BITACORA — FUENTE UNICA
+  // ============================================
+  //
+  // Habia dos colecciones divergentes: los asientos se escribian en
+  // `users/{uid}/bitacora` y una de las lecturas consultaba
+  // `users/{uid}/periodos/{id}/historial`, que nada escribia. El contador de
+  // movimientos del detalle de flujo marcaba cero siempre.
+  //
+  // Ahora todo entra y sale de `users/{uid}/bitacora`. El periodo se filtra
+  // por el prefijo de la fecha, que ya viene en formato ISO.
+
+  /** Asientos de un mes concreto. */
   async getHistorialPorPeriodo(userId: string, year: number, month: number) {
-    const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    
-    // Try new structure first
-    const q = query(
-      collection(this.firestore, `users/${userId}/periodos/${periodoId}/historial`),
-      orderBy('date', 'desc')
-    );
-    const snapshot = await getDocs(q);
-    const newTxs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
-    // If new structure has data, use it
-    if (newTxs.length > 0) {
-      return newTxs;
-    }
-    
-    // Fallback: check legacy flat structure and filter by month
-    try {
-      const legacyQ = query(
-        collection(this.firestore, `users/${userId}/historial`),
-        orderBy('date', 'desc'),
-        limit(100)
-      );
-      const legacySnapshot = await getDocs(legacyQ);
-      const legacyTxs = legacySnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter((tx: any) => {
-          const txDate = new Date(tx.date || tx.createdAt);
-          return txDate.getFullYear() === year && txDate.getMonth() + 1 === month;
-        });
-      
-      return legacyTxs;
-    } catch {
-      return [];
-    }
+    const prefijo = `${year}-${String(month).padStart(2, '0')}`;
+    const todos = await this.getBitacora(userId);
+    return todos.filter((r: any) => String(r.date ?? '').startsWith(prefijo));
   }
 
-  // Create transaction in months structure
+  /** Alta de asiento. Se conserva el nombre por compatibilidad. */
   async crearRegistro(userId: string, data: any): Promise<any> {
-    const date = new Date(data.date);
-    const periodoId = this.getPeriodoId(date);
-    
-    // Ensure month exists
-    await this.getOrCreatePeriodo(userId, date.getFullYear(), date.getMonth() + 1);
-    
-    const docRef = doc(collection(this.firestore, `users/${userId}/periodos/${periodoId}/historial`));
-    const txData = {
+    const id = await this.agregarBitacora(userId, {
       ...data,
-      id: docRef.id,
-      createdAt: new Date().toISOString(),
+      createdAt: data.createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString()
-    };
-    await setDoc(docRef, this.limpiar(txData));
-    
-    // Recalcula el estado documental del periodo
-    await this.actualizarEstadoDocumental(userId, periodoId);
-    
-    return txData;
+    });
+    return { ...data, id };
   }
 
-  // Update transaction in months structure
   async actualizarRegistro(userId: string, registroId: string, data: any): Promise<void> {
-    // Find the transaction to know its month by checking all months
-    // For now, we'll try the current month and previous months
-    const now = new Date();
-    let found = false;
-    
-    for (let i = 0; i <= 2; i++) {
-      let year = now.getFullYear();
-      let month = now.getMonth() + 1 - i;
-      if (month <= 0) {
-        month = 12 + month;
-        year = year - 1;
-      }
-      const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-      
-      const docRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}/historial/${registroId}`);
-      const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
-        const txData = docSnap.data();
-        const periodoId = this.getPeriodoId(new Date(txData['date']));
-        const updateRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}/historial/${registroId}`);
-        
-        await setDoc(updateRef, this.limpiar({
-          ...data,
-          updatedAt: new Date().toISOString()
-        }), { merge: true });
-        
-        await this.actualizarEstadoDocumental(userId, periodoId);
-        found = true;
-        break;
-      }
-    }
-    
-    if (!found) throw new Error('Registro no encontrada');
+    await this.actualizarBitacora(userId, registroId, data);
   }
 
-  // Delete transaction from months structure
-  async eliminarRegistro(userId: string, registroId: string): Promise<void> {
-    // Find the transaction to know its month
-    const now = new Date();
-    let found = false;
-    
-    for (let i = 0; i <= 2; i++) {
-      let year = now.getFullYear();
-      let month = now.getMonth() + 1 - i;
-      if (month <= 0) {
-        month = 12 + month;
-        year = year - 1;
-      }
-      const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-      
-      const docRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}/historial/${registroId}`);
-      const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
-        const txData = docSnap.data();
-        const periodoId = this.getPeriodoId(new Date(txData['date']));
-        const deleteRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}/historial/${registroId}`);
-        
-        await setDoc(deleteRef, this.limpiar({ deletedAt: new Date().toISOString(), deleted: true }), { merge: true });
-        
-        await this.actualizarEstadoDocumental(userId, periodoId);
-        found = true;
-        break;
-      }
-    }
-    
-    if (!found) throw new Error('Registro no encontrada');
-  }
-
-  // Estado documental de un mes concreto
-  async getEstadoDocumental(userId: string, year: number, month: number): Promise<any> {
-    const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}`);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? (docSnap.data() as any)?.['estadoDocumental'] : null;
-  }
-
-  // Estado documental del periodo (precalculado)
   /**
-   * Resume lo que le paso al acervo durante un mes, a partir de la bitacora.
-   *
-   * La version anterior sumaba importes con signo: los movimientos positivos
-   * eran ingresos, los negativos gastos, y de ahi salian un balance, una tasa
-   * de ahorro, un reparto 50/30/20 y una puntuacion financiera. Los registros
-   * de ARCHIVA no tienen importe —tienen accion y tipo—, asi que aquello
-   * devolvia ceros para todo.
+   * La bitacora es evidencia ante una auditoria: no se borra, se marca.
+   * Un asiento retirado deja de contar en los agregados pero sigue ahi.
    */
-  async actualizarEstadoDocumental(userId: string, periodoId: string) {
-    const q = query(collection(this.firestore, `users/${userId}/periodos/${periodoId}/historial`));
-    const snapshot = await getDocs(q);
-    const registros = snapshot.docs.map(d => d.data() as any);
-
-    const cuenta = (accion: string) => registros.filter(r => r.accion === accion).length;
-
-    const entradas = registros.filter(r => r.tipo === 'entrada').length;
-    const salidas  = registros.filter(r => r.tipo === 'salida').length;
-
-    const altas         = cuenta('creacion');
-    const versiones     = cuenta('nueva_version');
-    const enviados      = cuenta('envio_revision');
-    const aprobados     = cuenta('aprobacion');
-    const observados    = cuenta('observacion');
-    const rechazados    = cuenta('rechazo');
-    const archivados    = cuenta('archivado');
-
-    // Que proporcion del movimiento suma al acervo en vez de retirarlo.
-    const indiceVigencia = entradas > 0
-      ? Math.max(0, Math.round(((entradas - salidas) / entradas) * 100))
-      : 0;
-
-    // De todo lo que se envio a revision, cuanto salio conforme. Es la
-    // medida honesta del proceso: incluye lo devuelto, no solo lo aprobado.
-    const resueltos = aprobados + observados + rechazados;
-    const indiceConformidad = resueltos > 0
-      ? Math.round((aprobados / resueltos) * 100)
-      : null;
-
-    // Cuanto del acervo trabajado acabo en el archivo definitivo.
-    const indiceArchivo = altas > 0
-      ? Math.round((archivados / altas) * 100)
-      : 0;
-
-    let salud: 'excelente' | 'buena' | 'atencion' | 'critica' = 'buena';
-    if (indiceConformidad === null)      salud = 'buena';
-    else if (indiceConformidad >= 85)    salud = 'excelente';
-    else if (indiceConformidad >= 60)    salud = 'buena';
-    else if (indiceConformidad >= 40)    salud = 'atencion';
-    else                                 salud = 'critica';
-
-    const estadoDocumental = {
-      // Movimiento
-      movimientos: registros.length,
-      entradas,
-      salidas,
-
-      // Desglose por accion
-      altas,
-      versiones,
-      enviados,
-      aprobados,
-      observados,
-      rechazados,
-      archivados,
-
-      // Indicadores
-      indiceVigencia,
-      indiceConformidad,
-      indiceArchivo,
-      salud,
-
-      lastUpdated: new Date().toISOString()
-    };
-
-    const stateRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}`);
-    await setDoc(stateRef, this.limpiar({ estadoDocumental }), { merge: true });
-
-    return estadoDocumental;
+  async eliminarRegistro(userId: string, registroId: string): Promise<void> {
+    await this.actualizarBitacora(userId, registroId, {
+      anulado: true,
+      anuladoEl: new Date().toISOString()
+    });
   }
 
-  // Get month summary
-  async getResumenDelPeriodo(userId: string, year: number, month: number): Promise<any> {
-    const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    
-    // Try to get cached state first
-    const state = await this.getEstadoDocumental(userId, year, month);
-    if (state) return state;
-    
-    // If not exists, calculate and return
-    await this.actualizarEstadoDocumental(userId, periodoId);
-    return this.getEstadoDocumental(userId, year, month);
+  /**
+   * Traslada a la bitacora los asientos que quedaron en la estructura por
+   * periodos, sin duplicar los que ya estan. Devuelve cuantos movio.
+   *
+   * Se ejecuta una sola vez por usuario: deja constancia en el perfil para
+   * no recorrer las subcolecciones en cada arranque.
+   */
+  async migrarHistorialAntiguo(userId: string): Promise<number> {
+    const perfil = await this.getUserProfileComplete(userId);
+    if (perfil?.['bitacoraUnificada']) return 0;
+
+    const periodos = await getDocs(collection(this.firestore, `users/${userId}/periodos`));
+    const yaEnBitacora = new Set(
+      (await this.getBitacora(userId)).map((r: any) => this.huella(r))
+    );
+
+    let movidos = 0;
+    for (const periodo of periodos.docs) {
+      const asientos = await getDocs(
+        collection(this.firestore, `users/${userId}/periodos/${periodo.id}/historial`)
+      );
+
+      for (const asiento of asientos.docs) {
+        const datos = asiento.data() as any;
+        // Los registros del producto anterior llevaban importe y no accion.
+        if (!datos['accion']) continue;
+        if (yaEnBitacora.has(this.huella(datos))) continue;
+
+        await this.agregarBitacora(userId, { ...datos, migradoDe: periodo.id });
+        yaEnBitacora.add(this.huella(datos));
+        movidos++;
+      }
+    }
+
+    await this.saveUserProfile(userId, {
+      bitacoraUnificada: true,
+      bitacoraUnificadaEl: new Date().toISOString(),
+      bitacoraAsientosMigrados: movidos
+    });
+
+    return movidos;
   }
+
+  /** Identidad de un asiento, para no duplicarlo al migrar. */
+  private huella(r: any): string {
+    return [r.documentoId ?? '', r.accion ?? '', r.date ?? '', r.time ?? '', r.titulo ?? '']
+      .join('|');
+  }
+
+
+
+
 
   // ============================================
   // GOALS (Múltiples)
@@ -438,20 +271,20 @@ export class FirebaseService {
     await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
-  // Add contribution to goal
   /**
-   * Registra el resultado de una etapa.
+   * Registra el resultado de una etapa y ajusta el estado del flujo.
    *
-   * Solo una etapa aprobada hace avanzar el flujo. Observarla lo deja donde
-   * estaba: el documento vuelve a quien lo presento, y el contador no puede
-   * subir por algo que aun no esta conforme.
+   * Solo una etapa aprobada hace avanzar el contador. Observarla lo deja
+   * donde estaba —el documento vuelve a quien lo presento y la misma etapa
+   * sigue pendiente— y rechazarla suspende el flujo: la negativa firme de
+   * un aprobador no puede quedar como un tramite mas.
    */
-  async aprobarEtapa(userId: string, flujoId: string, etapa: any) {
+  async resolverEtapa(userId: string, flujoId: string, etapa: any) {
     const flujo: any = await this.getFlujoPorId(userId, flujoId);
     if (!flujo) throw new Error('El flujo ya no existe.');
 
     const registro = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${etapa.orden}`,
       orden: etapa.orden,
       nombre: etapa.nombre,
       aprobador: etapa.aprobador,
@@ -461,24 +294,34 @@ export class FirebaseService {
     };
 
     const avanza = etapa.resultado === 'aprobada';
-    const newAmount = (flujo.etapasCompletadas || 0) + (avanza ? 1 : 0);
-    const estaCompletado = newAmount >= (flujo.etapasTotales || 0);
-    
+    const completadas = (flujo.etapasCompletadas || 0) + (avanza ? 1 : 0);
+    const totales = flujo.etapasTotales || 0;
+    const estaCompletado = completadas >= totales;
+
+    let status = flujo.status ?? 'active';
+    if (etapa.resultado === 'rechazada') status = 'paused';
+    else if (estaCompletado)             status = 'completed';
+    else                                 status = 'active';
+
     const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
     await setDoc(docRef, this.limpiar({
-      etapasCompletadas: newAmount,
+      etapasCompletadas: completadas,
       estaCompletado,
-      status: estaCompletado ? 'completed' : 'active',
+      status,
       etapas: [...(flujo.etapas || []), registro],
       updatedAt: new Date().toISOString()
     }), { merge: true });
   }
 
-  // Delete/deactivate goal
-  async eliminarFlujo(userId: string, flujoId: string) {
+  /**
+   * Retira el flujo del seguimiento sin borrarlo del expediente: en un
+   * sistema documental nada desaparece, se anula y sigue consultable.
+   */
+  async anularFlujo(userId: string, flujoId: string, motivo?: string) {
     const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
-    await setDoc(docRef, this.limpiar({ 
+    await setDoc(docRef, this.limpiar({
       status: 'cancelled',
+      motivoAnulacion: motivo,
       updatedAt: new Date().toISOString()
     }), { merge: true });
   }

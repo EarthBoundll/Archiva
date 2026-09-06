@@ -1,0 +1,245 @@
+<div class="page">
+
+  <header class="page-header">
+    <div>
+      <h1>Configuración Empresarial</h1>
+      <p class="page-subtitle">Datos de la empresa, codificación del acervo y preferencias</p>
+    </div>
+    @if (guardado()) {
+      <span class="guardado" role="status">
+        <app-icon name="check-circle" [size]="16" />
+        Guardado
+      </span>
+    }
+  </header>
+
+  @if (cargando()) {
+    <div class="cargando">
+      <div class="skeleton"></div><div class="skeleton"></div>
+    </div>
+  } @else {
+
+    <!-- ============ EMPRESA ============ -->
+    <section class="seccion">
+      <div class="seccion__cabecera">
+        <h2>Empresa</h2>
+        <button class="btn" (click)="abrirEdicion()">
+          <app-icon name="file-pen" [size]="16" />
+          Editar
+        </button>
+      </div>
+
+      @if (!company.configurada()) {
+        <p class="aviso-config" role="status">
+          Falta configurar la empresa. Hasta que definas el prefijo, los documentos
+          se codifican con las siglas del área de cada uno.
+        </p>
+      }
+
+      <dl class="datos">
+        <div class="dato">
+          <dt>Razón social</dt>
+          <dd>{{ oVacio(empresa()?.razonSocial ?? '') }}</dd>
+        </div>
+        <div class="dato">
+          <dt>RUC</dt>
+          <dd class="dato__mono">{{ oVacio(empresa()?.ruc ?? '') }}</dd>
+        </div>
+        <div class="dato">
+          <dt>Sector</dt>
+          <dd>{{ etiquetaSector(empresa()?.sector ?? 'otro') }}</dd>
+        </div>
+        <div class="dato">
+          <dt>Área que custodia el archivo</dt>
+          <dd>{{ etiquetaArea(empresa()?.areaArchivo ?? 'administracion') }}</dd>
+        </div>
+        <div class="dato">
+          <dt>Responsable del archivo</dt>
+          <dd>{{ oVacio(empresa()?.responsableArchivo ?? '') }}</dd>
+        </div>
+        <div class="dato">
+          <dt>Prefijo de codificación</dt>
+          <dd class="dato__mono">
+            {{ oVacio(empresa()?.prefijoCodificacion ?? '') }}
+            @if (company.configurada()) {
+              <span class="dato__nota">los documentos quedan como CON-{{ empresa()!.prefijoCodificacion }}-0001</span>
+            }
+          </dd>
+        </div>
+        <div class="dato">
+          <dt>Aviso previo al vencimiento</dt>
+          <dd>{{ empresa()?.diasAlertaPorDefecto ?? 30 }} días</dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- ============ CUENTA ============ -->
+    <section class="seccion">
+      <div class="seccion__cabecera"><h2>Cuenta</h2></div>
+      <dl class="datos">
+        <div class="dato">
+          <dt>Correo</dt>
+          <dd class="dato__mono">{{ userEmail }}</dd>
+        </div>
+        <div class="dato">
+          <dt>Nombre</dt>
+          <dd>{{ userName }}</dd>
+        </div>
+        <div class="dato">
+          <dt>Idioma</dt>
+          <dd>Español</dd>
+        </div>
+        <div class="dato">
+          <dt>Unidad de tamaño</dt>
+          <dd>Megabytes (MB)</dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- ============ DESARROLLADOR ============ -->
+    <section class="seccion seccion--dev">
+      <div class="seccion__cabecera">
+        <h2>Desarrollador</h2>
+        <span class="sello">Compilación {{ sello }}</span>
+      </div>
+
+      <div class="opcion">
+        <div class="opcion__texto">
+          <span class="opcion__label">Modo depuración</span>
+          <span class="opcion__desc">Muestra trazas detalladas en la consola del navegador</span>
+        </div>
+        <button class="interruptor" role="switch"
+                [attr.aria-checked]="dev.debugMode()"
+                [class.interruptor--activo]="dev.debugMode()"
+                (click)="dev.toggleDebugMode()">
+          <span class="interruptor__bola"></span>
+          <span class="sr-only">Modo depuración</span>
+        </button>
+      </div>
+    </section>
+
+    <button class="btn btn--salir" (click)="pedirCierre()">
+      <app-icon name="arrow-right" [size]="18" />
+      Cerrar sesión
+    </button>
+  }
+</div>
+
+<!-- ============ EDICIÓN DE EMPRESA ============ -->
+@if (editando()) {
+  <div class="overlay" (click)="cerrarEdicion()">
+    <div class="modal" appDialogo (cerrar)="cerrarEdicion()"
+         aria-labelledby="titulo-empresa" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-empresa">Datos de la empresa</h3>
+        <button class="btn-cerrar" (click)="cerrarEdicion()" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+
+        <div class="campo">
+          <label for="cf-razon">Razón social</label>
+          <input id="cf-razon" type="text" [value]="fRazon()"
+                 (input)="fRazon.set($any($event.target).value)"
+                 placeholder="ej. Constructora Andes S.A.C.">
+        </div>
+
+        <div class="campo__fila">
+          <div class="campo">
+            <label for="cf-ruc">RUC <span class="opcional">opcional</span></label>
+            <input id="cf-ruc" type="text" inputmode="numeric" maxlength="11"
+                   [value]="fRuc()" (input)="fRuc.set($any($event.target).value)"
+                   [attr.aria-invalid]="!rucValido()" placeholder="20123456789">
+            @if (fRuc() && !rucValido()) {
+              <span class="campo__error">Once dígitos, empezando por 10, 15, 17 o 20.</span>
+            }
+          </div>
+
+          <div class="campo">
+            <label for="cf-sector">Sector</label>
+            <select id="cf-sector" [value]="fSector()"
+                    (change)="fSector.set($any($event.target).value)">
+              @for (s of sectores; track s.value) {
+                <option [value]="s.value">{{ s.label }}</option>
+              }
+            </select>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="cf-responsable">Responsable del archivo</label>
+          <input id="cf-responsable" type="text" [value]="fResponsable()"
+                 (input)="fResponsable.set($any($event.target).value)"
+                 placeholder="Nombre y apellidos">
+        </div>
+
+        <div class="campo__fila">
+          <div class="campo">
+            <label for="cf-area">Área que custodia el archivo</label>
+            <select id="cf-area" [value]="fArea()"
+                    (change)="cambiarArea($any($event.target).value)">
+              @for (a of areas; track a.value) {
+                <option [value]="a.value">{{ a.label }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="campo">
+            <label for="cf-prefijo">Prefijo de codificación</label>
+            <input id="cf-prefijo" type="text" maxlength="5"
+                   [value]="fPrefijo()"
+                   (input)="fPrefijo.set($any($event.target).value.toUpperCase())"
+                   [attr.aria-invalid]="!!fPrefijo() && !prefijoValido()"
+                   placeholder="ADM">
+            <span class="campo__pista">
+              Los documentos quedarán como <code>{{ ejemploCodigo() }}</code>
+            </span>
+            @if (fPrefijo() && !prefijoValido()) {
+              <span class="campo__error">Entre tres y cinco letras, sin números ni espacios.</span>
+            }
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="cf-dias">Aviso previo al vencimiento, en días</label>
+          <input id="cf-dias" type="number" min="1" max="365" [value]="fDiasAlerta()"
+                 (input)="fDiasAlerta.set($any($event.target).valueAsNumber || 30)">
+          <span class="campo__pista">
+            Se aplica a los documentos nuevos que no fijen el suyo propio.
+          </span>
+        </div>
+
+        @if (errorForm()) {
+          <p class="error-form" role="alert">{{ errorForm() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="cerrarEdicion()">Cancelar</button>
+        <button class="btn btn--primary" (click)="guardar()" [disabled]="guardando()">
+          {{ guardando() ? 'Guardando…' : 'Guardar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ CIERRE DE SESIÓN ============ -->
+@if (confirmandoSalida()) {
+  <div class="salida-overlay" (click)="confirmandoSalida.set(false)">
+    <div class="salida" appDialogo (cerrar)="confirmandoSalida.set(false)"
+         aria-labelledby="salida-conf" (click)="$event.stopPropagation()">
+      <h2 id="salida-conf">¿Cerrar sesión?</h2>
+      <p>Volverás a la pantalla de acceso. Tus documentos quedan guardados.</p>
+      <div class="salida__acciones">
+        <button class="salida__btn" (click)="confirmandoSalida.set(false)">Seguir aquí</button>
+        <button class="salida__btn salida__btn--confirmar" (click)="confirmarCierre()" [disabled]="saliendo()">
+          {{ saliendo() ? 'Cerrando…' : 'Cerrar sesión' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

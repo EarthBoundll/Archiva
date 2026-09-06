@@ -53,8 +53,9 @@ export const routes: Routes = [
           import('./pages/workflows/workflows').then(m => m.WorkflowsComponent)
       },
       {
-        // Ruta que en ARCHIVA estaba enlazada pero nunca registrada.
-        path: 'flujos/detalle',
+        // El detalle identifica el flujo: antes era una ruta fija que
+        // mostraba siempre el primero de la lista.
+        path: 'flujos/:id',
         loadComponent: () =>
           import('./pages/workflow/workflow').then(m => m.WorkflowComponent)
       },

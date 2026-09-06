@@ -533,7 +533,7 @@
     
     &:hover:not(.active) {
       color: var(--color-text-secondary);
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--color-surface-elevated);
       
       svg {
         opacity: 0.8;

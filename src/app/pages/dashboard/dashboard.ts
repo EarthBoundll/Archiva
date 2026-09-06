@@ -247,15 +247,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // Porcentaje gastado de cada bucket 50/30/20
   pct(spent: number, limit: number): number {
+    // Sin datos el limite es 0 y la division producia NaN, que se pintaba
+    // literalmente como "NaN%" en las barras del acervo.
+    if (!limit || limit <= 0) return 0;
     return Math.min(Math.round((spent / limit) * 100), 100);
   }
 
   // Color de la barra según % gastado
   barColor(spent: number, limit: number): string {
+    if (!limit || limit <= 0) return 'var(--color-text-muted)';
     const p = (spent / limit) * 100;
-    if (p >= 90) return '#ef4444';
-    if (p >= 70) return '#f59e0b';
-    return '#6366f1';
+    if (p >= 90) return 'var(--color-error)';
+    if (p >= 70) return 'var(--color-warning)';
+    return 'var(--color-primary)';
   }
 
   // Cargar historial de meses para gráficos
@@ -606,7 +610,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   formatSol(n: number): string {
-    return `${Math.abs(n).toFixed(2)}`;
+    // Antes devolvia dos decimales porque formateaba soles peruanos. Lo
+    // que se cuenta aqui son documentos: entero con separador de millares.
+    return Math.abs(Math.round(n)).toLocaleString('es-PE');
   }
 
   async logout() { await this.authService.signOut(); }

@@ -70,6 +70,9 @@
         </div>
       </div>
     } @empty {
+      @if (cargando()) {
+        <div class="empty-state"><p>Cargando cuotas…</p></div>
+      } @else {
       <div class="empty-state">
         <app-icon name="hard-drive" [size]="48" />
         <p>Aún no has repartido el almacenamiento</p>
@@ -87,6 +90,7 @@
           <p class="empty-state__aviso" role="status">{{ avisoReparto() }}</p>
         }
       </div>
+      }
     }
   </div>
 </div>

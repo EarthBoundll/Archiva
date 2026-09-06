@@ -152,8 +152,13 @@ export const TIPOS_FLUJO: Record<TipoFlujo, { name: string; icon: string }> = {
   otro:                   { name: 'Otro flujo', icon: 'git-branch' }
 };
 
+/**
+ * El color sale del token, no de un literal. Los hex fijos —#A3342B para
+ * alta— daban 2,40:1 sobre la tarjeta del tema oscuro, muy por debajo del
+ * minimo de 3:1 que WCAG pide para un indicador de color.
+ */
 export const PRIORIDADES_FLUJO: Record<PrioridadFlujo, { label: string; color: string }> = {
-  high: { label: 'Alta', color: '#A3342B' },
-  medium: { label: 'Media', color: '#B8791F' },
-  low: { label: 'Baja', color: '#2D7D5A' }
+  high:   { label: 'Alta',  color: 'var(--color-error)' },
+  medium: { label: 'Media', color: 'var(--color-warning)' },
+  low:    { label: 'Baja',  color: 'var(--color-success)' }
 };

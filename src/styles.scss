@@ -227,8 +227,8 @@ router-outlet + * {
 // el zoom automatico de Safari. Las casillas y los deslizadores quedan fuera
 // porque su tamaño no lo determina la tipografia.
 input:not([type='checkbox']):not([type='radio']):not([type='range']),
-select,
-textarea {
+select:not([multiple]):not([size]),
+textarea:not([readonly]) {
   font-size: 16px;
   min-height: 44px;
 }

@@ -74,7 +74,14 @@
 
 .summary-row {
   display: grid;
+  // A 375 px las tres columnas dejaban 92 px por cifra y partian tanto la
+  // etiqueta como el valor. Por debajo de 560 px se apilan.
   grid-template-columns: repeat(3, 1fr);
+
+  @media (max-width: 560px) {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
   gap: var(--space-4);
 }
 

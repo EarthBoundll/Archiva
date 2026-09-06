@@ -34,6 +34,7 @@ export class StorageComponent implements OnInit {
   formCategory = '';
   formAmount: number | null = null;
 
+  cargando = signal(true);
   repartiendo = signal(false);
   avisoReparto = signal<string | null>(null);
 
@@ -65,13 +66,23 @@ export class StorageComponent implements OnInit {
   }
 
   async loadBudgets() {
-    const budgets = await this.storageService.getPorPeriodo(this.now.getFullYear(), this.now.getMonth() + 1);
-    const cats = budgets.map(b => this.mapBudgetToCategory(b));
-    this.categories.set(cats);
+    this.cargando.set(true);
+    try {
+      // El espacio ocupado se mide sobre los documentos, no sobre la cuota:
+      // el campo del documento de cuota nunca lo escribe nadie y quedaba
+      // siempre a cero, con lo que la pagina jamas avisaba de nada.
+      const [budgets, ocupacion] = await Promise.all([
+        this.storageService.getPorPeriodo(this.now.getFullYear(), this.now.getMonth() + 1),
+        this.storageService.getOcupacionPorCategoria()
+      ]);
+      this.categories.set(budgets.map(b => this.mapBudgetToCategory(b, ocupacion)));
+    } finally {
+      this.cargando.set(false);
+    }
   }
 
-  private mapBudgetToCategory(b: any): BudgetCategory {
-    const spent = b.spent || 0;
+  private mapBudgetToCategory(b: any, ocupacion: Record<string, number>): BudgetCategory {
+    const spent = ocupacion[b.category] ?? 0;
     const budgeted = b.budgetedAmount || 0;
     const remaining = budgeted - spent;
     const percentage = budgeted > 0 ? Math.round((spent / budgeted) * 100) : 0;

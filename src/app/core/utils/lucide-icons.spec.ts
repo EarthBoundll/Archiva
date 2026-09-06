@@ -16,6 +16,7 @@ import { LUCIDE_ICONS } from './lucide-icons';
 import { CATEGORIAS_DOCUMENTALES, TIPOS_DOCUMENTALES, ESTADOS_DOCUMENTALES } from '../models/document.model';
 import { ACCIONES } from '../models/history.model';
 import { TIPOS_PRIORITARIOS, TIPOS_ORDINARIOS } from '../models/review-request.model';
+import { TIPOS_FLUJO } from '../models/workflow.model';
 
 /** Nombres declarados en un catalogo cuyo icono no existe. */
 function ausentes(nombres: string[]): string[] {
@@ -51,6 +52,15 @@ describe('Juego de iconos', () => {
       ...Object.values(TIPOS_PRIORITARIOS).map((t: any) => t.icon),
       ...Object.values(TIPOS_ORDINARIOS).map((t: any) => t.icon)
     ].filter(Boolean);
+    expect(ausentes(nombres)).toEqual([]);
+  });
+
+  it('cubre los doce tipos de flujo de aprobación', () => {
+    // Este catalogo quedo fuera de la primera version de la prueba, y por eso
+    // "settings-2" y "building-2" siguieron dibujandose en blanco: el barrido
+    // de nombres usaba [a-z-]+ y no capturaba los que llevan digito.
+    const nombres = Object.values(TIPOS_FLUJO).map(t => t.icon);
+    expect(nombres.length).toBe(12);
     expect(ausentes(nombres)).toEqual([]);
   });
 

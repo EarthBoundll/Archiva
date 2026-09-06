@@ -1,6 +1,6 @@
 const SELLO_COMPILACION = '2026-09-06 01:25';
 
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Auth } from '../../core/services/auth';
 import { DevSettingsService } from '../../core/services/dev-settings';
@@ -56,19 +56,6 @@ import { DevSettingsService } from '../../core/services/dev-settings';
           <span class="dev-badge">DEV</span>
         </div>
 
-        <!-- Emails -->
-        <div class="setting-item">
-          <div class="setting-item__info">
-            <div>
-              <span class="setting-item__label">Enviar correos</span>
-              <span class="setting-item__desc">Activa o desactiva el envío de emails (EmailJS quota)</span>
-            </div>
-          </div>
-          <button class="toggle" [class.active]="dev.emailsEnabled()" (click)="dev.toggleEmails()">
-            <span class="toggle-knob"></span>
-          </button>
-        </div>
-
         <!-- Debug Mode -->
         <div class="setting-item">
           <div class="setting-item__info">
@@ -104,7 +91,7 @@ import { DevSettingsService } from '../../core/services/dev-settings';
         </div>
       </section>
 
-      <button class="btn btn-logout" (click)="logout()">
+      <button class="btn btn-logout" (click)="pedirCierre()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
           <polyline points="16 17 21 12 16 7"/>
@@ -112,6 +99,22 @@ import { DevSettingsService } from '../../core/services/dev-settings';
         </svg>
         Cerrar sesión
       </button>
+
+      @if (confirmandoSalida()) {
+        <div class="salida-overlay" (click)="confirmandoSalida.set(false)">
+          <div class="salida" role="dialog" aria-modal="true" aria-labelledby="salida-conf"
+               (click)="$event.stopPropagation()">
+            <h2 id="salida-conf">¿Cerrar sesión?</h2>
+            <p>Volverás a la pantalla de acceso. Tus documentos quedan guardados.</p>
+            <div class="salida__acciones">
+              <button class="salida__btn" (click)="confirmandoSalida.set(false)">Seguir aquí</button>
+              <button class="salida__btn salida__btn--confirmar" (click)="confirmarCierre()" [disabled]="saliendo()">
+                {{ saliendo() ? 'Cerrando…' : 'Cerrar sesión' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -259,6 +262,68 @@ import { DevSettingsService } from '../../core/services/dev-settings';
     }
 
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    .salida-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-4);
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(2px);
+    }
+
+    .salida {
+      width: 100%;
+      max-width: 360px;
+      padding: var(--space-5);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+
+      h2 {
+        margin: 0 0 var(--space-2);
+        font-size: var(--text-lg);
+        font-weight: var(--font-semibold);
+        color: var(--color-text);
+      }
+
+      p {
+        margin: 0 0 var(--space-5);
+        font-size: var(--text-sm);
+        line-height: 1.55;
+        color: var(--color-text-secondary);
+      }
+
+      &__acciones {
+        display: flex;
+        gap: var(--space-3);
+      }
+
+      &__btn {
+        flex: 1;
+        min-height: 44px;
+        padding: 0 var(--space-4);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: transparent;
+        color: var(--color-text);
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        cursor: pointer;
+
+        &--confirmar {
+          background: var(--color-error);
+          border-color: var(--color-error);
+          color: #FFFFFF;
+        }
+
+        &:disabled { opacity: 0.6; cursor: not-allowed; }
+      }
+    }
   `]
 })
 export class SettingsComponent {
@@ -276,7 +341,26 @@ export class SettingsComponent {
     return this.auth.currentUser()?.displayName ?? 'Usuario';
   }
 
-  async logout() {
-    await this.auth.signOut();
+  confirmandoSalida = signal(false);
+  saliendo = signal(false);
+
+  /**
+   * Cerrar sesion se confirma, igual que en la barra lateral. Antes esta
+   * pantalla salia de inmediato: dos caminos al mismo sitio con dos
+   * comportamientos distintos.
+   */
+  pedirCierre() {
+    this.confirmandoSalida.set(true);
+  }
+
+  async confirmarCierre() {
+    if (this.saliendo()) return;
+    this.saliendo.set(true);
+    try {
+      await this.auth.signOut();
+    } finally {
+      this.saliendo.set(false);
+      this.confirmandoSalida.set(false);
+    }
   }
 }

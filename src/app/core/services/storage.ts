@@ -96,7 +96,7 @@ export class StorageService {
   }
 
   /** Megabytes que ocupa hoy cada categoria del acervo. */
-  private async getOcupacionPorCategoria(): Promise<Record<string, number>> {
+  async getOcupacionPorCategoria(): Promise<Record<string, number>> {
     const userId = this.authService.getUserId();
     if (!userId) return {};
 

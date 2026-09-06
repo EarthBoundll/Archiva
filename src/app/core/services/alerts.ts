@@ -212,11 +212,15 @@ export class AlertsService {
   private async deCuotas(year: number, month: number): Promise<Alerta[]> {
     const alertas: Alerta[] = [];
     const ahora = new Date().toISOString();
-    const cuotas = await this.storageService.getPorPeriodo(year, month);
+    const [cuotas, ocupacion] = await Promise.all([
+      this.storageService.getPorPeriodo(year, month),
+      this.storageService.getOcupacionPorCategoria()
+    ]);
 
     for (const c of cuotas as any[]) {
       const asignado = c.budgetedAmount || 0;
-      const ocupado  = c.spent || 0;
+      // Medido sobre el acervo: el documento de cuota no guarda el consumo.
+      const ocupado  = ocupacion[c.category] ?? 0;
       if (asignado <= 0) continue;
 
       const pct = Math.round((ocupado / asignado) * 100);

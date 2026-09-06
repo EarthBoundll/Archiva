@@ -59,7 +59,9 @@
 
 .summary-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  // Con tres columnas fijas la tercera tarjeta terminaba en x=455 sobre un
+  // viewport de 375: la pagina entera se desplazaba en horizontal.
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }

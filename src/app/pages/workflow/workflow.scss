@@ -20,6 +20,20 @@
 }
 
 .btn-back {
+
+  // Enlace de texto con area sensible completa: el trazo mide 18 px, pero
+  // el dedo necesita 44 (WCAG 2.5.5).
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
   color: #2FA46A;
   text-decoration: none;
   font-size: 0.875rem;

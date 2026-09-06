@@ -31,11 +31,11 @@
 // ------------------------------------------
 .metricas {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
   gap: var(--space-3);
 
   &--secundarias {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   }
 }
 
@@ -109,13 +109,18 @@
 // ------------------------------------------
 .paneles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
   gap: var(--space-4);
 }
 
 .panel {
   display: flex;
   flex-direction: column;
+  // Un <canvas> mide 300 px de ancho intrinseco. Sin esto, min-width:auto
+  // propaga ese minimo hasta la raiz y el tablero no baja de 449 px:
+  // desbordaba en horizontal en los cuatro anchos de telefono.
+  min-width: 0;
   padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -143,6 +148,20 @@
   }
 
   &__enlace {
+
+  // Enlace de texto con area sensible completa: el trazo mide 18 px, pero
+  // el dedo necesita 44 (WCAG 2.5.5).
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
     font-size: var(--text-xs);
     font-weight: var(--font-semibold);
     color: var(--color-primary);
@@ -152,8 +171,22 @@
   }
 
   &__grafico {
+    min-width: 0;
+    overflow: hidden;
     position: relative;
     height: 240px;
+
+    // Un <canvas> tiene 300 px de ancho intrinseco. Mientras participa en
+    // el flujo, ese minimo sube por la rejilla hasta la raiz y el tablero
+    // no puede encoger: desbordaba en horizontal en los cuatro anchos de
+    // telefono. Sacarlo del flujo lo desvincula del ancho minimo, y
+    // Chart.js sigue midiendo el contenedor, que ya es relativo.
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+    }
   }
 
   &__vacio {
@@ -327,7 +360,7 @@
 
 .rejilla-carga {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
   gap: var(--space-3);
 }
 
@@ -359,5 +392,10 @@
 
   .panel__grafico { height: 200px; }
 
-  .metricas--secundarias { grid-template-columns: repeat(2, 1fr); }
+  // Dos columnas fijas necesitaban unos 312 px solo para las metricas
+  // secundarias. Con auto-fit se quedan en dos mientras quepan y bajan a
+  // una sola por debajo de eso.
+  .metricas--secundarias {
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+  }
 }

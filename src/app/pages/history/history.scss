@@ -41,7 +41,7 @@
 // ------------------------------------------
 .resumen {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
   gap: var(--space-3);
 
   &__item {
@@ -134,6 +134,9 @@
 }
 
 .campo {
+  // Sin esto el ancho intrinseco del <input> —unos veinte caracteres— fija
+  // un minimo que sube hasta la raiz y desborda la pantalla en horizontal.
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);

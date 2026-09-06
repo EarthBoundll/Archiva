@@ -197,7 +197,12 @@ router-outlet + * {
 // Responsive
 @media (max-width: 768px) {
   :root {
-    --sidebar-width: 0px;
+    // --sidebar-width NO se anula aqui. El token se puso a cero para que
+    // .main perdiera su margen izquierdo en movil, pero .sidebar usa el
+    // mismo token para su ancho: el cajon quedaba de cero pixeles, y
+    // pulsar el boton de menu abria un panel vacio e invisible sobre una
+    // capa oscurecida. El margen de .main ya lo resuelve su propia media
+    // query en layout.component.scss.
     --topbar-height: 56px;
   }
 }

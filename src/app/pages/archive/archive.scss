@@ -18,6 +18,9 @@
   }
 
   .back-btn {
+    // 33x36 no llega al objetivo tactil minimo de 44 (WCAG 2.5.5).
+    min-width: 44px;
+    min-height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -61,7 +64,7 @@
   display: grid;
   // Con tres columnas fijas la tercera tarjeta terminaba en x=455 sobre un
   // viewport de 375: la pagina entera se desplazaba en horizontal.
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -229,6 +232,20 @@
   }
 
   .goal-link {
+
+  // Enlace de texto con area sensible completa: el trazo mide 18 px, pero
+  // el dedo necesita 44 (WCAG 2.5.5).
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
     font-size: var(--text-sm);
     color: var(--color-primary);
     text-decoration: none;

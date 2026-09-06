@@ -216,6 +216,7 @@ import { DevSettingsService } from '../../core/services/dev-settings';
     }
 
     .dev-header {
+      flex-wrap: wrap;
       display: flex;
       align-items: center;
       gap: var(--space-2);

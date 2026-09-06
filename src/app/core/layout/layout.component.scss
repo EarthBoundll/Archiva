@@ -351,6 +351,12 @@
 // ------------------------------------------
 .main {
   flex: 1;
+  // Un elemento flexible arranca con min-width:auto, es decir, no puede
+  // encogerse por debajo del contenido minimo de lo que lleva dentro. Ese
+  // minimo subia hasta la raiz y ponia el documento mas ancho que la
+  // pantalla: la region principal nunca debe forzar un desplazamiento
+  // horizontal de la pagina entera.
+  min-width: 0;
   margin-left: var(--sidebar-width);
   display: flex;
   flex-direction: column;
@@ -495,13 +501,25 @@
     display: flex;
     justify-content: space-around;
   }
-  
+
   &__item {
+    // Los seis destinos sumaban 342 px mas relleno: en una pantalla de
+    // 320 el sexto —Ajustes— quedaba fuera y sin forma de alcanzarlo,
+    // porque la barra no desplaza. Ahora reparten el ancho disponible.
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-2) 2px;
+
+    span {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     border-radius: var(--radius-lg);
     color: var(--color-text-muted);
     text-decoration: none;
@@ -635,6 +653,19 @@
   margin-left: auto;
   margin-right: var(--space-3);
   padding: 0;
+
+  // La pieza mide 34 px de alto por diseño, pero el objetivo tactil debe
+  // llegar a 44 (WCAG 2.5.5). El pseudoelemento extiende el area sensible
+  // sin deformar el dibujo ni empujar la barra superior.
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
   background: var(--color-surface-elevated);

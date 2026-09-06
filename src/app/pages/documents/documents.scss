@@ -116,7 +116,7 @@
 // ------------------------------------------
 .resumen {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
   gap: var(--space-3);
 
   &__item {
@@ -160,11 +160,13 @@
 // FILTROS
 // ------------------------------------------
 .filtros {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 
   &__estados {
+    min-width: 0;
     display: flex;
     gap: var(--space-2);
     overflow-x: auto;
@@ -173,6 +175,7 @@
   }
 
   &__fila {
+    min-width: 0;
     display: flex;
     gap: var(--space-3);
     flex-wrap: wrap;
@@ -218,6 +221,9 @@
 }
 
 .campo {
+  // Sin esto el ancho intrinseco del <input> —unos veinte caracteres— fija
+  // un minimo que sube hasta la raiz y desborda la pantalla en horizontal.
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -231,6 +237,7 @@
 
   input, select {
     flex: 1;
+    min-width: 0;
     min-height: 44px;
     border: none;
     background: transparent;
@@ -395,7 +402,7 @@
 // ------------------------------------------
 .skeleton-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
   gap: var(--space-3);
 }
 

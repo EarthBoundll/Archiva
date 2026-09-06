@@ -16,8 +16,7 @@ import {
   CATEGORIAS_DOCUMENTALES,
   ESTADOS_DOCUMENTALES,
   AREAS_EMISORAS,
-  NIVELES_CONFIDENCIALIDAD,
-  esCodigoValido
+  NIVELES_CONFIDENCIALIDAD
 } from '../../core/models/document.model';
 
 type FiltroEstado = EstadoDocumental | 'todos' | 'por_vencer';
@@ -66,7 +65,6 @@ export class DocumentsComponent implements OnInit {
   // ── Formulario ──
   modalAbierto  = signal(false);
   editando      = signal<Documento | null>(null);
-  fCodigo       = signal('');
   fTitulo       = signal('');
   fDescripcion  = signal('');
   fCategoria    = signal<CategoriaDocumental>('contrato');
@@ -74,8 +72,8 @@ export class DocumentsComponent implements OnInit {
   fArea         = signal<AreaEmisora>('administracion');
   fConfid       = signal<Confidencialidad>('interno');
   fResponsable  = signal('');
-  fTamanio      = signal<number | null>(null);
-  fUbicacion    = signal('');
+  fFolios       = signal<number | null>(null);
+  fReferencia   = signal('');
   fFrecuencia   = signal<FrecuenciaRenovacion>('annual');
   fDiaVence     = signal(31);
   fMesVence     = signal(11);
@@ -88,7 +86,7 @@ export class DocumentsComponent implements OnInit {
   // ── Modal de nueva version ──
   modalVersion  = signal<Documento | null>(null);
   resumenCambio = signal('');
-  nuevoTamanio  = signal<number | null>(null);
+  nuevosFolios  = signal<number | null>(null);
 
   // ============================================
   // DERIVADOS
@@ -162,7 +160,6 @@ export class DocumentsComponent implements OnInit {
   abrirNuevo() {
     this.editando.set(null);
     this.errorMsg.set('');
-    this.fCodigo.set('');
     this.fTitulo.set('');
     this.fDescripcion.set('');
     this.fCategoria.set('contrato');
@@ -170,8 +167,8 @@ export class DocumentsComponent implements OnInit {
     this.fArea.set('administracion');
     this.fConfid.set('interno');
     this.fResponsable.set('');
-    this.fTamanio.set(null);
-    this.fUbicacion.set('');
+    this.fFolios.set(null);
+    this.fReferencia.set('');
     this.fFrecuencia.set('annual');
     this.fAlerta.set(30);
     this.archivoPendiente.set(null);
@@ -181,7 +178,6 @@ export class DocumentsComponent implements OnInit {
   abrirEdicion(d: Documento) {
     this.editando.set(d);
     this.errorMsg.set('');
-    this.fCodigo.set(d.codigo);
     this.fTitulo.set(d.titulo);
     this.fDescripcion.set(d.descripcion ?? '');
     this.fCategoria.set(d.category);
@@ -189,8 +185,8 @@ export class DocumentsComponent implements OnInit {
     this.fArea.set(d.area);
     this.fConfid.set(d.confidencialidad);
     this.fResponsable.set(d.responsable);
-    this.fTamanio.set(d.tamanioMb || null);
-    this.fUbicacion.set(d.ubicacionReferencia ?? '');
+    this.fFolios.set(d.folios || null);
+    this.fReferencia.set(d.documentoReferencia ?? '');
     this.fFrecuencia.set(d.renovacion.frequency);
     this.fAlerta.set(d.alertarDiasAntes ?? 30);
     this.archivoPendiente.set(null);
@@ -230,7 +226,6 @@ export class DocumentsComponent implements OnInit {
     }
 
     this.archivoPendiente.set(file);
-    if (file) this.fTamanio.set(Math.round((file.size / 1024 / 1024) * 100) / 100);
   }
 
   onSoltarEnAlta(e: DragEvent) {
@@ -249,23 +244,44 @@ export class DocumentsComponent implements OnInit {
     this.archivoPendiente.set(null);
   }
 
+  /**
+   * Devuelve el mensaje del primer campo obligatorio sin rellenar.
+   *
+   * Se nombra el campo concreto en lugar de un "revisa el formulario":
+   * quien lo rellena no tiene por que adivinar cual falta.
+   */
+  private primerCampoIncompleto(): string | null {
+    if (!this.fTitulo().trim())      return 'Escribe el título del documento.';
+    if (!this.fResponsable().trim()) return 'Indica quién es el responsable del documento.';
+    if (!this.fDescripcion().trim()) return 'Describe qué contiene el documento y para qué sirve.';
+
+    const folios = this.fFolios();
+    if (folios === null || folios === undefined) return 'Indica cuántos folios tiene el documento.';
+    if (folios < 1)             return 'Un documento tiene al menos un folio.';
+    if (!Number.isInteger(folios)) return 'Los folios se cuentan en números enteros.';
+
+    return null;
+  }
+
+  /** Documentos que pueden citarse como referencia, ordenados por código. */
+  referenciables = computed(() =>
+    this.documentos()
+      .filter(d => d.id !== this.editando()?.id)
+      .sort((a, b) => a.codigo.localeCompare(b.codigo))
+  );
+
   async guardar() {
     if (this.guardando()) return;
 
-    if (!this.fTitulo().trim())      { this.errorMsg.set('Escribe el título del documento.'); return; }
-    if (!this.fResponsable().trim()) { this.errorMsg.set('Indica quién es el responsable.');  return; }
+    // Todo es obligatorio salvo la referencia y el archivo: un documento
+    // sin responsable o sin folios no se puede controlar.
+    const falta = this.primerCampoIncompleto();
+    if (falta) { this.errorMsg.set(falta); return; }
 
-    const codigo = this.fCodigo().trim().toUpperCase();
-    if (codigo && !esCodigoValido(codigo)) {
-      this.errorMsg.set('El código debe seguir el formato CAT-ÁREA-0001, por ejemplo CON-LEG-0001.');
-      return;
-    }
-
-    const duplicado = this.documentos().some(
-      d => d.codigo === codigo && d.id !== this.editando()?.id
-    );
-    if (codigo && duplicado) {
-      this.errorMsg.set(`El código ${codigo} ya está en uso por otro documento.`);
+    // La referencia, si se indica, debe apuntar a un documento que exista.
+    const ref = this.fReferencia().trim().toUpperCase();
+    if (ref && !this.documentos().some(d => d.codigo === ref)) {
+      this.errorMsg.set(`No existe ningún documento con el código ${ref}.`);
       return;
     }
 
@@ -273,16 +289,15 @@ export class DocumentsComponent implements OnInit {
     this.errorMsg.set('');
 
     const payload: DocumentoPayload = {
-      codigo: codigo || undefined,
-      titulo: this.fTitulo(),
-      descripcion: this.fDescripcion() || undefined,
+      titulo: this.fTitulo().trim(),
+      descripcion: this.fDescripcion().trim(),
       category: this.fCategoria(),
       type: this.fTipo(),
       area: this.fArea(),
       confidencialidad: this.fConfid(),
-      responsable: this.fResponsable(),
-      tamanioMb: this.fTamanio() ?? 0,
-      ubicacionReferencia: this.fUbicacion() || undefined,
+      responsable: this.fResponsable().trim(),
+      folios: this.fFolios() ?? 1,
+      documentoReferencia: ref || undefined,
       alertarDiasAntes: this.fAlerta(),
       renovacion: {
         frequency: this.fFrecuencia(),
@@ -361,7 +376,7 @@ export class DocumentsComponent implements OnInit {
 
   abrirNuevaVersion(d: Documento) {
     this.resumenCambio.set('');
-    this.nuevoTamanio.set(d.tamanioMb || null);
+    this.nuevosFolios.set(d.folios || null);
     this.errorMsg.set('');
     this.modalVersion.set(d);
   }
@@ -378,7 +393,7 @@ export class DocumentsComponent implements OnInit {
     this.guardando.set(true);
     try {
       await this.documentService.registrarNuevaVersion(doc, {
-        tamanioMb: this.nuevoTamanio() ?? doc.tamanioMb,
+        folios: this.nuevosFolios() ?? doc.folios,
         resumenCambio: this.resumenCambio()
       });
       await this.cargar();

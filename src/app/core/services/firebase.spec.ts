@@ -3,7 +3,7 @@
  *
  * Firestore rechaza undefined y aborta la escritura entera con
  * "Unsupported field value: undefined". Bastaba dejar vacio un campo
- * opcional del formulario —ubicacionReferencia— para que el alta de un
+ * opcional del formulario —la ubicacion de referencia— para que el alta de un
  * documento fallase por completo.
  *
  * Se prueba la funcion pura, sin instanciar el servicio: la logica es la
@@ -27,9 +27,9 @@ function limpiar<T>(data: T): T {
 describe('Saneado para Firestore', () => {
 
   it('descarta las claves con undefined', () => {
-    const r = limpiar({ titulo: 'Contrato', ubicacionReferencia: undefined });
+    const r = limpiar({ titulo: "Contrato", documentoReferencia: undefined });
     expect(r).toEqual({ titulo: 'Contrato' });
-    expect('ubicacionReferencia' in r).toBe(false);
+    expect("documentoReferencia" in r).toBe(false);
   });
 
   it('conserva null, que significa "sin valor" de forma explicita', () => {
@@ -81,7 +81,7 @@ describe('Saneado para Firestore', () => {
       codigo: 'CON-ADM-0001',
       titulo: 'Tarea final',
       descripcion: undefined,
-      ubicacionReferencia: undefined,
+      documentoReferencia: undefined,
       notes: undefined,
       tamanioMb: 0.22,
       activo: true

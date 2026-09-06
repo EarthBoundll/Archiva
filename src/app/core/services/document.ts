@@ -93,8 +93,9 @@ export class DocumentService {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    const codigo = payload.codigo?.trim().toUpperCase()
-      || await this.siguienteCodigo(payload.category, payload.area);
+    // El codigo siempre se genera: es un correlativo del sistema, no un
+    // dato que deba teclear quien registra el documento.
+    const codigo = await this.siguienteCodigo(payload.category, payload.area);
 
     const alertarDiasAntes = payload.renovacion.frequency === 'variable'
       ? null
@@ -117,7 +118,8 @@ export class DocumentService {
       estado: 'borrador',
       responsable: payload.responsable.trim(),
       elaboradoPor: payload.responsable.trim(),
-      ubicacionReferencia: payload.ubicacionReferencia,
+      documentoReferencia: payload.documentoReferencia,
+      folios: payload.folios || 1,
       tamanioMb: payload.tamanioMb || 0,
       renovacion: payload.renovacion,
       proximasRenovaciones,
@@ -144,8 +146,8 @@ export class DocumentService {
 
     const cambios: Record<string, unknown> = { updatedAt: new Date().toISOString() };
 
-    for (const campo of ['titulo', 'descripcion', 'responsable', 'ubicacionReferencia',
-                         'confidencialidad', 'tamanioMb', 'notes', 'area', 'category', 'type'] as const) {
+    for (const campo of ['titulo', 'descripcion', 'responsable', 'documentoReferencia',
+                         'confidencialidad', 'folios', 'notes', 'area', 'category', 'type'] as const) {
       if (payload[campo] !== undefined) cambios[campo] = payload[campo];
     }
 
@@ -219,7 +221,7 @@ export class DocumentService {
   /** Registra una version nueva: incrementa el correlativo y reabre el ciclo. */
   async registrarNuevaVersion(
     doc: Documento,
-    datos: { tamanioMb?: number; resumenCambio: string }
+    datos: { folios?: number; resumenCambio: string }
   ): Promise<void> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
@@ -228,7 +230,7 @@ export class DocumentService {
 
     await this.firebase.actualizarDocumento(userId, doc.id, {
       version: doc.version + 1,
-      tamanioMb: datos.tamanioMb ?? doc.tamanioMb,
+      folios: datos.folios ?? doc.folios,
       estado: 'en_revision',
       motivoEstado: datos.resumenCambio,
       fechaUltimaVersion: this.hoy(),
@@ -311,7 +313,7 @@ export class DocumentService {
       subidoEn: new Date().toISOString()
     });
 
-    // El tamaño declarado del documento pasa a ser el real del adjunto.
+    // El peso lo fija el archivo; los folios los declara la persona.
     await this.firebase.actualizarDocumento(userId, documentoId, {
       tamanioMb: Math.round((file.size / 1024 / 1024) * 100) / 100,
       updatedAt: new Date().toISOString()
@@ -467,6 +469,7 @@ export class DocumentService {
       area: data.area ?? 'otros',
       confidencialidad: data.confidencialidad ?? 'interno',
       responsable: data.responsable ?? '',
+      folios: data.folios ?? 1,
       tamanioMb: data.tamanioMb ?? 0,
       estado,
       activo: data.activo ?? true,

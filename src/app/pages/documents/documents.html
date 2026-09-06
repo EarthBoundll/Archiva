@@ -117,7 +117,13 @@
                 <span><app-icon name="folder" [size]="14"></app-icon> {{ categorias[d.category].label }}</span>
                 <span><app-icon name="building-2" [size]="14"></app-icon> {{ areas[d.area].label }}</span>
                 <span><app-icon name="user" [size]="14"></app-icon> {{ d.responsable || 'Sin asignar' }}</span>
-                <span><app-icon name="hard-drive" [size]="14"></app-icon> {{ formatoMb(d.tamanioMb) }}</span>
+                 <span><app-icon name="file-text" [size]="14"></app-icon> {{ d.folios }} {{ d.folios === 1 ? 'folio' : 'folios' }}</span>
+                @if (d.tamanioMb) {
+                  <span><app-icon name="hard-drive" [size]="14"></app-icon> {{ formatoMb(d.tamanioMb) }}</span>
+                }
+                @if (d.documentoReferencia) {
+                  <span><app-icon name="link" [size]="14"></app-icon> Ref. {{ d.documentoReferencia }}</span>
+                }
               </div>
 
               @if (d.motivoEstado) {
@@ -202,13 +208,6 @@
             </label>
 
             <label class="campo-form">
-              <span>Código <em>(opcional)</em></span>
-              <input type="text" class="mono" [ngModel]="fCodigo()" (ngModelChange)="fCodigo.set($event)"
-                     placeholder="Se genera solo" maxlength="14">
-              <small>Formato CAT-ÁREA-0001. Si lo dejas vacío se asigna el siguiente correlativo.</small>
-            </label>
-
-            <label class="campo-form">
               <span>Responsable</span>
               <input type="text" [ngModel]="fResponsable()" (ngModelChange)="fResponsable.set($event)"
                      placeholder="Nombre y apellidos">
@@ -224,9 +223,10 @@
             </label>
 
             <label class="campo-form">
-              <span>Tamaño en MB</span>
-              <input type="number" min="0" step="0.1" [ngModel]="fTamanio()"
-                     (ngModelChange)="fTamanio.set($event)" placeholder="0.0">
+              <span>Folios</span>
+              <input type="number" min="1" step="1" [ngModel]="fFolios()"
+                     (ngModelChange)="fFolios.set($event)" placeholder="ej. 12">
+              <small>Número de páginas del documento.</small>
             </label>
 
             <label class="campo-form">
@@ -251,15 +251,27 @@
             }
 
             <label class="campo-form campo-form--ancho">
-              <span>Ubicación de referencia <em>(opcional)</em></span>
-              <input type="text" [ngModel]="fUbicacion()" (ngModelChange)="fUbicacion.set($event)"
-                     placeholder="ej. Archivador 3, gaveta B — o una ruta compartida">
-            </label>
-
-            <label class="campo-form campo-form--ancho">
-              <span>Descripción <em>(opcional)</em></span>
+              <span>Descripción</span>
               <textarea rows="2" [ngModel]="fDescripcion()" (ngModelChange)="fDescripcion.set($event)"
                         placeholder="Qué contiene y para qué sirve"></textarea>
+            </label>
+
+            <!-- Unico campo opcional: vincula este documento con otro ya
+                 registrado, por ejemplo una adenda con su contrato. -->
+            <label class="campo-form campo-form--ancho">
+              <span>Documento de referencia <em>(opcional)</em></span>
+
+              @if (referenciables().length === 0) {
+                <input type="text" disabled placeholder="Todavía no hay otros documentos que referenciar">
+              } @else {
+                <select [ngModel]="fReferencia()" (ngModelChange)="fReferencia.set($event)">
+                  <option value="">Ninguno</option>
+                  @for (r of referenciables(); track r.id) {
+                    <option [value]="r.codigo">{{ r.codigo }} — {{ r.titulo }}</option>
+                  }
+                </select>
+              }
+              <small>Si este documento deriva de otro o responde a él, indícalo aquí.</small>
             </label>
 
             <!-- Adjuntar el archivo aquí y no después: es lo primero que
@@ -451,9 +463,9 @@
           </label>
 
           <label class="campo-form">
-            <span>Tamaño en MB</span>
-            <input type="number" min="0" step="0.1" [ngModel]="nuevoTamanio()"
-                   (ngModelChange)="nuevoTamanio.set($event)">
+            <span>Folios de la nueva versión</span>
+            <input type="number" min="1" step="1" [ngModel]="nuevosFolios()"
+                   (ngModelChange)="nuevosFolios.set($event)">
           </label>
 
           @if (errorMsg()) {

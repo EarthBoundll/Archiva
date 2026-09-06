@@ -165,9 +165,14 @@ export interface Documento {
   elaboradoPor?: string;
   revisadoPor?: string;
   aprobadoPor?: string;
-  ubicacionReferencia?: string;
 
-  // Almacenamiento
+  /** Codigo de otro documento del que este deriva o al que responde. */
+  documentoReferencia?: string;
+
+  // Extension y peso
+  /** Numero de folios: lo que se cuenta de un documento. */
+  folios: number;
+  /** Peso del archivo adjunto. Se calcula solo, no se pide. */
   tamanioMb: number;
 
   // Vigencia y renovacion
@@ -203,7 +208,6 @@ export interface VersionDocumento {
 
 
 export interface DocumentoPayload {
-  codigo?: string;                 // Se genera si no se indica
   titulo: string;
   descripcion?: string;
   category: CategoriaDocumental;
@@ -211,8 +215,9 @@ export interface DocumentoPayload {
   area: AreaEmisora;
   confidencialidad: Confidencialidad;
   responsable: string;
-  tamanioMb: number;
-  ubicacionReferencia?: string;
+  folios: number;
+  tamanioMb?: number;
+  documentoReferencia?: string;
   renovacion: ReglaRenovacion;
   alertarDiasAntes?: number | null;
   notes?: string;

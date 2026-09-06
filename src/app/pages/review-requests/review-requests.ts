@@ -1338,7 +1338,7 @@ export class ReviewRequestsComponent implements OnInit {
         this.now().getMonth() + 1
       );
 
-      const expensesOnly = currentMonthExpenses.filter(t => t.type === 'expense');
+      const expensesOnly = currentMonthExpenses.filter(t => t.tipo === 'salida');
       this.dailyTransactions.set(expensesOnly);
 
       this.calculateCategoryBreakdown(expensesOnly);
@@ -1374,9 +1374,10 @@ export class ReviewRequestsComponent implements OnInit {
   calculateCategoryBreakdown(expenses: RegistroHistorial[]) {
     const catTotals: Record<string, number> = {};
 
-    expenses.forEach(expense => {
-      const catId = expense.categoryId || 'other';
-      catTotals[catId] = (catTotals[catId] || 0) + Math.abs(expense.amount);
+    // Se cuentan movimientos por categoria, no importes.
+    expenses.forEach(registro => {
+      const catId = registro.category || 'otros';
+      catTotals[catId] = (catTotals[catId] || 0) + 1;
     });
 
     this.categoryBreakdown.set(Object.entries(catTotals)
@@ -1628,11 +1629,12 @@ export class ReviewRequestsComponent implements OnInit {
       // Crear registro negativa para que aparezca en dashboard
       const today = this.toDateString(new Date());
       const tx = await this.historyService.create({
-        amount: -Math.abs(amount),
-        description: expense.name,
+        codigo: '—',
+        titulo: expense.name,
         date: today,
-        type: 'expense',
-        categoryId: expense.category || null
+        accion: 'edicion',
+        responsable: '',
+        category: expense.category || 'otros'
       });
 
       // Guardar registroId en el expense
@@ -1666,10 +1668,8 @@ export class ReviewRequestsComponent implements OnInit {
     const expense = this.deleteTarget();
     if (!expense) { this.processing.set(false); return; }
     try {
-      // Si el solicitud tenía una registro asociada, eliminarla
-      if (expense.registroId) {
-        await this.historyService.delete(expense.registroId).catch(() => {});
-      }
+      // La bitacora no se borra: es evidencia del proceso. Anular una
+      // solicitud deja su rastro, igual que cualquier otra accion.
       await this.reviewRequestService.cancel(expense.id);
       this.closeDeleteAlert();
       await this.loadData();
@@ -1909,11 +1909,12 @@ export class ReviewRequestsComponent implements OnInit {
 
           // Crear registro negativa para dashboard
           const tx = await this.historyService.create({
-            amount: -Math.abs(amount),
-            description: this.formName,
+            codigo: '—',
+            titulo: this.formName,
             date: today,
-            type: 'expense',
-            categoryId: this.formCategory || null
+            accion: 'edicion',
+            responsable: '',
+            category: this.formCategory || 'otros'
           });
           if (tx?.id) {
             await this.reviewRequestService.update(result.id, { registroId: tx.id } as any);

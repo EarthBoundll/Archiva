@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { Auth } from '../services/auth';
@@ -99,7 +99,7 @@ import { ThemeService } from '../services/theme.service';
             <span>Configuración</span>
           </a>
           
-          <button class="nav-item nav-item--logout" (click)="logout()">
+          <button class="nav-item nav-item--logout" (click)="pedirCierreSesion()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
               <polyline points="16 17 21 12 16 7"/>
@@ -128,20 +128,24 @@ import { ThemeService } from '../services/theme.service';
           </button>
           
           <button
-            class="topbar__tema"
+            class="interruptor-tema"
+            [class.interruptor-tema--oscuro]="theme.temaAplicado() === 'oscuro'"
+            role="switch"
+            [attr.aria-checked]="theme.temaAplicado() === 'oscuro'"
             (click)="theme.alternar()"
-            [attr.aria-label]="theme.temaAplicado() === 'oscuro' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
-            [title]="theme.temaAplicado() === 'oscuro' ? 'Tema claro' : 'Tema oscuro'">
-            @if (theme.temaAplicado() === 'oscuro') {
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <circle cx="12" cy="12" r="4"/>
-                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+            [attr.aria-label]="theme.temaAplicado() === 'oscuro' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'">
+
+            <span class="interruptor-tema__pista" aria-hidden="true">
+              <svg class="interruptor-tema__sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <circle cx="12" cy="12" r="4.5"/>
+                <path d="M12 1.5v2M12 20.5v2M3.9 3.9l1.5 1.5M18.6 18.6l1.5 1.5M1.5 12h2M20.5 12h2M3.9 20.1l1.5-1.5M18.6 5.4l1.5-1.5"/>
               </svg>
-            } @else {
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg class="interruptor-tema__luna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
               </svg>
-            }
+            </span>
+
+            <span class="interruptor-tema__bola" aria-hidden="true"></span>
           </button>
 
           <div class="topbar__user">
@@ -215,6 +219,29 @@ import { ThemeService } from '../services/theme.service';
       </nav>
       
     </div>
+
+      <!-- Confirmacion de cierre de sesion -->
+      @if (confirmandoSalida()) {
+        <div class="salida-overlay" (click)="confirmandoSalida.set(false)">
+          <div class="salida" (click)="$event.stopPropagation()" role="alertdialog" aria-modal="true" aria-labelledby="salida-titulo">
+            <div class="salida__icono" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </div>
+            <h2 id="salida-titulo">¿Cerrar sesión?</h2>
+            <p>Volverás a la pantalla de acceso. Los datos guardados no se pierden.</p>
+            <div class="salida__acciones">
+              <button class="salida__btn" (click)="confirmandoSalida.set(false)">Seguir aquí</button>
+              <button class="salida__btn salida__btn--confirmar" (click)="confirmarSalida()" [disabled]="saliendo()">
+                {{ saliendo() ? 'Cerrando…' : 'Cerrar sesión' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      }
   `,
   styleUrl: './layout.component.scss'
 })
@@ -261,7 +288,22 @@ export class LayoutComponent {
     return this.auth.currentUser()?.photoURL ?? null;
   }
   
-  async logout() {
-    await this.auth.signOut();
+  confirmandoSalida = signal(false);
+  saliendo = signal(false);
+
+  /** Cerrar sesion es destructivo de facto: se pregunta antes. */
+  pedirCierreSesion() {
+    this.confirmandoSalida.set(true);
+  }
+
+  async confirmarSalida() {
+    if (this.saliendo()) return;
+    this.saliendo.set(true);
+    try {
+      await this.auth.signOut();
+    } finally {
+      this.saliendo.set(false);
+      this.confirmandoSalida.set(false);
+    }
   }
 }

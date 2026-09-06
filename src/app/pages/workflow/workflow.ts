@@ -98,7 +98,7 @@ export class WorkflowComponent implements OnInit {
       this.goal.set(activeGoal);
 
       const totals      = this.historyService.calcTotales(txs);
-      this.monthlyIncome = totals.income;
+      this.monthlyIncome = totals.entradas;
 
       if (activeGoal) {
         this.newContribution = activeGoal.etapasPorPeriodo;

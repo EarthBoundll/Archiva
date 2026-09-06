@@ -83,7 +83,7 @@ export class MigrationService {
             description: tx.description || 'Sin descripción',
             date: tx.date || date.toISOString().split('T')[0],
             type: tx.type || (tx.amount > 0 ? 'income' : 'expense'),
-            ruleType: tx.type === 'income' ? 'income' : 'need',
+            ruleType: tx.tipo === 'entrada' ? 'income' : 'need',
             createdAt: tx.createdAt || new Date().toISOString(),
             updatedAt: tx.updatedAt || new Date().toISOString()
           };

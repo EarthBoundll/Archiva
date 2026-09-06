@@ -62,8 +62,8 @@ export class ArchiveComponent implements OnInit {
         this.now.getFullYear(),
         this.now.getMonth() + 1
       );
-      const monthlyTxIncome = currentMonthTx.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const expenses = Math.abs(currentMonthTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0));
+      const monthlyTxIncome = currentMonthTx.filter(t => t.tipo === 'entrada').length;
+      const expenses = Math.abs(currentMonthTx.filter(t => t.tipo === 'salida').length);
       this.totalSavedThisMonth = monthlyTxIncome - expenses;
 
       // Last month comparison
@@ -72,8 +72,8 @@ export class ArchiveComponent implements OnInit {
         lastMonthDate.getFullYear(),
         lastMonthDate.getMonth() + 1
       );
-      const lastMonthIncome = lastMonthTx.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const lastMonthExpenses = Math.abs(lastMonthTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0));
+      const lastMonthIncome = lastMonthTx.filter(t => t.tipo === 'entrada').length;
+      const lastMonthExpenses = Math.abs(lastMonthTx.filter(t => t.tipo === 'salida').length);
       this.lastMonthSaved = lastMonthIncome - lastMonthExpenses;
 
       this.monthChange = this.lastMonthSaved > 0
@@ -85,8 +85,8 @@ export class ArchiveComponent implements OnInit {
       for (let i = 5; i >= 0; i--) {
         const d = new Date(this.now.getFullYear(), this.now.getMonth() - i, 1);
         const tx = await this.historyService.getPorPeriodo(d.getFullYear(), d.getMonth() + 1);
-        const inc = tx.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-        const exp = Math.abs(tx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0));
+        const inc = tx.filter(t => t.tipo === 'entrada').length;
+        const exp = Math.abs(tx.filter(t => t.tipo === 'salida').length);
         const saved = inc - exp;
         
         history.push({

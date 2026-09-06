@@ -21,7 +21,7 @@ export class IndicatorsComponent implements OnInit {
   private documentService = inject(DocumentService);
 
   period = signal<'month' | 'year'>('month');
-  totals = signal({ income: 0, expenses: 0, balance: 0 });
+  totals = signal({ entradas: 0, salidas: 0, neto: 0, total: 0 });
   topCategories = signal<{ name: string; amount: number; percentage: number }[]>([]);
   monthlyTrend = signal<number[]>([]);
 
@@ -52,29 +52,29 @@ export class IndicatorsComponent implements OnInit {
 
   get incomeDash(): string {
     const t = this.totals();
-    const total = t.income + t.expenses;
+    const total = t.entradas + t.salidas;
     if (total === 0) return '0, 100';
-    return `${(t.income / total) * 47.5}, 100`;
+    return `${(t.entradas / total) * 47.5}, 100`;
   }
 
   get expenseDash(): string {
     const t = this.totals();
-    const total = t.income + t.expenses;
+    const total = t.entradas + t.salidas;
     if (total === 0) return '0, 100';
-    return `${(t.expenses / total) * 47.5}, 100`;
+    return `${(t.salidas / total) * 47.5}, 100`;
   }
 
   get savingsRate(): number {
     const t = this.totals();
-    if (t.income === 0) return 0;
-    return Math.round(((t.income - t.expenses) / t.income) * 100);
+    if (t.entradas === 0) return 0;
+    return Math.round(((t.entradas - t.salidas) / t.entradas) * 100);
   }
 
   insights = computed<Insight[]>(() => {
     const t = this.totals();
     const list: Insight[] = [];
 
-    if (t.expenses > t.income) {
+    if (t.salidas > t.entradas) {
       list.push({
         title: 'Solicitudes exceden documentos',
         description: 'Considera reducir solicitudes no esenciales',
@@ -108,17 +108,23 @@ export class IndicatorsComponent implements OnInit {
     const totals = this.historyService.calcTotales(txs);
     this.totals.set(totals);
 
-    const byCat = this.historyService.calcPorCategoria(txs);
-    const totalExpenses = byCat.reduce((sum, c) => sum + c.total, 0);
+    // calcPorCategoria devuelve un Record<categoria, conteo>
+    const porCat = this.historyService.calcPorCategoria(txs);
+    const entradas = Object.entries(porCat) as [string, number][];
+    const totalMovs = entradas.reduce((sum, [, n]) => sum + n, 0);
+
     this.topCategories.set(
-      byCat.slice(0, 5).map(c => ({
-        name: c.name,
-        amount: c.total,
-        percentage: totalExpenses > 0 ? (c.total / totalExpenses) * 100 : 0
-      }))
+      entradas
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([nombre, n]) => ({
+          name: nombre,
+          amount: n,
+          percentage: totalMovs > 0 ? (n / totalMovs) * 100 : 0
+        }))
     );
 
-    this.monthlyTrend.set([1200, 1400, 1100, 1600, 1300, totals.expenses]);
+    this.monthlyTrend.set([1200, 1400, 1100, 1600, 1300, totals.salidas]);
   }
 
   formatSol(n: number): string {

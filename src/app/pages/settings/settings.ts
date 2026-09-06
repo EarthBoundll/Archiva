@@ -1,3 +1,5 @@
+const SELLO_COMPILACION = '2026-09-06 01:25';
+
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Auth } from '../../core/services/auth';
@@ -50,6 +52,7 @@ import { DevSettingsService } from '../../core/services/dev-settings';
       <section class="settings-section dev-section">
         <div class="dev-header">
           <h2>Desarrollador</h2>
+        <p class="sello-version">Compilación {{ sello }}</p>
           <span class="dev-badge">DEV</span>
         </div>
 
@@ -259,6 +262,9 @@ import { DevSettingsService } from '../../core/services/dev-settings';
   `]
 })
 export class SettingsComponent {
+  /** Marca de la compilacion: sirve para saber si el navegador sirve cache. */
+  sello = SELLO_COMPILACION;
+
   private auth = inject(Auth);
   dev = inject(DevSettingsService);
 

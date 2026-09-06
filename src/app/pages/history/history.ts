@@ -1,14 +1,20 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
 import { HistoryService } from '../../core/services/history';
-import { RegistroHistorial, RegistroHistorialPayload } from '../../core/models/history.model';
+import { IconComponent } from '../../core/components/icon/icon.component';
+import { log } from '../../core/utils/logger';
+import {
+  RegistroHistorial,
+  AccionDocumental,
+  ACCIONES
+} from '../../core/models/history.model';
+import { CATEGORIAS_DOCUMENTALES, type CategoriaDocumental } from '../../core/models/document.model';
 
 @Component({
-  selector: 'app-transactions',
+  selector: 'app-history',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, IconComponent],
   templateUrl: './history.html',
   styleUrl: './history.scss'
 })
@@ -16,145 +22,62 @@ export class HistoryComponent implements OnInit {
 
   private historyService = inject(HistoryService);
 
-  isLoading    = signal(true);
-  transactions = signal<RegistroHistorial[]>([]);
+  registros = signal<RegistroHistorial[]>([]);
+  cargando  = signal(true);
 
-  // Filtros
-  filterType  = 'all';    // all | income | expense
-  filterMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  filtroAccion = signal<AccionDocumental | 'todas'>('todas');
+  busqueda     = signal('');
 
-  // Modal editar / eliminar
-  showModal    = signal(false);
-  isDeleting   = signal(false);
-  isSaving     = signal(false);
-  modalError   = signal('');
-  editingTx    = signal<RegistroHistorial | null>(null);
+  acciones      = ACCIONES;
+  listaAcciones = Object.keys(ACCIONES) as AccionDocumental[];
+  categorias    = CATEGORIAS_DOCUMENTALES;
 
-  // Formulario edición
-  editAmount      = '';
-  editDescription = '';
-  editDate        = '';
+  totales = computed(() => this.historyService.calcTotales(this.registros()));
 
-  // Confirm delete
-  showConfirm  = signal(false);
-  deletingId   = signal<string | null>(null);
+  conteoPorAccion = computed(() => this.historyService.calcPorAccion(this.registros()));
 
-  get filtered(): RegistroHistorial[] {
-    return this.transactions().filter(tx => {
-      if (this.filterType === 'income')  return tx.amount > 0;
-      if (this.filterType === 'expense') return tx.amount < 0;
+  filtrados = computed(() => {
+    const a = this.filtroAccion();
+    const q = this.busqueda().trim().toLowerCase();
+
+    return this.registros().filter(r => {
+      if (a !== 'todas' && r.accion !== a) return false;
+      if (q && !`${r.codigo} ${r.titulo} ${r.responsable}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }
+  });
 
-  get totals() {
-    return this.historyService.calcTotales(this.transactions());
-  }
+  porDia = computed(() => this.historyService.agruparPorDia(this.filtrados()));
 
   async ngOnInit() {
-    await this.loadData();
-  }
-
-  async loadData() {
-    this.isLoading.set(true);
+    this.cargando.set(true);
     try {
-      const [year, month] = this.filterMonth.split('-').map(Number);
-      const txs = await this.historyService.getPorPeriodo(year, month);
-      this.transactions.set(txs);
+      this.registros.set(await this.historyService.getBitacora());
+    } catch (e) {
+      log.error('Error cargando la bitácora:', e);
     } finally {
-      this.isLoading.set(false);
+      this.cargando.set(false);
     }
   }
 
-  async onMonthChange() {
-    await this.loadData();
+  etiquetaCategoria(c?: string): string {
+    if (!c) return '';
+    return CATEGORIAS_DOCUMENTALES[c as CategoriaDocumental]?.label ?? c;
   }
 
-  // ─── Editar ──────────────────────────────────────────────
-  openEdit(tx: RegistroHistorial) {
-    this.editingTx.set(tx);
-    this.editAmount      = String(tx.amount);
-    this.editDescription = tx.description ?? '';
-    this.editDate        = tx.date;
-    this.modalError.set('');
-    this.showModal.set(true);
-  }
+  fechaLarga(iso: string): string {
+    if (!iso) return '';
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const d = new Date(iso + 'T00:00:00');
+    const dias = Math.round((hoy.getTime() - d.getTime()) / 86400000);
 
-  closeModal() {
-    this.showModal.set(false);
-    this.editingTx.set(null);
-  }
+    if (dias === 0) return 'Hoy';
+    if (dias === 1) return 'Ayer';
 
-  async saveEdit() {
-    const amount = parseFloat(this.editAmount);
-    if (isNaN(amount) || amount === 0) {
-      this.modalError.set('El cantidad no es válido');
-      return;
-    }
-
-    this.isSaving.set(true);
-    this.modalError.set('');
-    try {
-      const payload: Partial<RegistroHistorialPayload> = {
-        amount,
-        description: this.editDescription,
-        date: this.editDate,
-        type: amount < 0 ? 'expense' : 'income'
-      };
-      await this.historyService.update(this.editingTx()!.id, payload);
-      this.closeModal();
-      await this.loadData();
-    } catch (e: any) {
-      this.modalError.set(e.message);
-    } finally {
-      this.isSaving.set(false);
-    }
-  }
-
-  // ─── Eliminar ────────────────────────────────────────────
-  confirmDelete(id: string) {
-    this.deletingId.set(id);
-    this.showConfirm.set(true);
-  }
-
-  cancelDelete() {
-    this.showConfirm.set(false);
-    this.deletingId.set(null);
-  }
-
-  async doDelete() {
-    this.isDeleting.set(true);
-    try {
-      await this.historyService.delete(this.deletingId()!);
-      this.showConfirm.set(false);
-      await this.loadData();
-    } finally {
-      this.isDeleting.set(false);
-    }
-  }
-
-  formatSol(n: number): string {
-    return `${Math.abs(n).toFixed(2)}`;
-  }
-
-  groupByDate(): { date: string; items: RegistroHistorial[] }[] {
-    const map = new Map<string, RegistroHistorial[]>();
-    this.filtered.forEach(tx => {
-      const list = map.get(tx.date) ?? [];
-      list.push(tx);
-      map.set(tx.date, list);
+    return d.toLocaleDateString('es-PE', {
+      weekday: 'long', day: 'numeric', month: 'long'
     });
-    return Array.from(map.entries())
-      .map(([date, items]) => ({ date, items }))
-      .sort((a, b) => b.date.localeCompare(a.date));
   }
 
-  groupSubtotal(items: RegistroHistorial[]): number {
-    return items.reduce((sum, t) => sum + t.amount, 0);
-  }
-
-  formatDate(dateStr: string): string {
-    const date = new Date(dateStr + 'T00:00:00');
-    return date.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
-  }
+  trackId(_: number, r: RegistroHistorial) { return r.id; }
 }

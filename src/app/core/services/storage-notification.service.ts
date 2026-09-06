@@ -49,10 +49,10 @@ export class StorageNotificationService {
     const prevYear = month === 1 ? year - 1 : year;
     const prevTxs = await this.historyService.getPorPeriodo(prevYear, prevMonth);
     const prevTotals = this.historyService.calcTotales(prevTxs);
-    const previousSurplus = prevTotals.balance;
+    const previousSurplus = prevTotals.neto;
 
     // Calculate trend
-    const surplus = totals.balance;
+    const surplus = totals.neto;
     let trend: 'up' | 'down' | 'stable' = 'stable';
     let percentageChange = 0;
 
@@ -72,8 +72,8 @@ export class StorageNotificationService {
     return {
       year,
       month,
-      income: totals.income,
-      expenses: Math.abs(totals.expenses),
+      income: totals.entradas,
+      expenses: Math.abs(totals.salidas),
       surplus,
       previousMonthSurplus: previousSurplus,
       trend,

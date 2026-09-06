@@ -37,7 +37,7 @@
   <!-- Card: Comparación vs mes anterior -->
   <div class="card card--comparison">
     <div class="card__header">
-      <span class="card__label">vs mes anterior</span>
+      <span class="card__label">Frente al mes anterior</span>
     </div>
     <div class="comparison-values">
       <div class="comp-item">
@@ -58,7 +58,7 @@
   <!-- Card: Top categorías -->
   <div class="card card--top-cats">
     <div class="card__header">
-      <span class="card__label">Top categorías</span>
+      <span class="card__label">Categorías con más movimiento</span>
     </div>
     <div class="cat-list">
       @for (cat of topCategories(); track cat.name) {
@@ -69,7 +69,7 @@
               <div class="cat-bar__fill" [style.width.%]="cat.percentage"></div>
             </div>
           </div>
-          <span class="cat-amount">{{ formatSol(cat.amount) }}</span>
+          <span class="cat-amount">{{ formatoConteo(cat.amount) }}</span>
         </div>
       }
     </div>
@@ -97,12 +97,12 @@
       <div class="legend-item">
         <span class="legend-dot" style="background: var(--color-primary)"></span>
         <span>Documentos</span>
-        <span class="legend-value">{{ formatSol(totals().entradas) }}</span>
+        <span class="legend-value">{{ formatoConteo(totals().entradas) }}</span>
       </div>
       <div class="legend-item">
         <span class="legend-dot" style="background: var(--color-error)"></span>
         <span>Solicitudes</span>
-        <span class="legend-value">{{ formatSol(totals().salidas) }}</span>
+        <span class="legend-value">{{ formatoConteo(totals().salidas) }}</span>
       </div>
     </div>
   </div>
@@ -110,7 +110,7 @@
   <!-- Card: Alertas de solicitud -->
   <div class="card card--alerts">
     <div class="card__header">
-      <span class="card__label">Insights</span>
+      <span class="card__label">Observaciones</span>
     </div>
     <div class="insights-list">
       @for (insight of insights(); track insight.title) {

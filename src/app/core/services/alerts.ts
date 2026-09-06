@@ -130,10 +130,10 @@ export class AlertsService {
 
   private async getIncomeAlerts(userId: string, year: number, month: number): Promise<Alert[]> {
     const alerts: Alert[] = [];
-    const monthlyIncome = await this.firebase.calcularDocumentosPeriodo(userId, year, month);
+    const documentosDelPeriodo = await this.firebase.calcularDocumentosPeriodo(userId, year, month);
 
-    if (monthlyIncome?.sources) {
-      for (const source of monthlyIncome.sources) {
+    if (documentosDelPeriodo?.sources) {
+      for (const source of documentosDelPeriodo.sources) {
         if (source.status === 'overdue') {
           alerts.push({
             id: `income-overdue-${source.documentoId}`,
@@ -169,29 +169,29 @@ export class AlertsService {
   private async getGoalAlerts(userId: string): Promise<Alert[]> {
     const alerts: Alert[] = [];
     const goals = await this.firebase.getFlujos(userId);
-    const monthlyIncome = await this.firebase.calcularDocumentosPeriodo(userId, 
+    const documentosDelPeriodo = await this.firebase.calcularDocumentosPeriodo(userId, 
       new Date().getFullYear(), 
       new Date().getMonth() + 1
     );
 
-    if (goals && goals.length > 0 && monthlyIncome?.totalBudgeted) {
-      const savingsTarget = monthlyIncome.totalBudgeted * 0.20; // 20% savings target
+    if (goals && goals.length > 0 && documentosDelPeriodo?.totalBudgeted) {
+      const metaArchivado = documentosDelPeriodo.totalBudgeted * 0.20; // 20% savings target
 
       for (const goal of goals as any[]) {
         if (goal.status !== 'active') continue;
 
         const etapasPorPeriodo = goal.etapasPorPeriodo || 0;
         
-        if (etapasPorPeriodo < savingsTarget) {
+        if (etapasPorPeriodo < metaArchivado) {
           alerts.push({
             id: `goal-behind-${goal.id}`,
             type: 'goal_behind_schedule',
             severity: (goal.priority === 'high') ? 'high' : 'medium',
             title: `Meta fuera de schedule: ${goal.name || 'Meta'}`,
-            message: `Contribution mensual de ${etapasPorPeriodo} es menor al objetivo de ${Math.round(savingsTarget)}`,
+            message: `Contribution mensual de ${etapasPorPeriodo} es menor al objetivo de ${Math.round(metaArchivado)}`,
             category: goal.category,
             amount: etapasPorPeriodo,
-            threshold: savingsTarget,
+            threshold: metaArchivado,
             createdAt: new Date().toISOString()
           });
         }

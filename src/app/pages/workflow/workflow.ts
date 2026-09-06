@@ -37,14 +37,16 @@ export class WorkflowComponent implements OnInit {
   newTarget            = 10000;
 
   // Historial de documentos del mes
-  monthlyIncome = 0;
+  /** Movimientos documentales del periodo, para dar contexto al ritmo. */
+  documentosEnFlujo = 0;
 
   readonly milestones: Milestone[] = [
-    { amount: 1000,  label: '1,000',  reached: false },
-    { amount: 2500,  label: '2,500',  reached: false },
-    { amount: 5000,  label: '5,000',  reached: false },
-    { amount: 7500,  label: '7,500',  reached: false },
-    { amount: 10000, label: '10,000', reached: false },
+    // Fracciones del recorrido, no cifras: un flujo de tres etapas y otro
+    // de diez deben leerse igual de bien.
+    { amount: 0.25, label: '25%',  reached: false },
+    { amount: 0.50, label: '50%',  reached: false },
+    { amount: 0.75, label: '75%',  reached: false },
+    { amount: 1.00, label: '100%', reached: false },
   ];
 
   get progress(): number {
@@ -57,7 +59,8 @@ export class WorkflowComponent implements OnInit {
 
   get milestonesWithStatus(): Milestone[] {
     const current = this.goal()?.etapasCompletadas ?? 0;
-    return this.milestones.map(m => ({ ...m, reached: current >= m.amount }));
+    const total = this.goal()?.etapasTotales || 1;
+    return this.milestones.map(m => ({ ...m, reached: current >= m.amount * total }));
   }
 
   // Proyección: cuántos meses si se aporta X
@@ -98,7 +101,7 @@ export class WorkflowComponent implements OnInit {
       this.goal.set(activeGoal);
 
       const totals      = this.historyService.calcTotales(txs);
-      this.monthlyIncome = totals.entradas;
+      this.documentosEnFlujo = totals.entradas;
 
       if (activeGoal) {
         this.newContribution = activeGoal.etapasPorPeriodo;
@@ -164,9 +167,7 @@ export class WorkflowComponent implements OnInit {
     setTimeout(() => this.successMsg.set(''), 3000);
   }
 
-  formatSol(n: number): string {
-    return `${Math.abs(n).toFixed(2)}`;
-  }
+
 
   formatMonth(months: number): string {
     if (months === 0) return '¡Meta alcanzada!';

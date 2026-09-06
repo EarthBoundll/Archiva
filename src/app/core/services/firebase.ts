@@ -304,7 +304,7 @@ export class FirebaseService {
     const expenses = transactions.filter((t: any) => t.amount < 0).reduce((s: number, t: any) => s + Math.abs(t.amount), 0);
     
     // Use income data for budgeted amounts
-    const budgetedIncome = incomeData.totalBudgeted;
+    const documentosProyectados = incomeData.totalBudgeted;
     const initialBalance = incomeData.initialBalance;
     
     // Available now = initial balance + received
@@ -314,11 +314,11 @@ export class FirebaseService {
     const budgetedExpenses = expenses; // For now, assume budget = actual for expenses
     
     const balance = availableNow - expenses; // Actual balance
-    const budgetedBalance = (initialBalance + budgetedIncome) - budgetedExpenses; // Expected at end of month
+    const budgetedBalance = (initialBalance + documentosProyectados) - budgetedExpenses; // Expected at end of month
     
     const savings = availableNow - expenses;
-    const budgetedSavings = (initialBalance + budgetedIncome) - budgetedExpenses;
-    const savingsRate = budgetedIncome > 0 ? (budgetedSavings / budgetedIncome) * 100 : 0;
+    const acervoProyectado = (initialBalance + documentosProyectados) - budgetedExpenses;
+    const tasaVigencia = documentosProyectados > 0 ? (acervoProyectado / documentosProyectados) * 100 : 0;
     
     // Calculate 50/30/20 breakdown
     const expensesByType = { need: 0, want: 0, saving: 0 };
@@ -331,8 +331,8 @@ export class FirebaseService {
     
     // Calculate financial score (simple version)
     let score = 50; // base
-    if (savingsRate >= 20) score += 20;
-    else if (savingsRate >= 10) score += 10;
+    if (tasaVigencia >= 20) score += 20;
+    else if (tasaVigencia >= 10) score += 10;
     if (expenses <= income) score += 20;
     if (income > 0) score += 10;
     
@@ -347,12 +347,12 @@ export class FirebaseService {
     const estadoDocumental = {
       // Income
       income,
-      incomeBudgeted: budgetedIncome,
+      incomeBudgeted: documentosProyectados,
       incomeReceived: income,
-      incomePending: budgetedIncome - income,
+      incomePending: documentosProyectados - income,
       initialBalance,
       availableNow,
-      expectedByEndOfMonth: initialBalance + budgetedIncome,
+      expectedByEndOfMonth: initialBalance + documentosProyectados,
       
       // Expenses
       expenses,
@@ -364,7 +364,7 @@ export class FirebaseService {
       
       // Savings
       savings,
-      savingsRate: Math.round(savingsRate * 10) / 10,
+      tasaVigencia: Math.round(tasaVigencia * 10) / 10,
       
       // Score
       financialScore: score,
@@ -450,26 +450,37 @@ export class FirebaseService {
   }
 
   // Add contribution to goal
-  async aprobarEtapa(userId: string, flujoId: string, amount: number, note?: string) {
-    const goal: any = await this.getFlujoPorId(userId, flujoId);
-    if (!goal) throw new Error('Goal not found');
-    
-    const contribution = {
+  /**
+   * Registra el resultado de una etapa.
+   *
+   * Solo una etapa aprobada hace avanzar el flujo. Observarla lo deja donde
+   * estaba: el documento vuelve a quien lo presento, y el contador no puede
+   * subir por algo que aun no esta conforme.
+   */
+  async aprobarEtapa(userId: string, flujoId: string, etapa: any) {
+    const flujo: any = await this.getFlujoPorId(userId, flujoId);
+    if (!flujo) throw new Error('El flujo ya no existe.');
+
+    const registro = {
       id: Date.now().toString(),
-      amount,
-      date: new Date().toISOString(),
-      note
+      orden: etapa.orden,
+      nombre: etapa.nombre,
+      aprobador: etapa.aprobador,
+      resultado: etapa.resultado,
+      observacion: etapa.observacion,
+      date: new Date().toISOString()
     };
-    
-    const newAmount = (goal.etapasCompletadas || 0) + amount;
-    const estaCompletado = newAmount >= (goal.etapasTotales || 0);
+
+    const avanza = etapa.resultado === 'aprobada';
+    const newAmount = (flujo.etapasCompletadas || 0) + (avanza ? 1 : 0);
+    const estaCompletado = newAmount >= (flujo.etapasTotales || 0);
     
     const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
     await setDoc(docRef, this.limpiar({
       etapasCompletadas: newAmount,
       estaCompletado,
       status: estaCompletado ? 'completed' : 'active',
-      etapas: [...(goal.etapas || []), contribution],
+      etapas: [...(flujo.etapas || []), registro],
       updatedAt: new Date().toISOString()
     }), { merge: true });
   }

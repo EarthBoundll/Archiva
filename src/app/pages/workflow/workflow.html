@@ -28,14 +28,14 @@
     }
 
     <section class="hero">
-      <div class="hero__amounts">
+      <div class="hero__cifras">
         <div>
-          <p class="hero__current">{{ formatSol(goal()!.etapasCompletadas) }}</p>
+          <p class="hero__current">{{ goal()!.etapasCompletadas }}</p>
           <p class="hero__label">etapas completadas</p>
         </div>
         <div class="hero__right">
-          <p class="hero__target">{{ formatSol(goal()!.etapasTotales) }}</p>
-          <p class="hero__label">meta total</p>
+          <p class="hero__target">{{ goal()!.etapasTotales }}</p>
+          <p class="hero__label">etapas en total</p>
         </div>
       </div>
 
@@ -44,7 +44,7 @@
         @for (m of milestonesWithStatus; track m.amount) {
           <div
             class="milestone-marker"
-            [style.left.%]="(m.amount / goal()!.etapasTotales) * 100"
+            [style.left.%]="m.amount * 100"
             [class.reached]="m.reached"
             [title]="m.label">
           </div>
@@ -53,7 +53,7 @@
 
       <div class="hero__pct">{{ progress.toFixed(1) }}% completado</div>
       <p class="hero__remaining">
-        Faltan <strong>{{ formatSol(goal()!.etapasTotales - goal()!.etapasCompletadas) }}</strong> para tu meta
+        Faltan <strong>{{ (goal()!.etapasTotales - goal()!.etapasCompletadas) }}</strong> para tu meta
       </p>
     </section>
 
@@ -87,7 +87,7 @@
             <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
           </svg>
         </span>
-        <span class="stat-card__value">{{ formatSol(goal()!.etapasPorPeriodo) }}</span>
+        <span class="stat-card__value">{{ goal()!.etapasPorPeriodo }}</span>
         <span class="stat-card__label">aporte mensual</span>
       </div>
       <div class="stat-card">
@@ -101,7 +101,7 @@
             <line x1="12" y1="22.08" x2="12" y2="12"/>
           </svg>
         </span>
-        <span class="stat-card__value">{{ formatSol(monthlyIncome) }}</span>
+        <span class="stat-card__value">{{ documentosEnFlujo }}</span>
         <span class="stat-card__label">documentos este mes</span>
       </div>
     </section>
@@ -150,7 +150,7 @@
           <div class="scenario" [class.active]="s.contribution === goal()!.etapasPorPeriodo">
             <div class="scenario__left">
               <span class="scenario__label">{{ s.label }}</span>
-              <span class="scenario__contribution">{{ formatSol(s.contribution) }}/mes</span>
+              <span class="scenario__contribution">{{ s.contribution }} etapas/mes</span>
             </div>
             <span class="scenario__months">{{ formatMonth(s.months) }}</span>
           </div>
@@ -171,7 +171,7 @@
         <div class="edit-card">
           <div class="edit-card__info">
             <span class="edit-card__label">Aporte mensual</span>
-            <span class="edit-card__value">{{ formatSol(goal()!.etapasPorPeriodo) }}</span>
+            <span class="edit-card__value">{{ goal()!.etapasPorPeriodo }}</span>
           </div>
           <button class="btn-edit" (click)="showEditContribution.set(!showEditContribution())">
             {{ showEditContribution() ? 'Cancelar' : 'Editar' }}
@@ -197,7 +197,7 @@
         <div class="edit-card">
           <div class="edit-card__info">
             <span class="edit-card__label">Meta total</span>
-            <span class="edit-card__value">{{ formatSol(goal()!.etapasTotales) }}</span>
+            <span class="edit-card__value">{{ goal()!.etapasTotales }}</span>
           </div>
           <button class="btn-edit" (click)="showEditTarget.set(!showEditTarget())">
             {{ showEditTarget() ? 'Cancelar' : 'Editar' }}

@@ -110,11 +110,22 @@ export class WorkflowService {
   // Contribuciones
   // ============================================
   
-  async aprobarEtapa(flujoId: string, amount: number, note?: string): Promise<FlujoAprobacion> {
+  async aprobarEtapa(flujoId: string, etapa: {
+    orden: number;
+    nombre: string;
+    aprobador: string;
+    resultado: 'aprobada' | 'observada';
+    observacion?: string;
+  }): Promise<FlujoAprobacion> {
     const userId = this.authService.getUserId();
     if (!userId) throw new Error('No autenticado');
 
-    await this.firebase.aprobarEtapa(userId, flujoId, amount, note);
+    if (!etapa.aprobador.trim()) throw new Error('Indica quien firma la etapa.');
+    if (etapa.resultado === 'observada' && !etapa.observacion?.trim()) {
+      throw new Error('Indica que hay que corregir: sin eso nadie sabe como continuar.');
+    }
+
+    await this.firebase.aprobarEtapa(userId, flujoId, etapa);
     return this.getById(flujoId) as Promise<FlujoAprobacion>;
   }
 

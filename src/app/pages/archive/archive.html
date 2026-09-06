@@ -21,8 +21,8 @@
           <span class="card__label">Archivados este mes</span>
           <span class="card__subtitle">Acervo archivado</span>
         </div>
-        <div class="card__value" [class.positive]="totalSavedThisMonth >= 0" [class.negative]="totalSavedThisMonth < 0">
-          {{ formatSol(totalSavedThisMonth) }}
+        <div class="card__value" [class.positive]="archivadosEstePeriodo >= 0" [class.negative]="archivadosEstePeriodo < 0">
+          {{ formatoConteo(archivadosEstePeriodo) }}
         </div>
         <div class="card__compare" [class.positive]="monthChange >= 0" [class.negative]="monthChange < 0">
           {{ monthChange >= 0 ? '+' : '' }}{{ monthChange.toFixed(1) }}% vs {{ lastMonthName }}
@@ -31,19 +31,19 @@
 
       <div class="card card--target">
         <div class="card__header">
-          <span class="card__label">Meta 50/30/20</span>
-          <span class="card__subtitle">20% de tus documentos</span>
+          <span class="card__label">Meta del periodo</span>
+          <span class="card__subtitle">20% del acervo</span>
         </div>
-        <div class="card__value">{{ formatSol(target20Percent) }}</div>
-        <div class="card__sub">Documentos: {{ formatSol(monthlyIncome) }}</div>
+        <div class="card__value">{{ formatoConteo(metaArchivado) }}</div>
+        <div class="card__sub">Acervo total: {{ formatoConteo(acervoTotal) }}</div>
       </div>
 
       <div class="card card--alltime">
         <div class="card__header">
-          <span class="card__label">Total Acumulado</span>
+          <span class="card__label">Total acumulado</span>
           <span class="card__subtitle">Últimos 6 meses</span>
         </div>
-        <div class="card__value">{{ formatSol(totalSavedAllTime) }}</div>
+        <div class="card__value">{{ formatoConteo(archivadosAcumulados) }}</div>
         <div class="card__sub">{{ monthlyHistory().filter(m => m.amount > 0).length }} meses con archivo</div>
       </div>
     </div>
@@ -58,7 +58,7 @@
               <div class="bar-fill" [style.height.%]="getBarHeight(month.amount)"></div>
             </div>
             <span class="bar-label">{{ month.month }}</span>
-            <span class="bar-value">{{ formatSol(month.amount) }}</span>
+            <span class="bar-value">{{ formatoConteo(month.amount) }}</span>
           </div>
         }
       </div>
@@ -81,7 +81,7 @@
           </div>
           <div class="goal-details">
             <span class="goal-name">{{ currentGoal()!.name }}</span>
-            <span class="goal-amount">{{ formatSol(currentGoal()!.etapasCompletadas) }} / {{ formatSol(currentGoal()!.etapasTotales) }}</span>
+            <span class="goal-amount">{{ formatoConteo(currentGoal()!.etapasCompletadas) }} / {{ formatoConteo(currentGoal()!.etapasTotales) }}</span>
             <a routerLink="/flujos" class="goal-link">Ver detalles →</a>
           </div>
         </div>

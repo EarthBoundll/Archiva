@@ -16,16 +16,16 @@
     <div class="summary-row">
       <div class="summary-item">
         <span class="summary-label">Capacidad asignada</span>
-        <span class="summary-value">{{ formatSol(totalBudgeted) }}</span>
+        <span class="summary-value">{{ formatoMb(totalBudgeted) }}</span>
       </div>
       <div class="summary-item">
-        <span class="summary-label">Total gastado</span>
-        <span class="summary-value spent">{{ formatSol(totalSpent) }}</span>
+        <span class="summary-label">Espacio utilizado</span>
+        <span class="summary-value spent">{{ formatoMb(totalSpent) }}</span>
       </div>
       <div class="summary-item">
-        <span class="summary-label">Restante</span>
+        <span class="summary-label">Disponible</span>
         <span class="summary-value" [class.positive]="remaining >= 0" [class.negative]="remaining < 0">
-          {{ formatSol(remaining) }}
+          {{ formatoMb(remaining) }}
         </span>
       </div>
     </div>
@@ -58,9 +58,9 @@
         </div>
         
         <div class="category-values">
-          <span class="spent">{{ formatSol(cat.spent) }}</span>
+          <span class="spent">{{ formatoMb(cat.spent) }}</span>
           <span class="separator">/</span>
-          <span class="budgeted">{{ formatSol(cat.budgeted) }}</span>
+          <span class="budgeted">{{ formatoMb(cat.budgeted) }}</span>
         </div>
         
         <div class="category-progress">
@@ -76,7 +76,7 @@
             {{ cat.percentage > 100 ? 100 : cat.percentage }}%
           </span>
           <span class="remaining" [class.negative]="cat.remaining < 0">
-            {{ cat.remaining >= 0 ? '+' : '' }}{{ formatSol(cat.remaining) }}
+            {{ cat.remaining >= 0 ? '+' : '' }}{{ formatoMb(cat.remaining) }}
           </span>
         </div>
       </div>
@@ -115,7 +115,7 @@
       </div>
       
       <div class="form-group">
-        <label>Capacidad en MB</label>
+        <label>Capacidad asignada, en MB</label>
         <input type="number" [(ngModel)]="formAmount" class="form-input" placeholder="0.00" min="0" step="0.01">
       </div>
       

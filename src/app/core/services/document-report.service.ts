@@ -98,7 +98,7 @@ export class DocumentReportService {
         totalIncome: state?.income || 0,
         totalExpenses: state?.expenses || 0,
         balance: state?.balance || 0,
-        savingsRate: state?.savingsRate || 0
+        tasaVigencia: state?.tasaVigencia || 0
       },
       transactions: transactions.map((t: any) => ({
         date: t.date,
@@ -111,22 +111,22 @@ export class DocumentReportService {
   }
 
   private async getIncomeReport(userId: string, year: number, month: number): Promise<any> {
-    const monthlyIncome = await this.firebase.calcularDocumentosPeriodo(userId, year, month);
+    const documentosDelPeriodo = await this.firebase.calcularDocumentosPeriodo(userId, year, month);
     const profile = await this.firebase.getUserProfile(userId);
 
     return {
       period: { year, month },
       profile: {
-        monthlyIncomeTarget: profile?.['monthlyIncome'] || 0,
+        metaAcervo: profile?.['documentosDelPeriodo'] || 0,
         currency: profile?.['currency'] || 'PEN'
       },
       income: {
-        totalBudgeted: monthlyIncome.totalBudgeted,
-        totalReceived: monthlyIncome.totalReceived,
-        totalPending: monthlyIncome.totalPending,
-        availableNow: monthlyIncome.availableNow
+        totalBudgeted: documentosDelPeriodo.totalBudgeted,
+        totalReceived: documentosDelPeriodo.totalReceived,
+        totalPending: documentosDelPeriodo.totalPending,
+        availableNow: documentosDelPeriodo.availableNow
       },
-      sources: monthlyIncome.sources?.map((s: any) => ({
+      sources: documentosDelPeriodo.sources?.map((s: any) => ({
         name: s.name,
         type: s.type,
         budgeted: s.budgeted,
@@ -197,25 +197,25 @@ export class DocumentReportService {
 
   private async getGoalsReport(userId: string): Promise<any> {
     const goals = await this.firebase.getFlujos(userId);
-    const monthlyIncome = await this.firebase.calcularDocumentosPeriodo(
+    const documentosDelPeriodo = await this.firebase.calcularDocumentosPeriodo(
       userId, 
       new Date().getFullYear(), 
       new Date().getMonth() + 1
     );
 
-    const totalSaved = goals?.reduce((sum: number, g: any) => sum + (g.etapasCompletadas || 0), 0) || 0;
-    const totalTarget = goals?.reduce((sum: number, g: any) => sum + (g.etapasTotales || 0), 0) || 0;
+    const etapasCompletadasTotal = goals?.reduce((sum: number, g: any) => sum + (g.etapasCompletadas || 0), 0) || 0;
+    const etapasTotalesSuma = goals?.reduce((sum: number, g: any) => sum + (g.etapasTotales || 0), 0) || 0;
 
     return {
       generatedAt: new Date().toISOString(),
       summary: {
         totalGoals: goals?.length || 0,
-        totalSaved,
-        totalTarget,
-        overallProgress: totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0,
-        monthlyIncome: monthlyIncome?.totalBudgeted || 0,
-        savingsRate: monthlyIncome?.totalBudgeted 
-          ? Math.round((totalSaved / monthlyIncome.totalBudgeted) * 100) 
+        etapasCompletadasTotal,
+        etapasTotalesSuma,
+        overallProgress: etapasTotalesSuma > 0 ? Math.round((etapasCompletadasTotal / etapasTotalesSuma) * 100) : 0,
+        documentosDelPeriodo: documentosDelPeriodo?.totalBudgeted || 0,
+        tasaVigencia: documentosDelPeriodo?.totalBudgeted 
+          ? Math.round((etapasCompletadasTotal / documentosDelPeriodo.totalBudgeted) * 100) 
           : 0
       },
       goals: goals?.map((g: any) => ({
@@ -265,7 +265,7 @@ export class DocumentReportService {
       financialHealth: {
         score: estadoDocumental?.financialScore || 0,
         status: estadoDocumental?.healthStatus || 'unknown',
-        savingsRate: estadoDocumental?.savingsRate || 0,
+        tasaVigencia: estadoDocumental?.tasaVigencia || 0,
         income: estadoDocumental?.income || 0,
         expenses: estadoDocumental?.expenses || 0,
         balance: estadoDocumental?.balance || 0

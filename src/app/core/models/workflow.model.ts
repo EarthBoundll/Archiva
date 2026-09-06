@@ -25,7 +25,11 @@ export interface FlujoAprobacion {
   id: string;
   userId: string;
   
-  // Información básica
+  // Documento que recorre el flujo
+  documentoId?: string;
+  codigoDocumento?: string;
+
+  // Informacion basica
   name: string;
   description?: string;
   category: TipoFlujo;
@@ -34,6 +38,9 @@ export interface FlujoAprobacion {
   etapasTotales: number;
   etapasCompletadas: number;
   etapasPorPeriodo: number;
+
+  /** Nombres de las etapas, en orden. */
+  nombresEtapas?: string[];
   
   // Fechas
   fechaLimiteCierre?: string;          // Fecha objetivo específica
@@ -60,11 +67,18 @@ export interface FlujoAprobacion {
   version?: number;
 }
 
+/** Resultado de una etapa. Observar devuelve el flujo, no lo detiene. */
+export type ResultadoEtapa = 'aprobada' | 'observada';
+
 export interface EtapaAprobacion {
   id: string;
-  amount: number;
+  /** Posicion en la secuencia: la etapa 2 no se firma antes que la 1. */
+  orden: number;
+  nombre: string;
+  aprobador: string;
+  resultado: ResultadoEtapa;
+  observacion?: string;
   date: string;
-  note?: string;
 }
 
 export interface FlujoAprobacionPayload {
@@ -74,6 +88,9 @@ export interface FlujoAprobacionPayload {
   etapasTotales: number;
   etapasCompletadas?: number;
   etapasPorPeriodo: number;
+
+  /** Nombres de las etapas, en orden. */
+  nombresEtapas?: string[];
   fechaLimiteCierre?: string;
   priority?: PrioridadFlujo;
   notes?: string;

@@ -32,12 +32,12 @@ export class ArchiveComponent implements OnInit {
   lastMonthName = new Date(this.now.getFullYear(), this.now.getMonth() - 1, 1)
     .toLocaleDateString('es-PE', { month: 'long' });
 
-  totalSavedThisMonth = 0;
+  archivadosEstePeriodo = 0;
   lastMonthSaved = 0;
-  totalSavedAllTime = 0;
+  archivadosAcumulados = 0;
   monthChange = 0;
-  monthlyIncome = 0;
-  target20Percent = 0;
+  acervoTotal = 0;
+  metaArchivado = 0;
 
   async ngOnInit() {
     await this.loadData();
@@ -54,8 +54,8 @@ export class ArchiveComponent implements OnInit {
       // Acervo total y meta de archivado del periodo: el 20% del acervo
       // controlado es el objetivo de depuracion sugerido por periodo.
       const acervo = await this.documentService.getResumenAcervo();
-      this.monthlyIncome = acervo?.total ?? 0;
-      this.target20Percent = Math.ceil(this.monthlyIncome * 0.2);
+      this.acervoTotal = acervo?.total ?? 0;
+      this.metaArchivado = Math.ceil(this.acervoTotal * 0.2);
 
       // Calculate this month savings
       const currentMonthTx = await this.historyService.getPorPeriodo(
@@ -64,7 +64,7 @@ export class ArchiveComponent implements OnInit {
       );
       const monthlyTxIncome = currentMonthTx.filter(t => t.tipo === 'entrada').length;
       const expenses = Math.abs(currentMonthTx.filter(t => t.tipo === 'salida').length);
-      this.totalSavedThisMonth = monthlyTxIncome - expenses;
+      this.archivadosEstePeriodo = monthlyTxIncome - expenses;
 
       // Last month comparison
       const lastMonthDate = new Date(this.now.getFullYear(), this.now.getMonth() - 1, 1);
@@ -77,7 +77,7 @@ export class ArchiveComponent implements OnInit {
       this.lastMonthSaved = lastMonthIncome - lastMonthExpenses;
 
       this.monthChange = this.lastMonthSaved > 0
-        ? ((this.totalSavedThisMonth - this.lastMonthSaved) / Math.abs(this.lastMonthSaved)) * 100
+        ? ((this.archivadosEstePeriodo - this.lastMonthSaved) / Math.abs(this.lastMonthSaved)) * 100
         : 0;
 
       // Get 6-month history
@@ -94,7 +94,7 @@ export class ArchiveComponent implements OnInit {
           amount: saved > 0 ? saved : 0
         });
 
-        if (saved > 0) this.totalSavedAllTime += saved;
+        if (saved > 0) this.archivadosAcumulados += saved;
       }
       this.monthlyHistory.set(history);
     } finally {
@@ -102,8 +102,9 @@ export class ArchiveComponent implements OnInit {
     }
   }
 
-  formatSol(n: number): string {
-    return `${Math.abs(n).toFixed(2)}`;
+ /** Los documentos se cuentan en enteros, no en decimales. */
+  formatoConteo(n: number): string {
+    return Math.abs(Math.round(n)).toLocaleString('es-PE');
   }
 
   getBarHeight(amount: number): number {

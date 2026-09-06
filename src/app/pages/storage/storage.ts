@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { StorageService } from '../../core/services/storage';
+import { CATEGORIAS_DOCUMENTALES, type CategoriaDocumental } from '../../core/models/document.model';
 
 interface BudgetCategory {
   id: string;
@@ -50,20 +51,9 @@ export class StorageComponent implements OnInit {
     return this.totalBudgeted > 0 ? Math.round((this.totalSpent / this.totalBudgeted) * 100) : 0;
   }
 
-  availableCategories = [
-    { value: 'housing', label: 'Vivienda' },
-    { value: 'utilities', label: 'Servicios' },
-    { value: 'transport', label: 'Transporte' },
-    { value: 'health', label: 'Salud' },
-    { value: 'groceries', label: 'Supermercado' },
-    { value: 'dining_out', label: 'Restaurantes' },
-    { value: 'entertainment', label: 'Entretenimiento' },
-    { value: 'shopping', label: 'Compras' },
-    { value: 'subscriptions', label: 'Suscripciones' },
-    { value: 'clothing', label: 'Ropa' },
-    { value: 'pets', label: 'Mascotas' },
-    { value: 'education', label: 'Educación' },
-  ];
+  /** Las cuotas se asignan por categoria documental, no por tipo de gasto. */
+  availableCategories = (Object.keys(CATEGORIAS_DOCUMENTALES) as CategoriaDocumental[])
+    .map(c => ({ value: c as string, label: CATEGORIAS_DOCUMENTALES[c].label }));
 
   async ngOnInit() {
     await this.loadBudgets();
@@ -97,8 +87,12 @@ export class StorageComponent implements OnInit {
     };
   }
 
-  formatSol(n: number): string {
-    return `${Math.abs(n).toFixed(2)}`;
+  /** Capacidad en la unidad que corresponda: MB o GB. */
+  formatoMb(n: number): string {
+    const v = Math.abs(n);
+    if (v >= 1024) return `${(v / 1024).toLocaleString('es-PE', { maximumFractionDigits: 1 })} GB`;
+    if (v < 1)     return `${Math.round(v * 1024)} KB`;
+    return `${v.toLocaleString('es-PE', { maximumFractionDigits: 1 })} MB`;
   }
 
   createBudget() {
@@ -119,7 +113,9 @@ export class StorageComponent implements OnInit {
       category: this.formCategory,
       categoryName: this.availableCategories.find(c => c.value === this.formCategory)?.label || this.formCategory,
       budgetedAmount: this.formAmount,
-      esPrioritaria: ['housing', 'utilities', 'transport', 'health', 'groceries'].includes(this.formCategory),
+      // Series exigidas por norma: son las que no pueden quedarse sin
+      // espacio sin consecuencias.
+      esPrioritaria: ['contrato', 'factura', 'resolucion', 'convenio', 'politica'].includes(this.formCategory),
       periodoId: `${this.now.getFullYear()}-${String(this.now.getMonth() + 1).padStart(2, '0')}`,
       year: this.now.getFullYear(),
       month: this.now.getMonth() + 1

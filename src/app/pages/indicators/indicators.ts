@@ -127,7 +127,8 @@ export class IndicatorsComponent implements OnInit {
     this.monthlyTrend.set([1200, 1400, 1100, 1600, 1300, totals.salidas]);
   }
 
-  formatSol(n: number): string {
-    return `${Math.abs(n).toFixed(2)}`;
+ /** Los documentos se cuentan en enteros, no en decimales. */
+  formatoConteo(n: number): string {
+    return Math.abs(Math.round(n)).toLocaleString('es-PE');
   }
 }

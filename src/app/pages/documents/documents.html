@@ -142,6 +142,9 @@
                     {{ a.label }}
                   </button>
                 }
+                <button class="btn-accion" (click)="abrirArchivos(d)">
+                  Archivos
+                </button>
                 <button class="btn-accion" (click)="abrirNuevaVersion(d)">Nueva versión</button>
                 <button class="btn-accion" (click)="abrirEdicion(d)">Editar</button>
               </div>
@@ -311,6 +314,80 @@
           <button class="btn btn--primary" (click)="confirmarCambioEstado()" [disabled]="guardando()">
             {{ guardando() ? 'Aplicando…' : 'Confirmar' }}
           </button>
+        </footer>
+      </div>
+    </div>
+  }
+
+  <!-- ===== Modal: archivos adjuntos ===== -->
+  @if (modalArchivos(); as ma) {
+    <div class="overlay" (click)="modalArchivos.set(null)">
+      <div class="modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+        <header class="modal__cabecera">
+          <h2>Archivos del documento</h2>
+          <button class="btn-cerrar" (click)="modalArchivos.set(null)" aria-label="Cerrar">
+            <app-icon name="x" [size]="20"></app-icon>
+          </button>
+        </header>
+
+        <div class="modal__cuerpo">
+          <p class="modal__contexto">
+            <span class="codigo-doc">{{ ma.codigo }}</span> · {{ ma.titulo }}
+          </p>
+
+          <!-- Zona de carga -->
+          <label class="zona-carga"
+                 [class.zona-carga--activa]="arrastrando()"
+                 [class.zona-carga--ocupada]="subiendo()"
+                 (dragover)="onArrastrar($event, true)"
+                 (dragleave)="onArrastrar($event, false)"
+                 (drop)="onSoltar($event)">
+            <input type="file" class="sr-only" (change)="onSeleccionArchivo($event)"
+                   accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                   [disabled]="subiendo()">
+
+            @if (subiendo()) {
+              <app-icon name="loader" [size]="28"></app-icon>
+              <strong>Subiendo…</strong>
+            } @else {
+              <app-icon name="upload" [size]="28"></app-icon>
+              <strong>Arrastra un archivo o pulsa para elegirlo</strong>
+              <span>PDF, Word, Excel, texto, CSV o imagen · hasta {{ maxKb }} KB</span>
+            }
+          </label>
+
+          <!-- Adjuntos -->
+          @if (archivos().length === 0) {
+            <p class="sin-archivos">Este documento todavía no tiene archivos adjuntos.</p>
+          } @else {
+            <ul class="adjuntos" role="list">
+              @for (a of archivos(); track a.id) {
+                <li class="adjunto">
+                  <app-icon [name]="iconoArchivo(a.tipo)" [size]="20"></app-icon>
+                  <div class="adjunto__datos">
+                    <span class="adjunto__nombre">{{ a.nombre }}</span>
+                    <span class="adjunto__meta">{{ formatoBytes(a.bytes) }}</span>
+                  </div>
+                  <button class="btn-accion" (click)="descargar(a)">Descargar</button>
+                  <button class="btn-accion btn-accion--peligro" (click)="borrarArchivo(a)">Eliminar</button>
+                </li>
+              }
+            </ul>
+          }
+
+          @if (errorMsg()) {
+            <p class="error" role="alert">{{ errorMsg() }}</p>
+          }
+
+          <p class="nota-limite">
+            El contenido se guarda en Firestore, que limita cada registro a 1 MB.
+            Para archivos mayores hace falta Firebase Storage, que exige plan de pago:
+            mientras tanto, registra su ubicación en el campo de referencia.
+          </p>
+        </div>
+
+        <footer class="modal__pie">
+          <button class="btn" (click)="modalArchivos.set(null)">Cerrar</button>
         </footer>
       </div>
     </div>

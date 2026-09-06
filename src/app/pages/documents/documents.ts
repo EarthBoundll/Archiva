@@ -1,7 +1,7 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DocumentService } from '../../core/services/document';
+import { DocumentService, type ArchivoAdjunto } from '../../core/services/document';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { log } from '../../core/utils/logger';
 import {
@@ -334,6 +334,110 @@ export class DocumentsComponent implements OnInit {
     } finally {
       this.guardando.set(false);
     }
+  }
+
+  // ============================================
+  // ARCHIVOS ADJUNTOS
+  // ============================================
+
+  modalArchivos = signal<Documento | null>(null);
+  archivos      = signal<ArchivoAdjunto[]>([]);
+  subiendo      = signal(false);
+  arrastrando   = signal(false);
+
+  maxKb = Math.round(DocumentService.MAX_ARCHIVO_BYTES / 1024);
+
+  async abrirArchivos(d: Documento) {
+    this.modalArchivos.set(d);
+    this.errorMsg.set('');
+    this.archivos.set([]);
+    try {
+      this.archivos.set(await this.documentService.getArchivos(d.id));
+    } catch (e) {
+      log.error('Error cargando adjuntos:', e);
+    }
+  }
+
+  onArrastrar(e: DragEvent, activo: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.arrastrando.set(activo);
+  }
+
+  async onSoltar(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.arrastrando.set(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) await this.subirArchivo(file);
+  }
+
+  async onSeleccionArchivo(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) await this.subirArchivo(file);
+    input.value = '';   // permite volver a elegir el mismo archivo
+  }
+
+  private async subirArchivo(file: File) {
+    const doc = this.modalArchivos();
+    if (!doc || this.subiendo()) return;
+
+    this.subiendo.set(true);
+    this.errorMsg.set('');
+
+    try {
+      await this.documentService.adjuntarArchivo(doc.id, file);
+      this.archivos.set(await this.documentService.getArchivos(doc.id));
+      await this.cargar();
+    } catch (e: any) {
+      this.errorMsg.set(e?.message ?? 'No se pudo subir el archivo.');
+    } finally {
+      this.subiendo.set(false);
+    }
+  }
+
+  async descargar(a: ArchivoAdjunto) {
+    const doc = this.modalArchivos();
+    if (!doc) return;
+
+    try {
+      const contenido = await this.documentService.getContenidoArchivo(doc.id, a.id);
+      if (!contenido) { this.errorMsg.set('El archivo ya no está disponible.'); return; }
+
+      const enlace = document.createElement('a');
+      enlace.href = contenido;
+      enlace.download = a.nombre;
+      enlace.click();
+    } catch (e: any) {
+      this.errorMsg.set('No se pudo descargar el archivo.');
+    }
+  }
+
+  async borrarArchivo(a: ArchivoAdjunto) {
+    const doc = this.modalArchivos();
+    if (!doc) return;
+
+    try {
+      await this.documentService.eliminarArchivo(doc.id, a.id);
+      this.archivos.set(await this.documentService.getArchivos(doc.id));
+    } catch (e: any) {
+      this.errorMsg.set('No se pudo eliminar el archivo.');
+    }
+  }
+
+  iconoArchivo(tipo: string): string {
+    if (tipo.startsWith('image/'))     return 'image';
+    if (tipo.includes('pdf'))          return 'file-text';
+    if (tipo.includes('sheet') || tipo.includes('excel') || tipo.includes('csv')) return 'table';
+    if (tipo.includes('word'))         return 'file-text';
+    return 'file';
+  }
+
+  formatoBytes(b: number): string {
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`;
+    return `${(b / 1024 / 1024).toFixed(1)} MB`;
   }
 
   // ============================================

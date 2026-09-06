@@ -19,6 +19,16 @@ import {
   TIPOS_DOCUMENTALES
 } from '../models/document.model';
 
+/** Adjunto de un documento, sin el contenido salvo al descargarlo. */
+export interface ArchivoAdjunto {
+  id: string;
+  nombre: string;
+  tipo: string;
+  bytes: number;
+  subidoEn: string;
+  contenido?: string;
+}
+
 /** Resumen del acervo para el tablero y los indicadores. */
 export interface ResumenAcervo {
   total: number;
@@ -239,6 +249,102 @@ export class DocumentService {
 
   async archivar(doc: Documento): Promise<void> {
     return this.cambiarEstado(doc, 'archivado');
+  }
+
+  // ============================================
+  // ARCHIVOS ADJUNTOS
+  // ============================================
+
+  /**
+   * Tope de 600 KB por archivo.
+   *
+   * El contenido viaja como data URL dentro de un documento de Firestore, y
+   * Firestore limita cada documento a 1 MiB. Base64 infla el tamaño un 33%,
+   * asi que 600 KB reales ocupan unos 800 KB y dejan margen.
+   *
+   * Para archivos grandes hace falta Firebase Storage, que en proyectos
+   * nuevos exige plan Blaze. Mientras tanto, esos documentos se registran
+   * con su ubicacion de referencia.
+   */
+  static readonly MAX_ARCHIVO_BYTES = 600 * 1024;
+
+  static readonly TIPOS_ACEPTADOS = [
+    'application/pdf',
+    'image/png', 'image/jpeg', 'image/webp',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain', 'text/csv'
+  ];
+
+  async adjuntarArchivo(documentoId: string, file: File): Promise<void> {
+    const userId = this.authService.getUserId();
+    if (!userId) throw new Error('No autenticado');
+
+    if (file.size > DocumentService.MAX_ARCHIVO_BYTES) {
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      throw new Error(
+        `El archivo pesa ${mb} MB y el máximo son 600 KB. ` +
+        `Sube una versión comprimida o registra su ubicación de referencia.`
+      );
+    }
+
+    if (file.size === 0) {
+      throw new Error('El archivo está vacío.');
+    }
+
+    if (!DocumentService.TIPOS_ACEPTADOS.includes(file.type)) {
+      throw new Error(
+        'Formato no admitido. Se aceptan PDF, Word, Excel, texto plano, CSV y ' +
+        'las imágenes PNG, JPG y WebP.'
+      );
+    }
+
+    const contenido = await this.leerComoDataUrl(file);
+
+    await this.firebase.guardarArchivo(userId, documentoId, {
+      nombre: file.name,
+      tipo: file.type,
+      bytes: file.size,
+      contenido,
+      subidoEn: new Date().toISOString()
+    });
+
+    // El tamaño declarado del documento pasa a ser el real del adjunto.
+    await this.firebase.actualizarDocumento(userId, documentoId, {
+      tamanioMb: Math.round((file.size / 1024 / 1024) * 100) / 100,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  async getArchivos(documentoId: string): Promise<ArchivoAdjunto[]> {
+    const userId = this.authService.getUserId();
+    if (!userId) return [];
+    return this.firebase.getArchivosMeta(userId, documentoId) as Promise<ArchivoAdjunto[]>;
+  }
+
+  /** Devuelve la data URL completa, solo cuando se va a descargar. */
+  async getContenidoArchivo(documentoId: string, archivoId: string): Promise<string | null> {
+    const userId = this.authService.getUserId();
+    if (!userId) return null;
+    const a = await this.firebase.getArchivo(userId, documentoId, archivoId);
+    return a?.['contenido'] ?? null;
+  }
+
+  async eliminarArchivo(documentoId: string, archivoId: string): Promise<void> {
+    const userId = this.authService.getUserId();
+    if (!userId) throw new Error('No autenticado');
+    await this.firebase.eliminarArchivo(userId, documentoId, archivoId);
+  }
+
+  private leerComoDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const lector = new FileReader();
+      lector.onload  = () => resolve(String(lector.result));
+      lector.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+      lector.readAsDataURL(file);
+    });
   }
 
   // ============================================

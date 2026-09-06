@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from '@angular/fire/auth';
-import { Firestore, collection, doc, setDoc, getDoc, getDocs, query, where, orderBy, limit, writeBatch } from '@angular/fire/firestore';
+import { Firestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, limit, writeBatch } from '@angular/fire/firestore';
 
 @Injectable({
   providedIn: 'root',
@@ -526,6 +526,42 @@ export class FirebaseService {
   // ============================================
   // INCOME HISTORY (Permanent Movement Log)
   // ============================================
+
+  // ============================================
+  // ARCHIVOS ADJUNTOS
+  // ============================================
+
+  /**
+   * Guarda el archivo en una subcoleccion propia, no dentro del documento.
+   *
+   * Firestore limita cada documento a 1 MiB. Manteniendo los adjuntos en
+   * documentos separados, la ficha sigue siendo ligera de listar aunque
+   * tenga varios archivos pesados colgando.
+   */
+  async guardarArchivo(userId: string, documentoId: string, archivo: any): Promise<string> {
+    const ref = doc(collection(this.firestore, `users/${userId}/documentos/${documentoId}/archivos`));
+    await setDoc(ref, { ...archivo, id: ref.id });
+    return ref.id;
+  }
+
+  /** Metadatos de los adjuntos, sin el contenido: listar no debe descargar megas. */
+  async getArchivosMeta(userId: string, documentoId: string): Promise<any[]> {
+    const snap = await getDocs(collection(this.firestore, `users/${userId}/documentos/${documentoId}/archivos`));
+    return snap.docs.map(d => {
+      const { contenido, ...meta } = d.data() as any;
+      return { ...meta, id: d.id };
+    });
+  }
+
+  /** Contenido completo de un adjunto, solo cuando se va a descargar. */
+  async getArchivo(userId: string, documentoId: string, archivoId: string): Promise<any | null> {
+    const snap = await getDoc(doc(this.firestore, `users/${userId}/documentos/${documentoId}/archivos/${archivoId}`));
+    return snap.exists() ? snap.data() : null;
+  }
+
+  async eliminarArchivo(userId: string, documentoId: string, archivoId: string): Promise<void> {
+    await deleteDoc(doc(this.firestore, `users/${userId}/documentos/${documentoId}/archivos/${archivoId}`));
+  }
 
   async agregarBitacora(userId: string, entry: any): Promise<string> {
     const docRef = doc(collection(this.firestore, `users/${userId}/bitacora`));

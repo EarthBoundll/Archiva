@@ -1,249 +1,252 @@
 import { Injectable, inject } from '@angular/core';
-import { FirebaseService } from './firebase';
-import { Auth } from './auth';
+import { DocumentService } from './document';
+import { ReviewRequestService } from './review-request';
+import { StorageService } from './storage';
+import { Documento } from '../models/document.model';
+import { SolicitudRevision } from '../models/review-request.model';
 
-export type AlertType = 
-  | 'overdue_expense'
-  | 'budget_exceeded'
-  | 'budget_at_risk'
-  | 'income_pending'
-  | 'income_overdue'
-  | 'goal_behind_schedule'
-  | 'high_spending_category'
-  | 'low_savings_rate';
+// ============================================
+// ALERTAS DOCUMENTALES — ARCHIVA
+// ============================================
+// Lo que exige atencion hoy, ordenado por urgencia. El servicio no guarda
+// nada: cada alerta se deriva del estado actual del acervo, porque una
+// alerta almacenada seguiria avisando de algo ya resuelto.
+//
+// Sustituye al modelo financiero anterior, que avisaba de gastos vencidos,
+// ingresos no recibidos y tasa de ahorro baja.
 
-export interface Alert {
+export type TipoAlerta =
+  | 'documento_vencido'
+  | 'documento_por_vencer'
+  | 'documento_observado'
+  | 'revision_estancada'
+  | 'solicitud_vencida'
+  | 'solicitud_prioritaria'
+  | 'cuota_excedida'
+  | 'cuota_en_riesgo';
+
+export type Urgencia = 'critica' | 'alta' | 'media' | 'baja';
+
+export interface Alerta {
   id: string;
-  type: AlertType;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  title: string;
-  message: string;
-  category?: string;
-  amount?: number;
-  threshold?: number;
-  actionUrl?: string;
+  tipo: TipoAlerta;
+  urgencia: Urgencia;
+  titulo: string;
+  mensaje: string;
+  /** Hacia donde lleva al pulsarla. */
+  ruta: string;
+  codigo?: string;
+  icono: string;
   createdAt: string;
 }
 
+/** Dias en revision a partir de los cuales se considera estancado. */
+const DIAS_REVISION_ESTANCADA = 15;
+
+/** Ventana de aviso previo al vencimiento. */
+const DIAS_PREAVISO = 30;
+
+const ORDEN: Record<Urgencia, number> = { critica: 0, alta: 1, media: 2, baja: 3 };
+
 @Injectable({ providedIn: 'root' })
 export class AlertsService {
-  private firebase = inject(FirebaseService);
-  private authService = inject(Auth);
+  private documentService = inject(DocumentService);
+  private reviewService   = inject(ReviewRequestService);
+  private storageService  = inject(StorageService);
 
-  async getAlertasDocumentales(year: number, month: number): Promise<Alert[]> {
-    const userId = this.authService.getUserId();
-    if (!userId) throw new Error('No autenticado');
+  /**
+   * Reune todas las alertas vigentes. Recibe el periodo porque las cuotas de
+   * almacenamiento se asignan por mes; el resto del acervo no depende de el.
+   */
+  async getAlertasDocumentales(year: number, month: number): Promise<Alerta[]> {
+    const [documentos, solicitudes] = await Promise.all([
+      this.documentService.getAll(),
+      this.reviewService.getAll()
+    ]);
 
-    const alerts: Alert[] = [];
+    const alertas = [
+      ...this.deDocumentos(documentos),
+      ...this.deSolicitudes(solicitudes),
+      ...await this.deCuotas(year, month)
+    ];
 
-    // 1. CuotaAlmacenamiento alerts
-    const budgetAlerts = await this.getBudgetAlerts(userId, year, month);
-    alerts.push(...budgetAlerts);
-
-    // 2. SolicitudRevision alerts
-    const expenseAlerts = await this.getExpenseAlerts(userId, year, month);
-    alerts.push(...expenseAlerts);
-
-    // 3. Income alerts
-    const incomeAlerts = await this.getIncomeAlerts(userId, year, month);
-    alerts.push(...incomeAlerts);
-
-    // 4. Goal alerts
-    const goalAlerts = await this.getGoalAlerts(userId);
-    alerts.push(...goalAlerts);
-
-    // Sort by severity
-    const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-    alerts.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-
-    return alerts;
+    return alertas.sort((a, b) => ORDEN[a.urgencia] - ORDEN[b.urgencia]);
   }
 
-  private async getBudgetAlerts(userId: string, year: number, month: number): Promise<Alert[]> {
-    const alerts: Alert[] = [];
-    const summary = await this.firebase.calcularResumenAlmacenamiento(userId, year, month);
+  // ------------------------------------------
+  // DOCUMENTOS
+  // ------------------------------------------
 
-    if (summary?.alerts) {
-      for (const alert of summary.alerts) {
-        alerts.push({
-          id: `budget-${alert.category}-${month}`,
-          type: alert.status === 'exceeded' ? 'budget_exceeded' : 'budget_at_risk',
-          severity: alert.status === 'exceeded' ? 'high' : 'medium',
-          title: alert.status === 'exceeded' 
-            ? `Cuota excedido: ${alert.name}`
-            : `Cuota en riesgo: ${alert.name}`,
-          message: alert.status === 'exceeded'
-            ? `Has gastado ${alert.actual} de ${alert.budgeted} (${alert.percentage}%)`
-            : `Has usado el ${alert.percentage}% del cuota de ${alert.name}`,
-          category: alert.category,
-          amount: alert.actual,
-          threshold: alert.budgeted,
-          createdAt: new Date().toISOString()
+  private deDocumentos(docs: Documento[]): Alerta[] {
+    const alertas: Alerta[] = [];
+    const ahora = new Date().toISOString();
+
+    for (const d of docs) {
+      if (d.estado === 'archivado') continue;
+
+      const dias = d.vencimiento?.diasParaVencer ?? null;
+
+      // Vencido: la vigencia ya expiro y el documento sigue en circulacion.
+      if (d.estado === 'vencido' || (dias !== null && dias < 0)) {
+        alertas.push({
+          id: `doc-vencido-${d.id}`,
+          tipo: 'documento_vencido',
+          urgencia: 'critica',
+          titulo: `Documento vencido: ${d.titulo}`,
+          mensaje: dias !== null
+            ? `Su vigencia expiró hace ${Math.abs(dias)} ${Math.abs(dias) === 1 ? 'día' : 'días'}. Registra una versión nueva o envíalo al archivo.`
+            : 'Su vigencia expiró. Registra una versión nueva o envíalo al archivo.',
+          ruta: '/documentos',
+          codigo: d.codigo,
+          icono: 'calendar-x',
+          createdAt: ahora
+        });
+        continue;
+      }
+
+      // Por vencer: aviso con antelacion suficiente para renovarlo.
+      if (d.estado === 'aprobado' && dias !== null && dias >= 0 && dias <= DIAS_PREAVISO) {
+        alertas.push({
+          id: `doc-por-vencer-${d.id}`,
+          tipo: 'documento_por_vencer',
+          urgencia: dias <= 7 ? 'alta' : 'media',
+          titulo: `Vence en ${dias === 0 ? 'hoy' : `${dias} ${dias === 1 ? 'día' : 'días'}`}: ${d.titulo}`,
+          mensaje: 'Prepara la renovación antes de que pierda vigencia.',
+          ruta: '/documentos',
+          codigo: d.codigo,
+          icono: 'calendar-clock',
+          createdAt: ahora
         });
       }
-    }
 
-    return alerts;
-  }
-
-  private async getExpenseAlerts(userId: string, year: number, month: number): Promise<Alert[]> {
-    const alerts: Alert[] = [];
-    const summary = await this.firebase.calcularSolicitudesPeriodo(userId, year, month);
-
-    if (summary?.alerts) {
-      for (const alert of summary.alerts) {
-        let severity: 'low' | 'medium' | 'high' | 'critical' = 'medium';
-        let type: AlertType = 'overdue_expense';
-
-        switch (alert.type) {
-          case 'overdue':
-            type = 'overdue_expense';
-            severity = 'high';
-            break;
-          case 'budget_exceeded':
-            type = 'budget_exceeded';
-            severity = 'critical';
-            break;
-          case 'price_change':
-            type = 'high_spending_category';
-            severity = 'low';
-            break;
-          case 'variable_spike':
-            type = 'high_spending_category';
-            severity = 'medium';
-            break;
-        }
-
-        alerts.push({
-          id: `expense-${alert.solicitudId}-${month}`,
-          type,
-          severity,
-          title: this.getAlertTitle(alert.type),
-          message: alert.message,
-          createdAt: new Date().toISOString()
+      // Devuelto a su autor: nadie avanza mientras no se corrija.
+      if (d.estado === 'observado' || d.estado === 'rechazado') {
+        alertas.push({
+          id: `doc-observado-${d.id}`,
+          tipo: 'documento_observado',
+          urgencia: d.estado === 'rechazado' ? 'alta' : 'media',
+          titulo: `${d.estado === 'rechazado' ? 'Rechazado' : 'Observado'}: ${d.titulo}`,
+          mensaje: d.motivoEstado?.trim()
+            ? d.motivoEstado
+            : 'Fue devuelto sin motivo registrado. Consulta con quien lo revisó.',
+          ruta: '/documentos',
+          codigo: d.codigo,
+          icono: 'file-warning',
+          createdAt: ahora
         });
       }
-    }
 
-    return alerts;
-  }
-
-  private async getIncomeAlerts(userId: string, year: number, month: number): Promise<Alert[]> {
-    const alerts: Alert[] = [];
-    const documentosDelPeriodo = await this.firebase.calcularDocumentosPeriodo(userId, year, month);
-
-    if (documentosDelPeriodo?.sources) {
-      for (const source of documentosDelPeriodo.sources) {
-        if (source.status === 'overdue') {
-          alerts.push({
-            id: `income-overdue-${source.documentoId}`,
-            type: 'income_overdue',
-            severity: 'high',
-            title: `Documento vencido: ${source.name}`,
-            message: `Se esperaba recibir ${source.budgeted} el día ${source.expectedDate} pero aún no se ha recibido`,
-            category: source.type,
-            amount: source.budgeted,
-            createdAt: new Date().toISOString()
-          });
-        } else if (source.status === 'pending' && source.expectedDate) {
-          const today = new Date().getDate();
-          if (source.expectedDate - today <= 3) {
-            alerts.push({
-              id: `income-pending-${source.documentoId}`,
-              type: 'income_pending',
-              severity: 'low',
-              title: `Documento próximo: ${source.name}`,
-              message: `Se recibirá ${source.budgeted} el día ${source.expectedDate}`,
-              category: source.type,
-              amount: source.budgeted,
-              createdAt: new Date().toISOString()
-            });
-          }
-        }
-      }
-    }
-
-    return alerts;
-  }
-
-  private async getGoalAlerts(userId: string): Promise<Alert[]> {
-    const alerts: Alert[] = [];
-    const goals = await this.firebase.getFlujos(userId);
-    const documentosDelPeriodo = await this.firebase.calcularDocumentosPeriodo(userId, 
-      new Date().getFullYear(), 
-      new Date().getMonth() + 1
-    );
-
-    if (goals && goals.length > 0 && documentosDelPeriodo?.totalBudgeted) {
-      const metaArchivado = documentosDelPeriodo.totalBudgeted * 0.20; // 20% savings target
-
-      for (const goal of goals as any[]) {
-        if (goal.status !== 'active') continue;
-
-        const etapasPorPeriodo = goal.etapasPorPeriodo || 0;
-        
-        if (etapasPorPeriodo < metaArchivado) {
-          alerts.push({
-            id: `goal-behind-${goal.id}`,
-            type: 'goal_behind_schedule',
-            severity: (goal.priority === 'high') ? 'high' : 'medium',
-            title: `Meta fuera de schedule: ${goal.name || 'Meta'}`,
-            message: `Contribution mensual de ${etapasPorPeriodo} es menor al objetivo de ${Math.round(metaArchivado)}`,
-            category: goal.category,
-            amount: etapasPorPeriodo,
-            threshold: metaArchivado,
-            createdAt: new Date().toISOString()
+      // Estancado en revision: no esta bloqueado por nada, solo olvidado.
+      if (d.estado === 'en_revision' && d.fechaEnvioRevision) {
+        const espera = Math.floor(
+          (Date.now() - new Date(d.fechaEnvioRevision).getTime()) / 86400000
+        );
+        if (espera >= DIAS_REVISION_ESTANCADA) {
+          alertas.push({
+            id: `doc-estancado-${d.id}`,
+            tipo: 'revision_estancada',
+            urgencia: 'media',
+            titulo: `Lleva ${espera} días en revisión: ${d.titulo}`,
+            mensaje: 'Nadie lo ha aprobado ni observado desde que se envió.',
+            ruta: '/documentos',
+            codigo: d.codigo,
+            icono: 'clock',
+            createdAt: ahora
           });
         }
       }
     }
 
-    // Check for low savings rate
-    const estadoDocumental = await this.firebase.getEstadoDocumental(userId, 
-      new Date().getFullYear(), 
-      new Date().getMonth() + 1
-    );
+    return alertas;
+  }
 
-    if (estadoDocumental?.indiceVigencia !== undefined && estadoDocumental.indiceVigencia < 10) {
-      alerts.push({
-        id: 'low-savings-rate',
-        type: 'low_savings_rate',
-        severity: 'high',
-        title: 'Tasa de archivo baja',
-        message: `El ${estadoDocumental.indiceVigencia}% del acervo esta archivado. Revisa los documentos pendientes de archivar.`,
-        createdAt: new Date().toISOString()
-      });
+  // ------------------------------------------
+  // SOLICITUDES DE REVISION
+  // ------------------------------------------
+
+  private deSolicitudes(solicitudes: SolicitudRevision[]): Alerta[] {
+    const alertas: Alerta[] = [];
+    const ahora = new Date().toISOString();
+
+    for (const s of solicitudes) {
+      if (s.status === 'atendida' || s.status === 'anulada') continue;
+
+      if (s.status === 'vencida') {
+        alertas.push({
+          id: `sol-vencida-${s.id}`,
+          tipo: 'solicitud_vencida',
+          urgencia: s.esPrioritaria ? 'critica' : 'alta',
+          titulo: `Solicitud vencida: ${s.titulo}`,
+          mensaje: `Pasó su fecha límite (${s.fechaLimiteAtencion}) sobre ${s.codigoDocumento}.`,
+          ruta: '/solicitudes',
+          codigo: s.codigoDocumento,
+          icono: 'file-x',
+          createdAt: ahora
+        });
+        continue;
+      }
+
+      // Una prioritaria abierta bloquea el avance del documento.
+      if (s.esPrioritaria && s.status === 'pendiente') {
+        alertas.push({
+          id: `sol-prioritaria-${s.id}`,
+          tipo: 'solicitud_prioritaria',
+          urgencia: 'alta',
+          titulo: `Prioritaria sin atender: ${s.titulo}`,
+          mensaje: `${s.codigoDocumento} no puede avanzar mientras siga abierta.`,
+          ruta: '/solicitudes',
+          codigo: s.codigoDocumento,
+          icono: 'shield-alert',
+          createdAt: ahora
+        });
+      }
     }
 
-    return alerts;
+    return alertas;
   }
 
-  private getAlertTitle(type: string): string {
-    const titles: Record<string, string> = {
-      'overdue': 'Solicitud vencido',
-      'budget_exceeded': 'Cuota excedido',
-      'price_change': 'Cambio de precio detectado',
-      'variable_spike': 'Solicitud variable elevado'
-    };
-    return titles[type] || 'Alerta de solicitud';
-  }
+  // ------------------------------------------
+  // CUOTAS DE ALMACENAMIENTO
+  // ------------------------------------------
 
-  // Get alert counts by severity
-  async getResumenAlertas(year: number, month: number): Promise<{
-    total: number;
-    critical: number;
-    high: number;
-    medium: number;
-    low: number;
-  }> {
-    const alerts = await this.getAlertasDocumentales(year, month);
+  private async deCuotas(year: number, month: number): Promise<Alerta[]> {
+    const alertas: Alerta[] = [];
+    const ahora = new Date().toISOString();
+    const cuotas = await this.storageService.getPorPeriodo(year, month);
 
-    return {
-      total: alerts.length,
-      critical: alerts.filter(a => a.severity === 'critical').length,
-      high: alerts.filter(a => a.severity === 'high').length,
-      medium: alerts.filter(a => a.severity === 'medium').length,
-      low: alerts.filter(a => a.severity === 'low').length
-    };
+    for (const c of cuotas as any[]) {
+      const asignado = c.budgetedAmount || 0;
+      const ocupado  = c.spent || 0;
+      if (asignado <= 0) continue;
+
+      const pct = Math.round((ocupado / asignado) * 100);
+      const nombre = c.categoryName || c.category;
+
+      if (pct >= 100) {
+        alertas.push({
+          id: `cuota-excedida-${c.category}-${month}`,
+          tipo: 'cuota_excedida',
+          urgencia: c.esPrioritaria ? 'critica' : 'alta',
+          titulo: `Cuota agotada: ${nombre}`,
+          mensaje: `La serie ocupa el ${pct}% del espacio asignado. Amplía la cuota o archiva lo que ya no esté vigente.`,
+          ruta: '/almacenamiento',
+          icono: 'hard-drive',
+          createdAt: ahora
+        });
+      } else if (pct >= 80) {
+        alertas.push({
+          id: `cuota-riesgo-${c.category}-${month}`,
+          tipo: 'cuota_en_riesgo',
+          urgencia: 'baja',
+          titulo: `Cuota al ${pct}%: ${nombre}`,
+          mensaje: 'Queda poco espacio en esta serie documental.',
+          ruta: '/almacenamiento',
+          icono: 'hard-drive',
+          createdAt: ahora
+        });
+      }
+    }
+
+    return alertas;
   }
 }

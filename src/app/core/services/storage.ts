@@ -2,6 +2,15 @@ import { Injectable, inject } from '@angular/core';
 import { FirebaseService } from './firebase';
 import { Auth } from './auth';
 import { CuotaAlmacenamiento, CuotaPayload, ResumenAlmacenamiento, calcularEstadoCuota } from '../models/storage.model';
+import { CATEGORIAS_DOCUMENTALES, type CategoriaDocumental } from '../models/document.model';
+
+/**
+ * Series documentales cuya conservacion exige la norma. Son las que se
+ * marcan como prioritarias y avisan antes de agotar su cuota.
+ */
+const SERIES_EXIGIDAS: CategoriaDocumental[] = [
+  'contrato', 'factura', 'resolucion', 'convenio', 'politica', 'procedimiento'
+];
 
 @Injectable({ providedIn: 'root' })
 export class StorageService {
@@ -32,85 +41,88 @@ export class StorageService {
     return data as ResumenAlmacenamiento;
   }
 
-  // Helper: Set budget for all categories based on income
-  async autoDistribuirCuotas(incomeBudgeted: number, year: number, month: number): Promise<void> {
+  /**
+   * Reparte una capacidad total entre las categorias que ya tienen
+   * documentos, en proporcion a lo que cada una ocupa.
+   *
+   * Antes aplicaba la regla 50/30/20 del presupuesto domestico sobre un
+   * ingreso mensual, y leia el gasto por categoria de los movimientos con
+   * importe negativo. Los registros de ARCHIVA no tienen importe, asi que
+   * el reparto salia siempre vacio.
+   *
+   * Las series exigidas por norma reciben un suelo minimo aunque hoy pesen
+   * poco: son las que no pueden quedarse sin espacio.
+   */
+  async autoDistribuirCuotas(capacidadTotalMb: number, year: number, month: number): Promise<number> {
     const userId = this.authService.getUserId();
-    if (!userId) return;
+    if (!userId || capacidadTotalMb <= 0) return 0;
 
-    // Default percentages based on 50/30/20 rule
-    const primordialRatio = 0.50;
-    const nonPrimordialRatio = 0.20;
-    const savingsRatio = 0.20;
+    // No pisa un reparto ya hecho a mano.
+    const existentes = await this.getPorPeriodo(year, month);
+    if (existentes.length > 0) return 0;
 
-    // But we need to get actual expenses to map them
-    const existingBudgets = await this.getPorPeriodo(year, month);
-    
-    if (existingBudgets.length > 0) {
-      // If budgets exist, just recalculate with actuals
-      return;
-    }
+    const ocupacion = await this.getOcupacionPorCategoria();
+    const categorias = Object.keys(ocupacion);
+    if (categorias.length === 0) return 0;
 
-    // Get expenses to know which categories exist
-    const expenses = await this.getExpensesByCategory(year, month);
-    
-    // Create budgets based on existing expenses
-    for (const [category, amount] of Object.entries(expenses)) {
+    const ocupadoTotal = categorias.reduce((s, c) => s + ocupacion[c], 0);
+
+    // Suelo por serie exigida: un 5% de la capacidad, para que una categoria
+    // recien estrenada no nazca con cuota cero.
+    const suelo = capacidadTotalMb * 0.05;
+
+    let creadas = 0;
+    for (const category of categorias) {
       const esPrioritaria = this.isPrimordialCategory(category);
-      const ratio = esPrioritaria ? primordialRatio : nonPrimordialRatio;
-      const budgetAmount = Math.round(incomeBudgeted * ratio);
-      
+      const proporcional = ocupadoTotal > 0
+        ? (ocupacion[category] / ocupadoTotal) * capacidadTotalMb
+        : capacidadTotalMb / categorias.length;
+
+      const asignado = esPrioritaria ? Math.max(proporcional, suelo) : proporcional;
+
       await this.asignarCuota({
         category,
         categoryName: this.getCategoryDisplayName(category),
         esPrioritaria,
-        budgetedAmount: budgetAmount,
+        budgetedAmount: Math.round(asignado * 10) / 10,
         periodoId: `${year}-${String(month).padStart(2, '0')}`,
         year,
         month
       });
+      creadas++;
     }
+
+    return creadas;
   }
 
-  private async getExpensesByCategory(year: number, month: number): Promise<Record<string, number>> {
+  /** Megabytes que ocupa hoy cada categoria del acervo. */
+  private async getOcupacionPorCategoria(): Promise<Record<string, number>> {
     const userId = this.authService.getUserId();
     if (!userId) return {};
 
-    const transactions = await this.firebase.getHistorialPorPeriodo(userId, year, month);
-    const expenses = transactions.filter((t: any) => t.amount < 0);
+    const docs = await this.firebase.getDocumentos(userId);
+    const porCategoria: Record<string, number> = {};
 
-    const byCategory: Record<string, number> = {};
-    expenses.forEach((t: any) => {
-      const cat = t.category || 'other';
-      byCategory[cat] = (byCategory[cat] || 0) + Math.abs(t.amount);
-    });
+    for (const d of docs as any[]) {
+      const cat = d.category || 'otros';
+      porCategoria[cat] = (porCategoria[cat] || 0) + (d.tamanioMb || 0);
+    }
 
-    return byCategory;
+    return porCategoria;
   }
 
+  /**
+   * Series cuya conservacion exige la norma: quedarse sin espacio en ellas
+   * tiene consecuencias legales, no solo molestia. Sustituye a la lista de
+   * gastos primordiales del hogar.
+   */
   private isPrimordialCategory(category: string): boolean {
-    const primordialCategories = ['housing', 'utilities', 'transport', 'health', 'debt', 'groceries', 'education'];
-    return primordialCategories.includes(category);
+    return SERIES_EXIGIDAS.includes(category as CategoriaDocumental);
   }
 
+  /** El nombre visible sale del catalogo documental, no de una lista aparte. */
   private getCategoryDisplayName(category: string): string {
-    const names: Record<string, string> = {
-      housing: 'Vivienda',
-      utilities: 'Servicios',
-      transport: 'Transporte',
-      health: 'Salud',
-      debt: 'Deudas',
-      groceries: 'Supermercado',
-      education: 'Educación',
-      dining_out: 'Comida fuera',
-      entertainment: 'Entretenimiento',
-      streaming: 'Streaming',
-      pets: 'Mascotas',
-      clothing: 'Ropa',
-      travel: 'Viajes',
-      shopping: 'Compras',
-      subscriptions: 'Suscripciones'
-    };
-    return names[category] || category;
+    return CATEGORIAS_DOCUMENTALES[category as CategoriaDocumental]?.label ?? category;
   }
 
   // Calculate how much budget remains

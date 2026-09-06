@@ -1,4 +1,4 @@
-<div class="savings-page">
+<div class="archivo-page">
   <div class="page-header">
     <div class="header-left">
       <a routerLink="/dashboard" class="back-btn">
@@ -21,12 +21,16 @@
           <span class="card__label">Archivados este mes</span>
           <span class="card__subtitle">Acervo archivado</span>
         </div>
-        <div class="card__value" [class.positive]="archivadosEstePeriodo >= 0" [class.negative]="archivadosEstePeriodo < 0">
-          {{ formatoConteo(archivadosEstePeriodo) }}
-        </div>
-        <div class="card__compare" [class.positive]="monthChange >= 0" [class.negative]="monthChange < 0">
-          {{ monthChange >= 0 ? '+' : '' }}{{ monthChange.toFixed(1) }}% vs {{ lastMonthName }}
-        </div>
+        <div class="card__value">{{ formatoConteo(archivadosEstePeriodo) }}</div>
+        @if (hayComparacion) {
+          <div class="card__compare" [class.positive]="monthChange >= 0" [class.negative]="monthChange < 0">
+            {{ monthChange >= 0 ? '+' : '' }}{{ monthChange.toFixed(0) }}% vs {{ lastMonthName }}
+          </div>
+        } @else {
+          <div class="card__compare card__compare--neutro">
+            Sin archivo en {{ lastMonthName }} con el que comparar
+          </div>
+        }
       </div>
 
       <div class="card card--target">
@@ -44,7 +48,10 @@
           <span class="card__subtitle">Últimos 6 meses</span>
         </div>
         <div class="card__value">{{ formatoConteo(archivadosAcumulados) }}</div>
-        <div class="card__sub">{{ monthlyHistory().filter(m => m.amount > 0).length }} meses con archivo</div>
+        <div class="card__sub">
+          {{ mesesConArchivo }} {{ mesesConArchivo === 1 ? 'mes' : 'meses' }} con movimiento ·
+          {{ formatoConteo(acervoArchivado) }} en el archivo definitivo
+        </div>
       </div>
     </div>
 
@@ -55,10 +62,10 @@
         @for (month of monthlyHistory(); track month.month) {
           <div class="history-bar">
             <div class="bar-container">
-              <div class="bar-fill" [style.height.%]="getBarHeight(month.amount)"></div>
+              <div class="bar-fill" [style.height.%]="getBarHeight(month.cantidad)"></div>
             </div>
             <span class="bar-label">{{ month.month }}</span>
-            <span class="bar-value">{{ formatoConteo(month.amount) }}</span>
+            <span class="bar-value">{{ formatoConteo(month.cantidad) }}</span>
           </div>
         }
       </div>
@@ -67,7 +74,7 @@
     <!-- Meta Actual -->
     @if (currentGoal()) {
       <div class="goal-section">
-        <h2>Meta de archivado del periodo</h2>
+        <h2>Flujo de aprobación en curso</h2>
         <div class="goal-card">
           <div class="goal-progress-ring">
             <svg viewBox="0 0 36 36">
@@ -81,7 +88,10 @@
           </div>
           <div class="goal-details">
             <span class="goal-name">{{ currentGoal()!.name }}</span>
-            <span class="goal-amount">{{ formatoConteo(currentGoal()!.etapasCompletadas) }} / {{ formatoConteo(currentGoal()!.etapasTotales) }}</span>
+            <span class="goal-amount">
+              {{ formatoConteo(currentGoal()!.etapasCompletadas) }} de
+              {{ formatoConteo(currentGoal()!.etapasTotales) }} etapas aprobadas
+            </span>
             <a routerLink="/flujos" class="goal-link">Ver detalles →</a>
           </div>
         </div>
@@ -93,8 +103,8 @@
           <circle cx="12" cy="12" r="6"/>
           <circle cx="12" cy="12" r="2"/>
         </svg>
-        <p>No tienes una meta activa</p>
-        <a routerLink="/flujos" class="btn btn--primary">Crear Meta</a>
+        <p>Ningún flujo de aprobación en curso</p>
+        <a routerLink="/flujos" class="btn btn--primary">Crear flujo</a>
       </div>
     }
   }

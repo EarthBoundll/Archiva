@@ -158,13 +158,13 @@ export class WorkflowService {
     return all.filter(g => g.priority === priority);
   }
 
-  // Get goals by category
+  // Flujos de un tipo concreto
   async getPorTipo(category: string): Promise<FlujoAprobacion[]> {
     const all = await this.getAll();
     return all.filter(g => g.category === category);
   }
 
-  // Get total savings across all goals
+  // Etapas ya aprobadas, sumadas sobre todos los flujos activos
   async getTotalEtapasCompletadas(): Promise<number> {
     const all = await this.getAll();
     return all
@@ -172,7 +172,7 @@ export class WorkflowService {
       .reduce((sum, g) => sum + g.etapasCompletadas, 0);
   }
 
-  // Get total target across all goals
+  // Etapas totales previstas, sumadas sobre todos los flujos activos
   async getTotalEtapas(): Promise<number> {
     const all = await this.getAll();
     return all

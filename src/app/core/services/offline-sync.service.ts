@@ -18,15 +18,23 @@ export interface OfflineTransaction {
 }
 
 const DB_NAME = 'archiva_offline';
-const DB_VERSION = 1;
+
+// v2: los almacenes pasan de transactions/income/expenses/budgets/goals a
+// los del dominio documental. La cache es desechable, asi que basta con
+// crear el esquema nuevo: se rellena en la primera sincronizacion.
+const DB_VERSION = 2;
+
 const STORES = {
-  transactions: 'transactions',
-  income: 'income',
-  expenses: 'expenses',
-  budgets: 'budgets',
-  goals: 'goals',
-  pending: 'pending_sync'
+  bitacora:    'bitacora',
+  documentos:  'documentos',
+  solicitudes: 'solicitudes',
+  cuotas:      'cuotas',
+  flujos:      'flujos',
+  pending:     'pending_sync'
 };
+
+/** Lo que se puede pedir a la cache. */
+export type TipoDatoCache = 'bitacora' | 'documentos' | 'solicitudes' | 'cuotas' | 'flujos';
 
 /**
  * Borra la base local. Funcion suelta, sin inyeccion de dependencias:
@@ -75,20 +83,20 @@ export class OfflineSyncService {
         const db = (event.target as IDBOpenDBRequest).result;
 
         // Create object stores
-        if (!db.objectStoreNames.contains(STORES.transactions)) {
-          db.createObjectStore(STORES.transactions, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(STORES.bitacora)) {
+          db.createObjectStore(STORES.bitacora, { keyPath: 'id' });
         }
-        if (!db.objectStoreNames.contains(STORES.income)) {
-          db.createObjectStore(STORES.income, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(STORES.documentos)) {
+          db.createObjectStore(STORES.documentos, { keyPath: 'id' });
         }
-        if (!db.objectStoreNames.contains(STORES.expenses)) {
-          db.createObjectStore(STORES.expenses, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(STORES.solicitudes)) {
+          db.createObjectStore(STORES.solicitudes, { keyPath: 'id' });
         }
-        if (!db.objectStoreNames.contains(STORES.budgets)) {
-          db.createObjectStore(STORES.budgets, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(STORES.cuotas)) {
+          db.createObjectStore(STORES.cuotas, { keyPath: 'id' });
         }
-        if (!db.objectStoreNames.contains(STORES.goals)) {
-          db.createObjectStore(STORES.goals, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(STORES.flujos)) {
+          db.createObjectStore(STORES.flujos, { keyPath: 'id' });
         }
         if (!db.objectStoreNames.contains(STORES.pending)) {
           db.createObjectStore(STORES.pending, { keyPath: 'id', autoIncrement: true });
@@ -133,45 +141,45 @@ export class OfflineSyncService {
   }
 
   // Store methods for each entity type
-  async cacheTransactions(transactions: any[]): Promise<void> {
-    await this.bulkPut(STORES.transactions, transactions);
+  async cacheBitacora(registros: any[]): Promise<void> {
+    await this.bulkPut(STORES.bitacora, registros);
   }
 
-  async cacheIncome(sources: any[]): Promise<void> {
-    await this.bulkPut(STORES.income, sources);
+  async cacheDocumentos(documentos: any[]): Promise<void> {
+    await this.bulkPut(STORES.documentos, documentos);
   }
 
-  async cacheExpenses(expenses: any[]): Promise<void> {
-    await this.bulkPut(STORES.expenses, expenses);
+  async cacheSolicitudes(solicitudes: any[]): Promise<void> {
+    await this.bulkPut(STORES.solicitudes, solicitudes);
   }
 
-  async cacheBudgets(budgets: any[]): Promise<void> {
-    await this.bulkPut(STORES.budgets, budgets);
+  async cacheCuotas(cuotas: any[]): Promise<void> {
+    await this.bulkPut(STORES.cuotas, cuotas);
   }
 
-  async cacheGoals(goals: any[]): Promise<void> {
-    await this.bulkPut(STORES.goals, goals);
+  async cacheFlujos(flujos: any[]): Promise<void> {
+    await this.bulkPut(STORES.flujos, flujos);
   }
 
   // Get cached data
-  async getCachedTransactions(): Promise<any[]> {
-    return this.getAll(STORES.transactions);
+  async getBitacoraEnCache(): Promise<any[]> {
+    return this.getAll(STORES.bitacora);
   }
 
-  async getCachedIncome(): Promise<any[]> {
-    return this.getAll(STORES.income);
+  async getDocumentosEnCache(): Promise<any[]> {
+    return this.getAll(STORES.documentos);
   }
 
-  async getCachedExpenses(): Promise<any[]> {
-    return this.getAll(STORES.expenses);
+  async getSolicitudesEnCache(): Promise<any[]> {
+    return this.getAll(STORES.solicitudes);
   }
 
-  async getCachedBudgets(): Promise<any[]> {
-    return this.getAll(STORES.budgets);
+  async getCuotasEnCache(): Promise<any[]> {
+    return this.getAll(STORES.cuotas);
   }
 
-  async getCachedGoals(): Promise<any[]> {
-    return this.getAll(STORES.goals);
+  async getFlujosEnCache(): Promise<any[]> {
+    return this.getAll(STORES.flujos);
   }
 
   // Queue changes for offline sync
@@ -225,7 +233,7 @@ export class OfflineSyncService {
     const { store, ...data } = change.data;
 
     switch (store) {
-      case 'transactions':
+      case 'bitacora':
         if (change.type === 'create') {
           await this.firebase.crearRegistro(userId, data);
         } else if (change.type === 'update') {
@@ -244,11 +252,11 @@ export class OfflineSyncService {
     if (!userId) return;
 
     const [
-      transactions,
-      income,
-      expenses,
-      budgets,
-      goals
+      bitacora,
+      documentos,
+      solicitudes,
+      cuotas,
+      flujos
     ] = await Promise.all([
       this.firebase.getHistorialPorPeriodo(userId, year, month),
       this.firebase.getDocumentos(userId),
@@ -258,11 +266,11 @@ export class OfflineSyncService {
     ]);
 
     await Promise.all([
-      this.cacheTransactions(transactions),
-      this.cacheIncome(income),
-      this.cacheExpenses(expenses),
-      this.cacheBudgets(budgets),
-      this.cacheGoals(goals)
+      this.cacheBitacora(bitacora),
+      this.cacheDocumentos(documentos),
+      this.cacheSolicitudes(solicitudes),
+      this.cacheCuotas(cuotas),
+      this.cacheFlujos(flujos)
     ]);
 
     localStorage.setItem('archiva_last_synced', new Date().toISOString());
@@ -270,7 +278,7 @@ export class OfflineSyncService {
 
   // Get data (tries cache first, falls back to Firebase)
   async getDataWithFallback(
-    dataType: 'transactions' | 'income' | 'expenses' | 'budgets' | 'goals',
+    dataType: TipoDatoCache,
     year?: number,
     month?: number
   ): Promise<any[]> {
@@ -280,20 +288,20 @@ export class OfflineSyncService {
     // Try cache first
     let cached: any[];
     switch (dataType) {
-      case 'transactions':
-        cached = await this.getCachedTransactions();
+      case 'bitacora':
+        cached = await this.getBitacoraEnCache();
         break;
-      case 'income':
-        cached = await this.getCachedIncome();
+      case 'documentos':
+        cached = await this.getDocumentosEnCache();
         break;
-      case 'expenses':
-        cached = await this.getCachedExpenses();
+      case 'solicitudes':
+        cached = await this.getSolicitudesEnCache();
         break;
-      case 'budgets':
-        cached = await this.getCachedBudgets();
+      case 'cuotas':
+        cached = await this.getCuotasEnCache();
         break;
-      case 'goals':
-        cached = await this.getCachedGoals();
+      case 'flujos':
+        cached = await this.getFlujosEnCache();
         break;
     }
 
@@ -310,16 +318,16 @@ export class OfflineSyncService {
     if (this.isOnline) {
       await this.syncFromFirebase(year!, month!);
       switch (dataType) {
-        case 'transactions':
-          return this.getCachedTransactions();
-        case 'income':
-          return this.getCachedIncome();
-        case 'expenses':
-          return this.getCachedExpenses();
-        case 'budgets':
-          return this.getCachedBudgets();
-        case 'goals':
-          return this.getCachedGoals();
+        case 'bitacora':
+          return this.getBitacoraEnCache();
+        case 'documentos':
+          return this.getDocumentosEnCache();
+        case 'solicitudes':
+          return this.getSolicitudesEnCache();
+        case 'cuotas':
+          return this.getCuotasEnCache();
+        case 'flujos':
+          return this.getFlujosEnCache();
       }
     }
 

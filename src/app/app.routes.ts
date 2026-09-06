@@ -82,11 +82,6 @@ export const routes: Routes = [
         path: 'configuracion',
         loadComponent: () =>
           import('./pages/settings/settings').then(m => m.SettingsComponent)
-      },
-      {
-        path: 'migracion',
-        loadComponent: () =>
-          import('./pages/migration/migration').then(m => m.DataMigrationComponent)
       }
     ]
   },

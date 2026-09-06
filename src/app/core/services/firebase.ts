@@ -202,7 +202,7 @@ export class FirebaseService {
     };
     await setDoc(docRef, this.limpiar(txData));
     
-    // Update financial state
+    // Recalcula el estado documental del periodo
     await this.actualizarEstadoDocumental(userId, periodoId);
     
     return txData;
@@ -280,7 +280,7 @@ export class FirebaseService {
     if (!found) throw new Error('Registro no encontrada');
   }
 
-  // Get financial state for a month
+  // Estado documental de un mes concreto
   async getEstadoDocumental(userId: string, year: number, month: number): Promise<any> {
     const periodoId = `${year}-${String(month).padStart(2, '0')}`;
     const docRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}`);
@@ -288,96 +288,85 @@ export class FirebaseService {
     return docSnap.exists() ? (docSnap.data() as any)?.['estadoDocumental'] : null;
   }
 
-  // Update financial state (pre-calculated)
+  // Estado documental del periodo (precalculado)
+  /**
+   * Resume lo que le paso al acervo durante un mes, a partir de la bitacora.
+   *
+   * La version anterior sumaba importes con signo: los movimientos positivos
+   * eran ingresos, los negativos gastos, y de ahi salian un balance, una tasa
+   * de ahorro, un reparto 50/30/20 y una puntuacion financiera. Los registros
+   * de ARCHIVA no tienen importe —tienen accion y tipo—, asi que aquello
+   * devolvia ceros para todo.
+   */
   async actualizarEstadoDocumental(userId: string, periodoId: string) {
-    // Get all transactions for the month
     const q = query(collection(this.firestore, `users/${userId}/periodos/${periodoId}/historial`));
     const snapshot = await getDocs(q);
-    const transactions = snapshot.docs.map(doc => doc.data());
-    
-    // Get income data for this month
-    const [year, month] = periodoId.split('-').map(Number);
-    const incomeData = await this.calcularDocumentosPeriodo(userId, year, month);
-    
-    // Calculate totals from transactions (actual received)
-    const income = transactions.filter((t: any) => t.amount > 0).reduce((s: number, t: any) => s + t.amount, 0);
-    const expenses = transactions.filter((t: any) => t.amount < 0).reduce((s: number, t: any) => s + Math.abs(t.amount), 0);
-    
-    // Use income data for budgeted amounts
-    const documentosProyectados = incomeData.totalBudgeted;
-    const initialBalance = incomeData.initialBalance;
-    
-    // Available now = initial balance + received
-    const availableNow = initialBalance + income;
-    
-    // Budgeted balance = initial + expected income - budgeted expenses
-    const budgetedExpenses = expenses; // For now, assume budget = actual for expenses
-    
-    const balance = availableNow - expenses; // Actual balance
-    const budgetedBalance = (initialBalance + documentosProyectados) - budgetedExpenses; // Expected at end of month
-    
-    const savings = availableNow - expenses;
-    const acervoProyectado = (initialBalance + documentosProyectados) - budgetedExpenses;
-    const tasaVigencia = documentosProyectados > 0 ? (acervoProyectado / documentosProyectados) * 100 : 0;
-    
-    // Calculate 50/30/20 breakdown
-    const expensesByType = { need: 0, want: 0, saving: 0 };
-    transactions.filter((t: any) => t.amount < 0 && t.ruleType).forEach((t: any) => {
-      const type = t.ruleType as keyof typeof expensesByType;
-      if (type in expensesByType) {
-        expensesByType[type] += Math.abs(t.amount);
-      }
-    });
-    
-    // Calculate financial score (simple version)
-    let score = 50; // base
-    if (tasaVigencia >= 20) score += 20;
-    else if (tasaVigencia >= 10) score += 10;
-    if (expenses <= income) score += 20;
-    if (income > 0) score += 10;
-    
-    // Determine health status
-    let healthStatus: 'excellent' | 'good' | 'warning' | 'critical' = 'good';
-    if (score >= 80) healthStatus = 'excellent';
-    else if (score >= 60) healthStatus = 'good';
-    else if (score >= 40) healthStatus = 'warning';
-    else healthStatus = 'critical';
-    
-    // Save financial state with income breakdown
+    const registros = snapshot.docs.map(d => d.data() as any);
+
+    const cuenta = (accion: string) => registros.filter(r => r.accion === accion).length;
+
+    const entradas = registros.filter(r => r.tipo === 'entrada').length;
+    const salidas  = registros.filter(r => r.tipo === 'salida').length;
+
+    const altas         = cuenta('creacion');
+    const versiones     = cuenta('nueva_version');
+    const enviados      = cuenta('envio_revision');
+    const aprobados     = cuenta('aprobacion');
+    const observados    = cuenta('observacion');
+    const rechazados    = cuenta('rechazo');
+    const archivados    = cuenta('archivado');
+
+    // Que proporcion del movimiento suma al acervo en vez de retirarlo.
+    const indiceVigencia = entradas > 0
+      ? Math.max(0, Math.round(((entradas - salidas) / entradas) * 100))
+      : 0;
+
+    // De todo lo que se envio a revision, cuanto salio conforme. Es la
+    // medida honesta del proceso: incluye lo devuelto, no solo lo aprobado.
+    const resueltos = aprobados + observados + rechazados;
+    const indiceConformidad = resueltos > 0
+      ? Math.round((aprobados / resueltos) * 100)
+      : null;
+
+    // Cuanto del acervo trabajado acabo en el archivo definitivo.
+    const indiceArchivo = altas > 0
+      ? Math.round((archivados / altas) * 100)
+      : 0;
+
+    let salud: 'excelente' | 'buena' | 'atencion' | 'critica' = 'buena';
+    if (indiceConformidad === null)      salud = 'buena';
+    else if (indiceConformidad >= 85)    salud = 'excelente';
+    else if (indiceConformidad >= 60)    salud = 'buena';
+    else if (indiceConformidad >= 40)    salud = 'atencion';
+    else                                 salud = 'critica';
+
     const estadoDocumental = {
-      // Income
-      income,
-      incomeBudgeted: documentosProyectados,
-      incomeReceived: income,
-      incomePending: documentosProyectados - income,
-      initialBalance,
-      availableNow,
-      expectedByEndOfMonth: initialBalance + documentosProyectados,
-      
-      // Expenses
-      expenses,
-      expensesBudgeted: budgetedExpenses,
-      
-      // Balance
-      balance,
-      budgetedBalance,
-      
-      // Savings
-      savings,
-      tasaVigencia: Math.round(tasaVigencia * 10) / 10,
-      
-      // Score
-      financialScore: score,
-      healthStatus,
-      
-      // Expenses breakdown
-      rule50320: expensesByType,
+      // Movimiento
+      movimientos: registros.length,
+      entradas,
+      salidas,
+
+      // Desglose por accion
+      altas,
+      versiones,
+      enviados,
+      aprobados,
+      observados,
+      rechazados,
+      archivados,
+
+      // Indicadores
+      indiceVigencia,
+      indiceConformidad,
+      indiceArchivo,
+      salud,
+
       lastUpdated: new Date().toISOString()
     };
-    
+
     const stateRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}`);
     await setDoc(stateRef, this.limpiar({ estadoDocumental }), { merge: true });
-    
+
     return estadoDocumental;
   }
 
@@ -495,10 +484,10 @@ export class FirebaseService {
   }
 
   // ============================================
-  // INCOME SOURCES (NEW)
+  // DOCUMENTOS
   // ============================================
   
-  // Get all income sources for user
+  // Todos los documentos del usuario
   async getDocumentos(userId: string) {
     const q = query(
       collection(this.firestore, `users/${userId}/documentos`),
@@ -508,7 +497,7 @@ export class FirebaseService {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   }
 
-  // Get active income sources
+  // Documentos activos
   async getDocumentosActivos(userId: string) {
     const q = query(
       collection(this.firestore, `users/${userId}/documentos`),
@@ -518,7 +507,7 @@ export class FirebaseService {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   }
 
-  // Create income source
+  // Alta de documento
   async crearDocumento(userId: string, data: any): Promise<any> {
     const docRef = doc(collection(this.firestore, `users/${userId}/documentos`));
     const now = new Date().toISOString();
@@ -534,19 +523,19 @@ export class FirebaseService {
     return sourceData;
   }
 
-  // Update income source
+  // Actualizacion de documento
   async actualizarDocumento(userId: string, documentoId: string, data: any) {
     const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
     await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
-  // Delete (deactivate) income source
+  // Baja logica del documento
   async archivarDocumento(userId: string, documentoId: string) {
     const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
     await setDoc(docRef, this.limpiar({ activo: false, updatedAt: new Date().toISOString() }));
   }
 
-  // Record income received
+  // Deja constancia de la aprobacion
   async registrarVersionDocumento(userId: string, documentoId: string, amount: number, receivedDate: string) {
     const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
     await setDoc(docRef, this.limpiar({ 
@@ -557,7 +546,7 @@ export class FirebaseService {
   }
 
   // ============================================
-  // INCOME HISTORY (Permanent Movement Log)
+  // BITACORA (registro permanente de movimientos)
   // ============================================
 
   // ============================================
@@ -619,109 +608,10 @@ export class FirebaseService {
   }
 
   // ============================================
-  // INITIAL BALANCE
-  // ============================================
-  
-  // Get initial balance
-  async getAcervoInicial(userId: string): Promise<number> {
-    const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      return data['initialBalance'] || 0;
-    }
-    return 0;
-  }
-
-  async setAcervoInicial(userId: string, amount: number) {
-    const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    await setDoc(docRef, this.limpiar({ initialBalance: amount }), { merge: true });
-  }
-
-  // ============================================
-  // MONTHLY INCOME CALCULATION
-  // ============================================
-  
-  // Calculate monthly income with dates
-  async calcularDocumentosPeriodo(userId: string, year: number, month: number): Promise<any> {
-    const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    const today = new Date();
-    const currentDay = today.getDate();
-    const currentMonth = today.getMonth() + 1;
-    const currentYear = today.getFullYear();
-    const isCurrentMonth = currentYear === year && currentMonth === month;
-    
-    // Get active income sources
-    const sources = await this.getDocumentosActivos(userId);
-    
-    // Get initial balance
-    const initialBalance = await this.getAcervoInicial(userId);
-    
-    // Get transactions for the month to calculate what's actually received
-    const transactions = await this.getHistorialPorPeriodo(userId, year, month);
-    const incomeTransactions = transactions.filter((t: any) => t.amount > 0);
-    const totalReceived = incomeTransactions.reduce((sum: number, t: any) => sum + t.amount, 0);
-    
-    // Calculate expected vs received per source
-    const sourceDetails = sources.map((source: any) => {
-      // Find transactions from this source
-      const sourceTransactions = incomeTransactions.filter((t: any) => 
-        t.description?.toLowerCase().includes(source.name.toLowerCase()) ||
-        t.incomeSourceId === source.id
-      );
-      const received = sourceTransactions.reduce((sum: number, t: any) => sum + t.amount, 0);
-      
-      const expectedDate = source.paymentDayOfMonth;
-      const isOverdue = isCurrentMonth && expectedDate && currentDay > expectedDate && received === 0;
-      const isPending = isCurrentMonth && expectedDate && currentDay < expectedDate && received === 0;
-      const isReceived = received > 0;
-      
-      let status: 'pending' | 'partial' | 'received' | 'overdue' = 'pending';
-      if (isReceived) status = received >= source.amount ? 'received' : 'partial';
-      else if (isOverdue) status = 'overdue';
-      else if (isPending) status = 'pending';
-      
-      return {
-        documentoId: source.id,
-        name: source.name,
-        type: source.type,
-        budgeted: source.amount,
-        received,
-        expectedDate,
-        receivedDate: source.lastPaymentDate,
-        status
-      };
-    });
-    
-    // Calculate totals
-    const totalBudgeted = sources.reduce((sum: number, s: any) => sum + s.amount, 0);
-    const totalExpected = sourceDetails.reduce((sum: number, s: any) => sum + s.budgeted, 0);
-    
-    // Available now = initial balance + received so far
-    const availableNow = initialBalance + totalReceived;
-    
-    // Expected by end of month
-    const expectedByEndOfMonth = initialBalance + totalBudgeted;
-    
-    return {
-      periodoId,
-      totalBudgeted,
-      totalExpected,
-      totalReceived,
-      totalPending: totalExpected - totalReceived,
-      initialBalance,
-      availableNow,
-      expectedByEndOfMonth,
-      sources: sourceDetails,
-      lastUpdated: new Date().toISOString()
-    };
-  }
-
-  // ============================================
-  // EXPENSES (NEW - Sistema Dual)
+  // SOLICITUDES DE REVISION (sistema dual)
   // ============================================
 
-  // Get all expenses for user
+  // Todas las solicitudes del usuario
   async getSolicitudes(userId: string): Promise<any[]> {
     const q = query(
       collection(this.firestore, `users/${userId}/solicitudes`),
@@ -752,7 +642,7 @@ export class FirebaseService {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   }
 
-  // Create expense
+  // Alta de solicitud
   async crearSolicitud(userId: string, data: any): Promise<any> {
     const docRef = doc(collection(this.firestore, `users/${userId}/solicitudes`));
     const now = new Date().toISOString();
@@ -770,13 +660,13 @@ export class FirebaseService {
     return expenseData;
   }
 
-  // Update expense
+  // Actualizacion de solicitud
   async actualizarSolicitud(userId: string, solicitudId: string, data: any) {
     const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
     await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
-  // Mark expense as paid
+  // Marca la solicitud como atendida
   async marcarSolicitudAtendida(userId: string, solicitudId: string, paidAmount: number, fechaAtencion?: string) {
     const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
     await setDoc(docRef, this.limpiar({
@@ -787,7 +677,7 @@ export class FirebaseService {
     }), { merge: true });
   }
 
-  // Cancel/deactivate expense
+  // Anula la solicitud
   async anularSolicitud(userId: string, solicitudId: string) {
     const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
     await setDoc(docRef, this.limpiar({
@@ -798,109 +688,8 @@ export class FirebaseService {
     }), { merge: true });
   }
 
-  // Calculate monthly expense summary
-  async calcularSolicitudesPeriodo(userId: string, year: number, month: number): Promise<any> {
-    const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    const today = new Date();
-    const currentDay = today.getDate();
-    
-    // Get all active expenses
-    const allExpenses = await this.getSolicitudesActivas(userId);
-    
-    // Separate primordial and non-primordial
-    const primordial = allExpenses.filter((e: any) => e.esPrioritaria);
-    const nonPrimordial = allExpenses.filter((e: any) => !e.esPrioritaria);
-    
-    // Calculate totals
-    const totalBudgeted = allExpenses.reduce((sum: number, e: any) => sum + (e.budgetedAmount || 0), 0);
-    const totalActual = allExpenses.reduce((sum: number, e: any) => sum + (e.actualAmount || 0), 0);
-    
-    const primordialBudgeted = primordial.reduce((sum: number, e: any) => sum + (e.budgetedAmount || 0), 0);
-    const primordialActual = primordial.reduce((sum: number, e: any) => sum + (e.actualAmount || 0), 0);
-    
-    const nonPrimordialBudgeted = nonPrimordial.reduce((sum: number, e: any) => sum + (e.budgetedAmount || 0), 0);
-    const nonPrimordialActual = nonPrimordial.reduce((sum: number, e: any) => sum + (e.actualAmount || 0), 0);
-    
-    // Get upcoming payments (next 7 days)
-    const upcomingPayments = allExpenses
-      .filter((e: any) => e.diaLimiteMes && e.status !== 'paid' && e.status !== 'cancelled')
-      .map((e: any) => ({
-        solicitudId: e.id,
-        name: e.name,
-        amount: e.budgetedAmount,
-        fechaLimite: e.diaLimiteMes,
-        isOverdue: currentDay > e.diaLimiteMes
-      }))
-      .sort((a: any, b: any) => a.fechaLimite - b.fechaLimite);
-    
-    // Check for alerts
-    const alerts: any[] = [];
-    allExpenses.forEach((e: any) => {
-      // Overdue
-      if (e.status === 'overdue') {
-        alerts.push({
-          type: 'overdue',
-          solicitudId: e.id,
-          message: `${e.name} está vencido (Día ${e.diaLimiteMes})`
-        });
-      }
-      // CuotaAlmacenamiento exceeded
-      if (e.actualAmount > e.budgetedAmount) {
-        alerts.push({
-          type: 'budget_exceeded',
-          solicitudId: e.id,
-          message: `${e.name} excedió el cuota: ${e.actualAmount} vs ${e.budgetedAmount}`
-        });
-      }
-      // Price change (subscription)
-      if (e.esReincidente && e.prioridadAnterior && e.prioridadSolicitud !== e.prioridadAnterior) {
-        alerts.push({
-          type: 'price_change',
-          solicitudId: e.id,
-          message: `${e.name} cambió de precio: ${e.prioridadAnterior} → ${e.prioridadSolicitud}`
-        });
-      }
-      // Variable spike
-      if (e.isVariable && e.umbralAlerta && e.budgetedAmount && e.actualAmount) {
-        const limit = e.budgetedAmount * (1 + e.umbralAlerta / 100);
-        if (e.actualAmount > limit) {
-          alerts.push({
-            type: 'variable_spike',
-            solicitudId: e.id,
-            message: `${e.name}: ${e.actualAmount} supera umbral de ${limit.toFixed(2)} (${e.umbralAlerta}%)`
-          });
-        }
-      }
-    });
-    
-    // By category breakdown
-    const byCategory = allExpenses.map((e: any) => ({
-      category: e.category,
-      name: e.name,
-      budgeted: e.budgetedAmount,
-      actual: e.actualAmount,
-      status: e.status
-    }));
-    
-    return {
-      periodoId,
-      totalBudgeted,
-      totalActual,
-      primordialBudgeted,
-      primordialActual,
-      primordialCount: primordial.length,
-      nonPrimordialBudgeted,
-      nonPrimordialActual,
-      nonPrimordialCount: nonPrimordial.length,
-      byCategory,
-      upcomingPayments: upcomingPayments.slice(0, 5),
-      alerts,
-      lastUpdated: new Date().toISOString()
-    };
-  }
-
   // ============================================
-  // BUDGETS (Cuota por Categoría)
+  // CUOTAS DE ALMACENAMIENTO (por categoria documental)
   // ============================================
   
   // Get budgets for a month
@@ -1110,89 +899,5 @@ export class FirebaseService {
   async markNotificationAsRead(userId: string, notificationId: string) {
     const docRef = doc(this.firestore, `users/${userId}/notifications/${notificationId}`);
     return setDoc(docRef, this.limpiar({ isRead: true }), { merge: true });
-  }
-
-  // ============================================
-  // MIGRATION HELPERS
-  // ============================================
-
-  async checkLegacyTransactions(userId: string): Promise<{ count: number }> {
-    try {
-      const q = query(
-        collection(this.firestore, `users/${userId}/historial`),
-        limit(1)
-      );
-      const snapshot = await getDocs(q);
-      return { count: snapshot.size };
-    } catch {
-      return { count: 0 };
-    }
-  }
-
-  async getLegacyTransactions(userId: string): Promise<any[]> {
-    try {
-      const q = query(
-        collection(this.firestore, `users/${userId}/historial`),
-        orderBy('date', 'desc'),
-        limit(500)
-      );
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch {
-      return [];
-    }
-  }
-
-  async checkLegacyGoal(userId: string): Promise<{ exists: boolean }> {
-    try {
-      const docRef = doc(this.firestore, `users/${userId}/flujos/data`);
-      const docSnap = await getDoc(docRef);
-      return { exists: docSnap.exists() };
-    } catch {
-      return { exists: false };
-    }
-  }
-
-  async getLegacyGoal(userId: string): Promise<any | null> {
-    try {
-      const docRef = doc(this.firestore, `users/${userId}/flujos/data`);
-      const docSnap = await getDoc(docRef);
-      return docSnap.exists() ? docSnap.data() : null;
-    } catch {
-      return null;
-    }
-  }
-
-  async checkLegacyCategories(userId: string): Promise<{ count: number }> {
-    try {
-      const q = query(
-        collection(this.firestore, `users/${userId}/categories`),
-        limit(1)
-      );
-      const snapshot = await getDocs(q);
-      return { count: snapshot.size };
-    } catch {
-      return { count: 0 };
-    }
-  }
-
-  async markAsMigrated(userId: string, type: 'transactions' | 'goals') {
-    const docRef = doc(this.firestore, `users/${userId}/migration/status`);
-    await setDoc(docRef, this.limpiar({
-      [type]: true,
-      [`${type}MigratedAt`]: new Date().toISOString()
-    }), { merge: true });
-  }
-
-  async checkMigrationStatus(userId: string): Promise<boolean> {
-    try {
-      const docRef = doc(this.firestore, `users/${userId}/migration/status`);
-      const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) return false;
-      const data = docSnap.data();
-      return data['transactions'] === true && data['goals'] === true;
-    } catch {
-      return false;
-    }
   }
 }

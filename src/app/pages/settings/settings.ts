@@ -86,8 +86,8 @@ import { DevSettingsService } from '../../core/services/dev-settings';
         <div class="setting-item setting-item--disabled">
           <div class="setting-item__info">
             <div>
-              <span class="setting-item__label">Simular pagos</span>
-              <span class="setting-item__desc">Genera pagos de prueba (próximamente)</span>
+              <span class="setting-item__label">Cargar acervo de ejemplo</span>
+              <span class="setting-item__desc">Genera documentos de prueba para explorar el sistema (próximamente)</span>
             </div>
           </div>
           <span class="coming-soon">Próximamente</span>
@@ -97,7 +97,7 @@ import { DevSettingsService } from '../../core/services/dev-settings';
           <div class="setting-item__info">
             <div>
               <span class="setting-item__label">Resetear datos</span>
-              <span class="setting-item__desc">Elimina todos los datos locales (próximamente)</span>
+              <span class="setting-item__desc">Vacía la caché local del navegador (próximamente)</span>
             </div>
           </div>
           <span class="coming-soon">Próximamente</span>

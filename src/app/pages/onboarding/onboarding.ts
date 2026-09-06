@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { OnboardingService } from '../../core/services/onboarding';
+import { sugerirPrefijo as sugerirPrefijoDeArea, esPrefijoValido } from '../../core/models/onboarding.model';
 
 @Component({
   selector: 'app-onboarding',
@@ -99,7 +100,10 @@ import { OnboardingService } from '../../core/services/onboarding';
               maxlength="5"
               class="input-large"
             />
-            <small>Los documentos se codificaran como CON-{{ prefijoCodificacion || 'ADM' }}-0001</small>
+            <small>Los documentos se codificarán como CON-{{ prefijoCodificacion || 'ADM' }}-0001</small>
+            @if (prefijoCodificacion && !prefijoValido) {
+              <small class="hint-error">Entre tres y cinco letras, sin números ni espacios.</small>
+            }
           </div>
 
           @if (errorMsg()) {
@@ -109,7 +113,7 @@ import { OnboardingService } from '../../core/services/onboarding';
           <button
             class="btn btn-primary"
             (click)="finishOnboarding()"
-            [disabled]="!areaArchivo || !prefijoCodificacion || guardando()">
+            [disabled]="!areaArchivo || !prefijoValido || guardando()">
             {{ guardando() ? 'Guardando...' : 'Finalizar' }}
           </button>
         </div>
@@ -177,7 +181,7 @@ import { OnboardingService } from '../../core/services/onboarding';
         align-items: center;
         justify-content: center;
         color: white;
-        box-shadow: 0 8px 32px rgba(22, 107, 70, 0.4);
+        box-shadow: 0 8px 32px color-mix(in srgb, var(--color-primary) 40%, transparent);
       }
     }
     
@@ -205,7 +209,7 @@ import { OnboardingService } from '../../core/services/onboarding';
       
       &:focus {
         border-color: var(--color-primary);
-        box-shadow: 0 0 0 3px rgba(22, 107, 70, 0.15);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
       }
       
       &::placeholder {
@@ -223,12 +227,12 @@ import { OnboardingService } from '../../core/services/onboarding';
       color: white;
       border: none;
       cursor: pointer;
-      box-shadow: 0 4px 16px rgba(22, 107, 70, 0.4);
+      box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary) 40%, transparent);
       transition: all var(--duration-normal) var(--ease-out);
       
       &:hover:not(:disabled) {
         transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(22, 107, 70, 0.5);
+        box-shadow: 0 8px 24px color-mix(in srgb, var(--color-primary) 50%, transparent);
       }
       
       &:active:not(:disabled) {
@@ -266,7 +270,7 @@ import { OnboardingService } from '../../core/services/onboarding';
         background: var(--color-primary);
         border-color: var(--color-primary);
         color: white;
-        box-shadow: 0 4px 12px rgba(22, 107, 70, 0.4);
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 40%, transparent);
       }
     }
     
@@ -278,6 +282,12 @@ import { OnboardingService } from '../../core/services/onboarding';
     @keyframes slideUp {
       from { opacity: 0; transform: translateY(16px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hint-error {
+      display: block;
+      margin-top: var(--space-1);
+      color: var(--color-error);
     }
 
     .error-msg {
@@ -312,13 +322,15 @@ export class OnboardingComponent {
     this.step.update(s => Math.min(s + 1, 4));
   }
 
-  /** Propone un prefijo de 3 letras a partir del nombre del area. */
+  /** Propone un prefijo a partir del nombre del area, sin pisar lo escrito. */
   sugerirPrefijo() {
     if (this.prefijoCodificacion) return;
-    const limpio = this.areaArchivo
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .toUpperCase().replace(/[^A-Z]/g, '');
-    this.prefijoCodificacion = limpio.slice(0, 3);
+    this.prefijoCodificacion = sugerirPrefijoDeArea(this.areaArchivo);
+  }
+
+  /** El boton solo se habilita cuando el prefijo puede codificar de verdad. */
+  get prefijoValido(): boolean {
+    return esPrefijoValido(this.prefijoCodificacion);
   }
 
   async finishOnboarding() {
@@ -336,11 +348,16 @@ export class OnboardingComponent {
       });
       await this.router.navigate(['/dashboard'], { replaceUrl: true });
     } catch (e: any) {
-      this.errorMsg.set(
-        e?.message === 'No autenticado'
-          ? 'Tu sesion expiro. Vuelve a iniciar sesion para guardar la configuracion.'
-          : 'No se pudo guardar la configuracion. Revisa tu conexion e intentalo de nuevo.'
-      );
+      // Un fallo de validacion trae su propio mensaje, y decirle al usuario
+      // que revise la conexion cuando el problema es el prefijo lo manda a
+      // buscar donde no hay nada.
+      if (e?.message === 'No autenticado') {
+        this.errorMsg.set('Tu sesión expiró. Vuelve a iniciar sesión para guardar la configuración.');
+      } else if (typeof e?.message === 'string' && e.message.includes('prefijo')) {
+        this.errorMsg.set(e.message);
+      } else {
+        this.errorMsg.set('No se pudo guardar la configuración. Revisa tu conexión e inténtalo de nuevo.');
+      }
     } finally {
       this.guardando.set(false);
     }

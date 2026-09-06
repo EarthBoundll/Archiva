@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 
 @Component({
-  selector: 'app-goals',
+  selector: 'app-flujos',
   standalone: true,
   imports: [CommonModule, RouterModule],
   template: `
@@ -22,8 +22,8 @@ import { RouterModule } from '@angular/router';
           </svg>
         </div>
         <div class="card__content">
-          <h3>Tu Meta Actual</h3>
-          <p>Ver y gestionar tu meta de archivo activa</p>
+          <h3>Flujo en curso</h3>
+          <p>Consulta y ajusta el flujo de aprobación activo</p>
         </div>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="9 18 15 12 9 6"/>
@@ -56,7 +56,7 @@ import { RouterModule } from '@angular/router';
       &__icon {
         width: 48px;
         height: 48px;
-        background: rgba(22, 107, 70, 0.15);
+        background: color-mix(in srgb, var(--color-primary) 15%, transparent);
         border-radius: var(--radius-lg);
         display: flex;
         align-items: center;

@@ -1,4 +1,4 @@
-.savings-page {
+.archivo-page {
   padding: var(--space-4);
   max-width: 900px;
   margin: 0 auto;
@@ -283,4 +283,8 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+// La comparacion sin base previa no es ni buena ni mala.
+.card__compare--neutro {
+  color: var(--color-text-muted);
 }

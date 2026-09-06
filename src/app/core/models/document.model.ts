@@ -224,40 +224,10 @@ export interface DocumentoPayload {
 }
 
 
-export interface DocumentosPeriodo {
-  periodoId: string;
-  year: number;
-  month: number;
-  byCategory: Record<CategoriaDocumental, number>;
-  totalBudgeted: number;
-  totalReceived: number;
-  totalPending: number;
-  receivedPercentage: number;
-  sources: DocumentoPeriodo[];
-  predictions: {
-    nextPaymentDate: string | null;
-    nextPaymentAmount: number;
-    expectedEndOfMonth: number;
-  };
-  initialBalance: number;
-  availableNow: number;
-  lastUpdated: string;
-}
-
-export interface DocumentoPeriodo {
-  documentoId: string;
-  name: string;
-  category: CategoriaDocumental;
-  type: TipoDocumental;
-  budgeted: number;
-  received: number;
-  expectedDate: string | null;
-  receivedDate?: string | null;
-  status: 'pending' | 'received' | 'overdue' | 'upcoming' | 'scheduled';
-  daysUntilPayment: number | null;
-}
-
-
+// El resumen mensual del producto anterior —importe presupuestado, importe
+// recibido, saldo inicial, disponible ahora, proxima fecha y monto de pago—
+// desaparecio con el calculo que lo producia. Lo que ARCHIVA resume de un
+// periodo son recuentos por accion, y vive en el estado documental.
 
 // ============================================
 // MAPAS DE CATEGORÍAS Y TIPOS
@@ -525,7 +495,7 @@ export function generarOcurrencias(rule: ReglaRenovacion | undefined | null, cou
   return results;
 }
 
-/** Calcula el estado de pago actual */
+/** Calcula el estado de vigencia actual del documento. */
 export function calcularEstadoDocumento(
   rule: ReglaRenovacion,
   nextDates: string[],

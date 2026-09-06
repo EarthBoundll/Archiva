@@ -41,10 +41,10 @@
 
       <div class="progress-track">
         <div class="progress-fill" [style.width.%]="progress"></div>
-        @for (m of milestonesWithStatus; track m.amount) {
+        @for (m of milestonesWithStatus; track m.label) {
           <div
             class="milestone-marker"
-            [style.left.%]="m.amount * 100"
+            [style.left.%]="m.fraccion * 100"
             [class.reached]="m.reached"
             [title]="m.label">
           </div>
@@ -53,7 +53,7 @@
 
       <div class="hero__pct">{{ progress.toFixed(1) }}% completado</div>
       <p class="hero__remaining">
-        Faltan <strong>{{ (goal()!.etapasTotales - goal()!.etapasCompletadas) }}</strong> para tu meta
+        Faltan <strong>{{ (goal()!.etapasTotales - goal()!.etapasCompletadas) }}</strong> etapas para cerrar el flujo
       </p>
     </section>
 
@@ -88,7 +88,7 @@
           </svg>
         </span>
         <span class="stat-card__value">{{ goal()!.etapasPorPeriodo }}</span>
-        <span class="stat-card__label">aporte mensual</span>
+        <span class="stat-card__label">etapas por periodo</span>
       </div>
       <div class="stat-card">
         <span class="stat-card__icon">
@@ -115,7 +115,7 @@
         Hitos
       </h2>
       <div class="milestones">
-        @for (m of milestonesWithStatus; track m.amount) {
+        @for (m of milestonesWithStatus; track m.label) {
           <div class="milestone" [class.reached]="m.reached">
             <span class="milestone__icon">
               @if (m.reached) {
@@ -170,7 +170,7 @@
 
         <div class="edit-card">
           <div class="edit-card__info">
-            <span class="edit-card__label">Aporte mensual</span>
+            <span class="edit-card__label">Etapas por periodo</span>
             <span class="edit-card__value">{{ goal()!.etapasPorPeriodo }}</span>
           </div>
           <button class="btn-edit" (click)="showEditContribution.set(!showEditContribution())">
@@ -196,7 +196,7 @@
 
         <div class="edit-card">
           <div class="edit-card__info">
-            <span class="edit-card__label">Meta total</span>
+            <span class="edit-card__label">Etapas totales</span>
             <span class="edit-card__value">{{ goal()!.etapasTotales }}</span>
           </div>
           <button class="btn-edit" (click)="showEditTarget.set(!showEditTarget())">
@@ -233,7 +233,7 @@
         <circle cx="12" cy="12" r="6"/>
         <circle cx="12" cy="12" r="2"/>
       </svg>
-      <p>No tienes una meta activa.</p>
+      <p>No hay ningún flujo de aprobación en curso.</p>
       <p class="empty__sub">Recarga la pagina — el sistema la crea automaticamente.</p>
     </div>
   }

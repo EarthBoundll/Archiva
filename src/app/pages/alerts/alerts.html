@@ -1,0 +1,101 @@
+<div class="page">
+  <header class="page-header">
+    <div>
+      <h1>Alertas Documentales</h1>
+      <p class="page-subtitle">{{ currentMonth }}</p>
+    </div>
+    <button class="btn" (click)="cargar()" [disabled]="cargando()">
+      <app-icon name="repeat" [size]="16" />
+      Actualizar
+    </button>
+  </header>
+
+  @if (cargando()) {
+    <div class="cargando">
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+    </div>
+  } @else if (error()) {
+    <div class="aviso aviso--error">
+      <app-icon name="shield-alert" [size]="20" />
+      <p>{{ error() }}</p>
+    </div>
+  } @else {
+
+    <!-- Resumen de urgencia -->
+    <div class="resumen" [class.resumen--limpio]="alertas().length === 0">
+      <div class="resumen__cifra">
+        <span class="resumen__valor" [class.resumen__valor--alerta]="urgentes() > 0">
+          {{ urgentes() }}
+        </span>
+        <span class="resumen__label">
+          {{ urgentes() === 1 ? 'asunto no puede esperar' : 'asuntos no pueden esperar' }}
+        </span>
+      </div>
+      <p class="resumen__pie">
+        {{ alertas().length }} {{ alertas().length === 1 ? 'alerta vigente' : 'alertas vigentes' }} en total.
+        Cada una se calcula al abrir la página: cuando resuelvas el documento, desaparece sola.
+      </p>
+    </div>
+
+    <!-- Filtro por urgencia -->
+    @if (alertas().length > 0) {
+      <div class="filtros" role="group" aria-label="Filtrar por urgencia">
+        @for (u of urgencias; track u) {
+          @if (conteos()[u] > 0) {
+            <button class="pill" [class.pill--activa]="filtro() === u"
+                    [attr.aria-pressed]="filtro() === u"
+                    (click)="alternarFiltro(u)">
+              <span class="punto" [class]="'punto--' + u"></span>
+              {{ rotulo(u) }}
+              <span class="pill__n">{{ conteos()[u] }}</span>
+            </button>
+          }
+        }
+      </div>
+    }
+
+    <!-- Listado -->
+    @if (visibles().length > 0) {
+      <ul class="lista">
+        @for (a of visibles(); track a.id) {
+          <li class="alerta" [class]="'alerta--' + a.urgencia">
+            <div class="alerta__icono">
+              <app-icon [name]="a.icono" [size]="20" />
+            </div>
+
+            <div class="alerta__cuerpo">
+              <div class="alerta__cabecera">
+                @if (a.codigo) { <code class="alerta__codigo">{{ a.codigo }}</code> }
+                <span class="alerta__urgencia">{{ rotulo(a.urgencia) }}</span>
+              </div>
+              <h2 class="alerta__titulo">{{ a.titulo }}</h2>
+              <p class="alerta__mensaje">{{ a.mensaje }}</p>
+            </div>
+
+            <button class="alerta__accion" (click)="abrir(a)">
+              Ver
+              <app-icon name="arrow-right" [size]="14" />
+            </button>
+          </li>
+        }
+      </ul>
+    } @else if (alertas().length > 0) {
+      <div class="vacio">
+        <app-icon name="search" [size]="40" />
+        <p>Ninguna alerta con esa urgencia.</p>
+        <button class="btn" (click)="filtro.set(null)">Ver todas</button>
+      </div>
+    } @else {
+      <div class="vacio vacio--limpio">
+        <app-icon name="check-circle" [size]="40" />
+        <h2>Nada pendiente</h2>
+        <p>
+          Ningún documento está vencido ni observado, ninguna solicitud pasó su plazo
+          y las cuotas de almacenamiento tienen espacio.
+        </p>
+      </div>
+    }
+  }
+</div>

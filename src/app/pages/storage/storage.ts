@@ -3,11 +3,13 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { StorageService } from '../../core/services/storage';
 import { CATEGORIAS_DOCUMENTALES, type CategoriaDocumental } from '../../core/models/document.model';
+import { IconComponent } from '../../core/components/icon/icon.component';
 
 interface BudgetCategory {
   id: string;
   category: string;
   categoryName: string;
+  icon: string;
   budgeted: number;
   spent: number;
   remaining: number;
@@ -16,9 +18,9 @@ interface BudgetCategory {
 }
 
 @Component({
-  selector: 'app-budgets',
+  selector: 'app-almacenamiento',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, IconComponent],
   templateUrl: './storage.html',
   styleUrl: './storage.scss'
 })
@@ -31,6 +33,9 @@ export class StorageComponent implements OnInit {
 
   formCategory = '';
   formAmount: number | null = null;
+
+  repartiendo = signal(false);
+  avisoReparto = signal<string | null>(null);
 
   now = new Date();
   currentMonth = this.now.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
@@ -78,7 +83,11 @@ export class StorageComponent implements OnInit {
     return {
       id: b.id || b.category,
       category: b.category,
-      categoryName: b.categoryName || b.category,
+      categoryName: CATEGORIAS_DOCUMENTALES[b.category as CategoriaDocumental]?.label
+                     ?? b.categoryName ?? b.category,
+      // El icono sale del catalogo documental: antes la plantilla escogia
+      // entre vivienda, transporte, salud y supermercado.
+      icon: CATEGORIAS_DOCUMENTALES[b.category as CategoriaDocumental]?.icon ?? 'folder',
       budgeted,
       spent,
       remaining,
@@ -93,6 +102,47 @@ export class StorageComponent implements OnInit {
     if (v >= 1024) return `${(v / 1024).toLocaleString('es-PE', { maximumFractionDigits: 1 })} GB`;
     if (v < 1)     return `${Math.round(v * 1024)} KB`;
     return `${v.toLocaleString('es-PE', { maximumFractionDigits: 1 })} MB`;
+  }
+
+  /**
+   * Reparte una capacidad total entre las categorias que ya tienen
+   * documentos, en proporcion a lo que ocupan. Ahorra doce altas manuales
+   * en un acervo recien creado.
+   */
+  async repartirAutomaticamente() {
+    if (this.repartiendo()) return;
+
+    const entrada = window.prompt(
+      'Capacidad total a repartir, en MB:',
+      '500'
+    );
+    if (entrada === null) return;
+
+    const capacidad = Number(entrada.replace(',', '.'));
+    if (!Number.isFinite(capacidad) || capacidad <= 0) {
+      this.avisoReparto.set('Indica una capacidad mayor que cero.');
+      return;
+    }
+
+    this.repartiendo.set(true);
+    this.avisoReparto.set(null);
+    try {
+      const creadas = await this.storageService.autoDistribuirCuotas(
+        capacidad, this.now.getFullYear(), this.now.getMonth() + 1
+      );
+
+      if (creadas === 0) {
+        this.avisoReparto.set(
+          'No hay documentos todavía: registra alguno y el reparto sabrá qué peso dar a cada serie.'
+        );
+      } else {
+        await this.loadBudgets();
+      }
+    } catch {
+      this.avisoReparto.set('No se pudo repartir la capacidad. Inténtalo de nuevo.');
+    } finally {
+      this.repartiendo.set(false);
+    }
   }
 
   createBudget() {

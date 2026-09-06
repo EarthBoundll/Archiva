@@ -6,14 +6,15 @@ import { WorkflowService } from '../../core/services/workflow';
 import { HistoryService } from '../../core/services/history';
 import { FlujoAprobacion } from '../../core/models/workflow.model';
 
-interface Milestone {
-  amount: number;
-  label:  string;
+/** Un hito del recorrido, expresado como fraccion del total de etapas. */
+interface Hito {
+  fraccion: number;
+  label: string;
   reached: boolean;
 }
 
 @Component({
-  selector: 'app-goal',
+  selector: 'app-flujo',
   standalone: true,
   imports: [CommonModule, FormsModule, RouterModule],
   templateUrl: './workflow.html',
@@ -33,20 +34,23 @@ export class WorkflowComponent implements OnInit {
   // Panel de edición
   showEditContribution = signal(false);
   showEditTarget       = signal(false);
-  newContribution      = 240;
-  newTarget            = 10000;
+
+  // Etapas por periodo y etapas totales. Los valores por defecto eran 240 y
+  // 10.000: aportacion mensual y meta de ahorro del producto anterior.
+  newContribution = 2;
+  newTarget       = 5;
 
   // Historial de documentos del mes
   /** Movimientos documentales del periodo, para dar contexto al ritmo. */
   documentosEnFlujo = 0;
 
-  readonly milestones: Milestone[] = [
+  readonly milestones: Hito[] = [
     // Fracciones del recorrido, no cifras: un flujo de tres etapas y otro
     // de diez deben leerse igual de bien.
-    { amount: 0.25, label: '25%',  reached: false },
-    { amount: 0.50, label: '50%',  reached: false },
-    { amount: 0.75, label: '75%',  reached: false },
-    { amount: 1.00, label: '100%', reached: false },
+    { fraccion: 0.25, label: '25%',  reached: false },
+    { fraccion: 0.50, label: '50%',  reached: false },
+    { fraccion: 0.75, label: '75%',  reached: false },
+    { fraccion: 1.00, label: '100%', reached: false },
   ];
 
   get progress(): number {
@@ -57,13 +61,13 @@ export class WorkflowComponent implements OnInit {
     return this.goal() ? this.workflowService.calcFechaEstimada(this.goal()!.periodosParaCierre) : '';
   }
 
-  get milestonesWithStatus(): Milestone[] {
+  get milestonesWithStatus(): Hito[] {
     const current = this.goal()?.etapasCompletadas ?? 0;
     const total = this.goal()?.etapasTotales || 1;
-    return this.milestones.map(m => ({ ...m, reached: current >= m.amount * total }));
+    return this.milestones.map(m => ({ ...m, reached: current >= m.fraccion * total }));
   }
 
-  // Proyección: cuántos meses si se aporta X
+  /** Periodos que faltan si se aprueban N etapas por periodo. */
   projectMonths(contribution: number): number {
     const g = this.goal();
     if (!g || contribution <= 0) return 0;
@@ -72,15 +76,20 @@ export class WorkflowComponent implements OnInit {
     return Math.ceil(remaining / contribution);
   }
 
-  // Escenarios de archivo
+  /**
+   * A que ritmo se cierra el flujo segun cuantas etapas se aprueben por
+   * periodo. Antes eran aportaciones de 120, 240 y 360 soles rotuladas como
+   * porcentajes de ahorro; un flujo tiene tres o cuatro etapas, no
+   * trescientas.
+   */
   get scenarios() {
     const g = this.goal();
     if (!g) return [];
     return [
-      { label: 'Archivo mínimo (10%)',  contribution: 120,  months: this.projectMonths(120)  },
-      { label: 'Regla 20%',           contribution: 240,  months: this.projectMonths(240)  },
-      { label: 'Archivo agresivo (30%)', contribution: 360, months: this.projectMonths(360)  },
-      { label: 'Contribución actual',  contribution: g.etapasPorPeriodo, months: g.periodosParaCierre ?? 0 },
+      { label: 'Una etapa por periodo',    contribution: 1, months: this.projectMonths(1) },
+      { label: 'Dos etapas por periodo',   contribution: 2, months: this.projectMonths(2) },
+      { label: 'Tres etapas por periodo',  contribution: 3, months: this.projectMonths(3) },
+      { label: 'Ritmo actual', contribution: g.etapasPorPeriodo, months: g.periodosParaCierre ?? 0 },
     ];
   }
 
@@ -115,12 +124,12 @@ export class WorkflowComponent implements OnInit {
   // ─── Editar contribución ─────────────────────────────────
   async saveContribution() {
     if (this.newContribution <= 0) {
-      this.errorMsg.set('La contribución debe ser mayor a 0');
+      this.errorMsg.set('El ritmo debe ser de al menos una etapa por periodo.');
       return;
     }
     const goal = this.goal();
     if (!goal) {
-      this.errorMsg.set('No hay meta activa');
+      this.errorMsg.set('No hay ningún flujo activo.');
       return;
     }
     this.isSaving.set(true);
@@ -129,7 +138,7 @@ export class WorkflowComponent implements OnInit {
       await this.workflowService.update(goal.id, { etapasPorPeriodo: this.newContribution });
       await this.loadData();
       this.showEditContribution.set(false);
-      this.showSuccess('¡Contribución actualizada! Los meses se recalcularon.');
+      this.showSuccess('Ritmo actualizado. Los periodos se recalcularon.');
     } catch (e: any) {
       this.errorMsg.set(e.message);
     } finally {
@@ -140,12 +149,12 @@ export class WorkflowComponent implements OnInit {
   // ─── Editar meta ─────────────────────────────────────────
   async saveTarget() {
     if (this.newTarget <= 0) {
-      this.errorMsg.set('La meta debe ser mayor a 0');
+      this.errorMsg.set('El flujo necesita al menos una etapa.');
       return;
     }
     const goal = this.goal();
     if (!goal) {
-      this.errorMsg.set('No hay meta activa');
+      this.errorMsg.set('No hay ningún flujo activo.');
       return;
     }
     this.isSaving.set(true);
@@ -154,7 +163,7 @@ export class WorkflowComponent implements OnInit {
       await this.workflowService.update(goal.id, { etapasTotales: this.newTarget });
       await this.loadData();
       this.showEditTarget.set(false);
-      this.showSuccess('¡Meta actualizada!');
+      this.showSuccess('Etapas del flujo actualizadas.');
     } catch (e: any) {
       this.errorMsg.set(e.message);
     } finally {
@@ -170,9 +179,9 @@ export class WorkflowComponent implements OnInit {
 
 
   formatMonth(months: number): string {
-    if (months === 0) return '¡Meta alcanzada!';
-    if (months === 1) return '1 mes';
-    if (months < 12)  return `${months} meses`;
+    if (months === 0) return 'Flujo completado';
+    if (months === 1) return '1 periodo';
+    if (months < 12)  return `${months} periodos`;
     const years = Math.floor(months / 12);
     const rem   = months % 12;
     return rem > 0 ? `${years} año${years > 1 ? 's' : ''} y ${rem} mes${rem > 1 ? 'es' : ''}` : `${years} año${years > 1 ? 's' : ''}`;

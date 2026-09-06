@@ -31,12 +31,12 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(22, 107, 70, 0.4);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 40%, transparent);
   transition: all var(--duration-fast) var(--ease-out);
   
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(22, 107, 70, 0.5);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 50%, transparent);
   }
   
   &:active {
@@ -147,7 +147,7 @@
 .category-icon {
   width: 32px;
   height: 32px;
-  background: rgba(22, 107, 70, 0.1);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
@@ -228,7 +228,7 @@
   transition: all var(--duration-fast) var(--ease-out);
   
   &:hover {
-    box-shadow: 0 4px 12px rgba(22, 107, 70, 0.4);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 40%, transparent);
   }
   
   &:active {
@@ -319,4 +319,63 @@
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
+}
+// ------------------------------------------
+// VACIO CON EXPLICACION
+// ------------------------------------------
+// Un acervo recien creado no tiene cuotas: el estado vacio dice que hacer
+// en vez de limitarse a constatar la ausencia.
+.empty-state {
+  &__hint {
+    max-width: 42ch;
+    font-size: var(--text-xs);
+    line-height: 1.55;
+    color: var(--color-text-muted);
+    text-wrap: balance;
+  }
+
+  app-icon { opacity: 0.45; }
+}
+
+.form-hint {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  text-wrap: balance;
+}
+
+.empty-state {
+  &__acciones {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  &__aviso {
+    max-width: 44ch;
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 1.55;
+    color: var(--color-warning);
+    text-wrap: balance;
+  }
+}
+
+.btn-secundario {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out);
+
+  &:hover:not(:disabled) { border-color: var(--color-border-hover); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 }

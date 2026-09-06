@@ -1,61 +1,70 @@
 <header class="page-header">
   <div>
     <h1>Indicadores Documentales</h1>
-    <p class="page-subtitle">{{ currentMonth }}</p>
+    <p class="page-subtitle">{{ periodo() === 'mes' ? currentMonth : 'Últimos doce meses' }}</p>
   </div>
-  <div class="period-selector">
-    <button [class.active]="period() === 'month'" (click)="period.set('month')">Mes</button>
-    <button [class.active]="period() === 'year'" (click)="period.set('year')">Año</button>
+  <div class="period-selector" role="group" aria-label="Periodo">
+    <button [class.active]="periodo() === 'mes'"  (click)="cambiarPeriodo('mes')">Mes</button>
+    <button [class.active]="periodo() === 'anio'" (click)="cambiarPeriodo('anio')">Año</button>
   </div>
 </header>
 
 <div class="insights-grid">
-  <!-- Card: Tendencia de solicitudes -->
+  <!-- Movimiento de los ultimos seis meses -->
   <div class="card card--chart">
     <div class="card__header">
-      <span class="card__label">Tendencia de solicitudes</span>
+      <span class="card__label">Movimiento documental</span>
+      <span class="card__hint">últimos 6 meses</span>
     </div>
-    <div class="chart-container">
-      <svg viewBox="0 0 300 120" class="line-chart">
-        <path [attr.d]="spendingPath" fill="none" stroke="var(--color-primary)" stroke-width="2"/>
-        <path [attr.d]="spendingArea" fill="url(#areaGradient)" opacity="0.3"/>
-        <defs>
-          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="var(--color-primary)"/>
-            <stop offset="100%" stop-color="transparent"/>
-          </linearGradient>
-        </defs>
-      </svg>
-    </div>
-    <div class="chart-labels">
-      @for (m of months; track m) {
-        <span>{{ m }}</span>
-      }
-    </div>
+
+    @if (serieVacia()) {
+      <p class="card__vacio">Sin movimientos registrados todavía.</p>
+    } @else {
+      <div class="chart-container">
+        <svg viewBox="0 0 300 120" class="line-chart" role="img"
+             aria-label="Movimientos documentales de los últimos seis meses">
+          <path [attr.d]="area"  fill="url(#areaGradient)" opacity="0.3"/>
+          <path [attr.d]="trazo" fill="none" stroke="var(--color-primary)" stroke-width="2"/>
+          <defs>
+            <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--color-primary)"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <div class="chart-labels">
+        @for (p of serie(); track p.etiqueta) {
+          <span [title]="p.valor + ' movimientos'">{{ p.etiqueta }}</span>
+        }
+      </div>
+    }
   </div>
 
-  <!-- Card: Comparación vs mes anterior -->
+  <!-- Comparacion contra el periodo anterior -->
   <div class="card card--comparison">
     <div class="card__header">
-      <span class="card__label">Frente al mes anterior</span>
+      <span class="card__label">Frente al periodo anterior</span>
     </div>
     <div class="comparison-values">
-      <div class="comp-item">
-        <span class="comp-label">Documentos</span>
-        <span class="comp-value positive">+12%</span>
-      </div>
-      <div class="comp-item">
-        <span class="comp-label">Solicitudes</span>
-        <span class="comp-value negative">+8%</span>
-      </div>
-      <div class="comp-item">
-        <span class="comp-label">Archivo</span>
-        <span class="comp-value positive">+24%</span>
-      </div>
+      @for (c of comparaciones(); track c.label) {
+        <div class="comp-item">
+          <span class="comp-label">{{ c.label }}</span>
+          <span class="comp-cifras">
+            <span class="comp-actual">{{ formatoConteo(c.actual) }}</span>
+            <span class="comp-value"
+                  [class.positive]="c.variacion !== null && c.variacion > 0"
+                  [class.negative]="c.variacion !== null && c.variacion < 0">
+              {{ formatoVariacion(c.variacion) }}
+            </span>
+          </span>
+        </div>
+      }
     </div>
+    <p class="card__pie">Un guion significa que no hubo movimiento con el que comparar.</p>
   </div>
 
-  <!-- Card: Top categorías -->
+  <!-- Categorias con mas movimiento -->
   <div class="card card--top-cats">
     <div class="card__header">
       <span class="card__label">Categorías con más movimiento</span>
@@ -71,66 +80,68 @@
           </div>
           <span class="cat-amount">{{ formatoConteo(cat.amount) }}</span>
         </div>
+      } @empty {
+        <p class="card__vacio">Ninguna categoría registra movimiento en este periodo.</p>
       }
     </div>
   </div>
 
-  <!-- Card: Distribución por tipo -->
+  <!-- Entradas frente a salidas -->
   <div class="card card--distribution">
     <div class="card__header">
-      <span class="card__label">Distribución</span>
+      <span class="card__label">Entradas y salidas</span>
     </div>
     <div class="donut-chart">
-      <svg viewBox="0 0 36 36">
+      <svg viewBox="0 0 36 36" role="img" aria-label="Proporción de entradas frente a salidas">
         <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-border)" stroke-width="3"/>
-        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-primary)" stroke-width="3" 
-          [attr.stroke-dasharray]="incomeDash" stroke-linecap="round" transform="rotate(-90 18 18)"/>
-        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-error)" stroke-width="3" 
-          [attr.stroke-dasharray]="expenseDash" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-primary)" stroke-width="3"
+          [attr.stroke-dasharray]="arcoEntradas" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-error)" stroke-width="3"
+          [attr.stroke-dasharray]="arcoSalidas" stroke-linecap="round" transform="rotate(-90 18 18)"/>
       </svg>
       <div class="donut-center">
-        <span class="donut-pct">{{ tasaVigencia }}%</span>
-        <span class="donut-label">Archivo</span>
+        <span class="donut-pct">{{ indiceVigencia }}%</span>
+        <span class="donut-label">al acervo</span>
       </div>
     </div>
     <div class="donut-legend">
       <div class="legend-item">
         <span class="legend-dot" style="background: var(--color-primary)"></span>
-        <span>Documentos</span>
+        <span>Entradas</span>
         <span class="legend-value">{{ formatoConteo(totals().entradas) }}</span>
       </div>
       <div class="legend-item">
         <span class="legend-dot" style="background: var(--color-error)"></span>
-        <span>Solicitudes</span>
+        <span>Salidas</span>
         <span class="legend-value">{{ formatoConteo(totals().salidas) }}</span>
       </div>
     </div>
   </div>
 
-  <!-- Card: Alertas de solicitud -->
+  <!-- Lectura en palabras -->
   <div class="card card--alerts">
     <div class="card__header">
       <span class="card__label">Observaciones</span>
     </div>
     <div class="insights-list">
-      @for (insight of insights(); track insight.title) {
-        <div class="insight-item" [class.warning]="insight.type === 'warning'" [class.positive]="insight.type === 'positive'">
+      @for (o of observaciones(); track o.title) {
+        <div class="insight-item" [class.warning]="o.type === 'warning'" [class.positive]="o.type === 'positive'">
           <div class="insight-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              @if (insight.type === 'warning') {
+              @if (o.type === 'warning') {
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
               }
-              @if (insight.type === 'positive') {
+              @if (o.type === 'positive') {
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
               }
-              @if (insight.type === 'info') {
+              @if (o.type === 'info') {
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
               }
             </svg>
           </div>
           <div class="insight-content">
-            <span class="insight-title">{{ insight.title }}</span>
-            <span class="insight-desc">{{ insight.description }}</span>
+            <span class="insight-title">{{ o.title }}</span>
+            <span class="insight-desc">{{ o.description }}</span>
           </div>
         </div>
       }

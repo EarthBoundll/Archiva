@@ -3,13 +3,15 @@ import { FirebaseService } from './firebase';
 import { Auth } from './auth';
 import { log } from '../utils/logger';
 
+/** Que se hizo al abrir un periodo nuevo. */
 export interface RolloverResult {
   success: boolean;
   previousMonth: string;
   newMonth: string;
-  budgetsCopied: number;
-  expensesCopied: number;
-  recurringGenerated: number;
+  /** Cuotas de almacenamiento trasladadas del periodo anterior. */
+  cuotasTrasladadas: number;
+  /** Documentos que vencen dentro del periodo y habra que renovar. */
+  renovacionesPrevistas: number;
   message: string;
   error?: string;
 }
@@ -32,10 +34,10 @@ export class PeriodRolloverService {
     const existingMonth = await this.firebase.getEstadoDocumental(userId, currentYear, currentMonth);
     
     if (!existingMonth) {
-      // First time this month - create it
+      // Primera vez en este mes: se crea
       await this.firebase.getOrCreatePeriodo(userId, currentYear, currentMonth);
       
-      // Calculate initial financial state for new month
+      // Estado documental inicial del mes nuevo
       await this.firebase.actualizarEstadoDocumental(userId, currentMonthId);
     }
 
@@ -44,10 +46,9 @@ export class PeriodRolloverService {
       success: true,
       previousMonth: this.getPreviousMonth(currentYear, currentMonth),
       newMonth: currentMonthId,
-      budgetsCopied: 0,
-      expensesCopied: 0,
-      recurringGenerated: 0,
-      message: `Mes ${currentMonthId} verificado/creado exitosamente`
+      cuotasTrasladadas: 0,
+      renovacionesPrevistas: 0,
+      message: `Periodo ${currentMonthId} disponible`
     };
   }
 
@@ -62,41 +63,40 @@ export class PeriodRolloverService {
     const prevMonthId = this.getPreviousMonth(targetYear, targetMonth);
 
     try {
-      // 1. Ensure target month exists
+      // 1. Asegura que el periodo exista
       await this.firebase.getOrCreatePeriodo(userId, targetYear, targetMonth);
 
-      // 2. Copy budgets from previous month
+      // 2. Traslada las cuotas del periodo anterior
       const budgetsCopied = await this.copyBudgets(userId, prevMonthId, targetMonthId);
 
-      // 3. Copy recurring expenses
-      const expensesCopied = await this.copyRecurringExpenses(userId, targetYear, targetMonth);
+      // 3. Cuenta los documentos que vencen en el periodo
+      const renovacionesPrevistas = await this.contarRenovacionesPrevistas(userId, targetYear, targetMonth);
 
-      // 4. Generate initial financial state
+      // 4. Estado documental inicial del periodo
       await this.firebase.actualizarEstadoDocumental(userId, targetMonthId);
 
       return {
         success: true,
         previousMonth: prevMonthId,
         newMonth: targetMonthId,
-        budgetsCopied,
-        expensesCopied,
-        recurringGenerated: expensesCopied,
-        message: `Rollover completado: ${budgetsCopied} cuotas copiados, ${expensesCopied} solicitudes recurrentes generados`
+        cuotasTrasladadas: budgetsCopied,
+        renovacionesPrevistas,
+        message: `Periodo abierto: ${budgetsCopied} cuotas trasladadas, ${renovacionesPrevistas} documentos por renovar`
       };
     } catch (error: any) {
       return {
         success: false,
         previousMonth: prevMonthId,
         newMonth: targetMonthId,
-        budgetsCopied: 0,
-        expensesCopied: 0,
-        recurringGenerated: 0,
-        message: 'Error en rollover',
+        cuotasTrasladadas: 0,
+        renovacionesPrevistas: 0,
+        message: 'No se pudo abrir el periodo',
         error: error.message
       };
     }
   }
 
+  /** Traslada las cuotas de almacenamiento al periodo siguiente. */
   private async copyBudgets(
     userId: string, 
     fromMonthId: string, 
@@ -114,6 +114,7 @@ export class PeriodRolloverService {
         periodoId: toMonthId,
         year: parseInt(toMonthId.split('-')[0]),
         month: parseInt(toMonthId.split('-')[1]),
+        // El periodo nuevo hereda la capacidad asignada, no lo ocupado.
         actualAmount: 0,
         disponibleMb: budget.budgetedAmount,
         porcentajeUso: 0,
@@ -125,22 +126,24 @@ export class PeriodRolloverService {
     return count;
   }
 
-  private async copyRecurringExpenses(
+  /**
+   * Documentos con ciclo de renovacion que vencen dentro del periodo.
+   *
+   * La version anterior recorria las solicitudes recurrentes y solo
+   * incrementaba un contador: el cuerpo del bucle estaba vacio, asi que
+   * informaba de un trabajo que no hacia.
+   */
+  private async contarRenovacionesPrevistas(
     userId: string,
     year: number,
     month: number
   ): Promise<number> {
-    const expenses = await this.firebase.getSolicitudesActivas(userId);
-    const recurring = expenses.filter((e: any) => e.isRecurring && e.status !== 'paid');
+    const documentos = await this.firebase.getDocumentosActivos(userId);
+    const prefijo = `${year}-${String(month).padStart(2, '0')}`;
 
-    let count = 0;
-    for (const exp of recurring) {
-      // Create a placeholder for the recurring expense this month
-      // The actual transaction will be created when user marks as paid
-      count++;
-    }
-
-    return count;
+    return documentos.filter((d: any) =>
+      d.vencimiento?.fechaVencimiento?.startsWith(prefijo)
+    ).length;
   }
 
   private getPreviousMonth(year: number, month: number): string {

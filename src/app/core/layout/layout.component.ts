@@ -1,10 +1,13 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { Auth } from '../services/auth';
 import { LayoutService } from '../services/layout.service';
 import { ThemeService } from '../services/theme.service';
 import { DialogoDirective } from '../directives/dialogo.directive';
+import { TenantService } from '../services/tenant';
+import { CompanyService } from '../services/company';
+import { Permiso } from '../models/rbac.model';
 
 @Component({
   selector: 'app-layout',
@@ -41,36 +44,55 @@ import { DialogoDirective } from '../directives/dialogo.directive';
             </svg>
             <span [class.hidden]="layoutService.sidebarCollapsed()">Tablero</span>
           </a>
+          @if (puede(Permiso.APROBAR)) {
+            <a routerLink="/bandeja" routerLinkActive="active" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>
+              </svg>
+              <span [class.hidden]="layoutService.sidebarCollapsed()">Bandeja</span>
+            </a>
+          }
+
+          @if (puede(Permiso.DOC_VER)) {
           <a routerLink="/documentos" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h8M8 17h5"/>
             </svg>
             <span [class.hidden]="layoutService.sidebarCollapsed()">Documentos</span>
           </a>
+          }
+          @if (puede(Permiso.SOL_VER)) {
           <a routerLink="/solicitudes" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 11v4M12 18h.01"/>
             </svg>
             <span [class.hidden]="layoutService.sidebarCollapsed()">Solicitudes</span>
           </a>
+          }
+          @if (puede(Permiso.BITACORA_VER)) {
           <a routerLink="/historial" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
             </svg>
             <span [class.hidden]="layoutService.sidebarCollapsed()">Historial</span>
           </a>
+          }
+          @if (puede(Permiso.FLUJO_VER)) {
           <a routerLink="/flujos" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
             </svg>
             <span [class.hidden]="layoutService.sidebarCollapsed()">Flujos</span>
           </a>
+          }
+          @if (puede(Permiso.ALMACENAMIENTO_GESTIONAR)) {
           <a routerLink="/almacenamiento" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="4" width="20" height="6" rx="2"/><rect x="2" y="14" width="20" height="6" rx="2"/><path d="M6 7h.01M6 17h.01"/>
             </svg>
             <span [class.hidden]="layoutService.sidebarCollapsed()">Almacenamiento</span>
           </a>
+          }
           <a routerLink="/archivo" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>
@@ -83,15 +105,34 @@ import { DialogoDirective } from '../directives/dialogo.directive';
             </svg>
             <span [class.hidden]="layoutService.sidebarCollapsed()">Alertas</span>
           </a>
+          @if (puede(Permiso.INDICADORES_VER)) {
           <a routerLink="/indicadores" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>
             </svg>
             <span [class.hidden]="layoutService.sidebarCollapsed()">Indicadores</span>
           </a>
+          }
         </nav>
         
         <div class="sidebar__footer">
+          @if (puede(Permiso.USUARIOS_VER)) {
+            <a routerLink="/usuarios" routerLinkActive="active" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>
+              </svg>
+              <span [class.hidden]="layoutService.sidebarCollapsed()">Personas</span>
+            </a>
+          }
+          @if (puede(Permiso.BITACORA_VER)) {
+            <a routerLink="/auditoria" routerLinkActive="active" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H10a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>
+              </svg>
+              <span [class.hidden]="layoutService.sidebarCollapsed()">Auditoría</span>
+            </a>
+          }
+
           <a routerLink="/configuracion" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
@@ -149,6 +190,12 @@ import { DialogoDirective } from '../directives/dialogo.directive';
             <span class="interruptor-tema__bola" aria-hidden="true"></span>
           </button>
 
+          @if (empresa.nombre()) {
+            <span class="topbar__empresa" [title]="empresa.razonSocial()">
+              {{ empresa.nombre() }}
+            </span>
+          }
+
           <div class="topbar__user">
             <span class="topbar__greeting">{{ greeting }}, {{ userName }}</span>
             <div class="topbar__avatar">
@@ -179,11 +226,11 @@ import { DialogoDirective } from '../directives/dialogo.directive';
           <span>Tablero</span>
         </a>
         
-        <a routerLink="/almacenamiento" routerLinkActive="active" class="bottom-nav__item">
+        <a routerLink="/bandeja" routerLinkActive="active" class="bottom-nav__item">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
           </svg>
-          <span>Almac.</span>
+          <span>Bandeja</span>
         </a>
         
         <a routerLink="/historial" routerLinkActive="active" class="bottom-nav__item">
@@ -246,10 +293,14 @@ import { DialogoDirective } from '../directives/dialogo.directive';
   `,
   styleUrl: './layout.component.scss'
 })
-export class LayoutComponent {
+export class LayoutComponent implements OnInit {
+  /** Se expone al marcado para poder envolver cada enlace en su permiso. */
+  readonly Permiso = Permiso;
   private auth = inject(Auth);
   layoutService = inject(LayoutService);
   theme = inject(ThemeService);
+  tenant = inject(TenantService);
+  empresa = inject(CompanyService);
   
   toggleSidebar() {
     this.layoutService.toggleSidebar();
@@ -294,6 +345,17 @@ export class LayoutComponent {
     const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
     this.theme.alternar({ x: b.left + b.width / 2, y: b.top + b.height / 2 });
   }
+  /** ¿Alcanza el rol de quien mira para esta sección? */
+  puede(p: Permiso): boolean {
+    return this.tenant.puede(p);
+  }
+
+  async ngOnInit() {
+    // La barra superior muestra el nombre de la empresa: hay que tenerlo
+    // antes de pintarla.
+    await this.empresa.cargar();
+  }
+
 
   confirmandoSalida = signal(false);
   saliendo = signal(false);

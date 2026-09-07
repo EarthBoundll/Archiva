@@ -1,0 +1,204 @@
+<div class="page">
+
+  <header class="page-header">
+    <div>
+      <h1>Bandeja</h1>
+      <p class="page-subtitle">{{ bandejas[bandeja()].descripcion }}</p>
+    </div>
+    <button class="btn" (click)="cargar()" [disabled]="cargando()">
+      <app-icon name="repeat" [size]="16" />
+      Actualizar
+    </button>
+  </header>
+
+  @if (resumen(); as r) {
+    <section class="resumen">
+      <div class="resumen__item">
+        <span class="resumen__label">Pendientes</span>
+        <span class="resumen__valor">{{ r.pendientes }}</span>
+      </div>
+      <div class="resumen__item">
+        <span class="resumen__label">Fuera de plazo</span>
+        <span class="resumen__valor" [class.resumen__valor--alerta]="r.vencidas > 0">
+          {{ r.vencidas }}
+        </span>
+      </div>
+      <div class="resumen__item">
+        <span class="resumen__label">Delegadas a ti</span>
+        <span class="resumen__valor">{{ r.delegadasAMi }}</span>
+      </div>
+      <div class="resumen__item">
+        <span class="resumen__label">Resueltas este mes</span>
+        <span class="resumen__valor resumen__valor--ok">{{ r.resueltasEstePeriodo }}</span>
+        <span class="resumen__pie">
+          @if (r.diasPromedio !== null) { {{ r.diasPromedio }} días de media }
+          @else { sin histórico aún }
+        </span>
+      </div>
+    </section>
+  }
+
+  <nav class="pestanas" aria-label="Bandejas">
+    @for (b of listaBandejas; track b.value) {
+      <button [class.activa]="bandeja() === b.value"
+              [attr.aria-current]="bandeja() === b.value ? 'page' : null"
+              (click)="cambiarBandeja(b.value)">
+        <app-icon [name]="b.icon" [size]="16" />
+        {{ b.label }}
+      </button>
+    }
+  </nav>
+
+  @if (error()) {
+    <div class="aviso aviso--error" role="alert">
+      <app-icon name="shield-alert" [size]="20" />
+      <p>{{ error() }}</p>
+    </div>
+  }
+
+  @if (cargando()) {
+    <div class="cargando">
+      <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+    </div>
+  } @else if (tareas().length > 0) {
+    <ul class="lista">
+      @for (t of tareas(); track t.id) {
+        <li class="tarea" [class.tarea--vencida]="vencida(t)">
+          <div class="tarea__orden" aria-hidden="true">
+            {{ t.orden }}<span>/{{ t.etapasTotales }}</span>
+          </div>
+
+          <div class="tarea__cuerpo">
+            <div class="tarea__cabecera">
+              @if (t.codigoDocumento) {
+                <code class="tarea__codigo">{{ t.codigoDocumento }}</code>
+              }
+              <span class="tarea__estado" [style.color]="estados[t.estado].token">
+                {{ estados[t.estado].label }}
+              </span>
+              @if (vencida(t)) {
+                <span class="tarea__alerta">Fuera de plazo</span>
+              }
+            </div>
+
+            <h2 class="tarea__titulo">{{ t.etapaNombre }}</h2>
+            <p class="tarea__flujo">
+              <a [routerLink]="['/flujos', t.flujoId]">{{ t.flujoNombre }}</a>
+            </p>
+
+            <div class="tarea__meta">
+              <span>Responsable: {{ t.responsableNombre }}</span>
+              @if (t.asignadoUid !== t.responsableUid) {
+                <span class="tarea__delegada">Delegada en {{ t.asignadoNombre }}</span>
+              }
+              <span>{{ espera(t) }} {{ espera(t) === 1 ? 'día' : 'días' }} en espera</span>
+              @if (t.fechaLimite) {
+                <span>Límite {{ fechaCorta(t.fechaLimite) }}</span>
+              }
+            </div>
+
+            @if (t.accion) {
+              <p class="tarea__resultado" [style.color]="acciones[t.accion].token">
+                {{ acciones[t.accion].label }} por {{ t.resueltaPorNombre }}
+                @if (t.motivo) { — {{ t.motivo }} }
+              </p>
+            }
+          </div>
+
+          @if (puedeActuar(t)) {
+            <button class="btn btn--primary tarea__accion" (click)="abrirResolver(t)">
+              Resolver
+            </button>
+          }
+        </li>
+      }
+    </ul>
+  } @else {
+    <div class="vacio">
+      <app-icon [name]="bandejas[bandeja()].icon" [size]="44" />
+      <h2>Nada por aquí</h2>
+      <p>
+        @switch (bandeja()) {
+          @case ('pendientes')    { No tienes etapas esperando tu resolución. }
+          @case ('aprobaciones')  { Todavía no has aprobado ninguna etapa. }
+          @case ('observaciones') { No has devuelto ningún documento para corregir. }
+          @case ('documentos')    { No hay expedientes que hayas puesto en circulación. }
+          @default                { Tu historial de resoluciones está vacío. }
+        }
+      </p>
+    </div>
+  }
+</div>
+
+@if (modalResolver(); as t) {
+  <div class="overlay" (click)="cerrarResolver()">
+    <div class="modal" appDialogo (cerrar)="cerrarResolver()"
+         aria-labelledby="titulo-resolver" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-resolver">{{ t.etapaNombre }}</h3>
+        <button class="btn-cerrar" (click)="cerrarResolver()" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        <p class="contexto">
+          Etapa {{ t.orden }} de {{ t.etapasTotales }} en <strong>{{ t.flujoNombre }}</strong>
+        </p>
+
+        <fieldset class="opciones">
+          <legend>Qué haces con esta etapa</legend>
+          @for (a of accionesPosibles(); track a.value) {
+            <label class="opcion" [class.opcion--elegida]="accion() === a.value">
+              <input type="radio" name="accion" [value]="a.value"
+                     [checked]="accion() === a.value"
+                     (change)="accion.set(a.value)">
+              <span class="opcion__marca" [style.color]="a.token">
+                <app-icon [name]="a.icon" [size]="16" />
+              </span>
+              <span class="opcion__texto">
+                <strong>{{ a.label }}</strong>
+                <small>{{ a.efecto }}</small>
+              </span>
+            </label>
+          }
+        </fieldset>
+
+        @if (definicionAccion().exigeDestinatario) {
+          <div class="campo">
+            <label for="re-destino">A quién</label>
+            <select id="re-destino" [value]="destinatario()"
+                    (change)="destinatario.set($any($event.target).value)">
+              <option value="">Elegir persona…</option>
+              @for (m of candidatos(); track m.uid) {
+                <option [value]="m.uid">{{ m.nombre }}</option>
+              }
+            </select>
+          </div>
+        }
+
+        <div class="campo">
+          <label for="re-motivo">
+            {{ definicionAccion().exigeMotivo ? 'Motivo' : 'Comentario' }}
+            @if (!definicionAccion().exigeMotivo) { <span class="opcional">opcional</span> }
+          </label>
+          <textarea id="re-motivo" rows="3" [value]="motivo()"
+                    (input)="motivo.set($any($event.target).value)"
+                    placeholder="Queda registrado en el expediente"></textarea>
+        </div>
+
+        @if (errorForm()) {
+          <p class="error-form" role="alert">{{ errorForm() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="cerrarResolver()">Cancelar</button>
+        <button class="btn btn--primary" (click)="resolver()" [disabled]="resolviendo()">
+          {{ resolviendo() ? 'Registrando…' : 'Registrar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

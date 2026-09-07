@@ -1,0 +1,389 @@
+<div class="page">
+
+  <header class="page-header">
+    <div>
+      <h1>Personas</h1>
+      <p class="page-subtitle">Quién pertenece a la empresa, con qué rol y desde cuándo</p>
+    </div>
+    @if (puedeInvitar()) {
+      <button class="btn btn--primary" (click)="abrirInvitar()">
+        <app-icon name="user-check" [size]="16" />
+        Invitar persona
+      </button>
+    }
+  </header>
+
+  @if (error()) {
+    <div class="aviso aviso--error" role="alert">
+      <app-icon name="shield-alert" [size]="20" />
+      <p>{{ error() }}</p>
+    </div>
+  }
+
+  @if (cargando()) {
+    <div class="cargando">
+      <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+    </div>
+  } @else {
+
+    <section class="resumen">
+      <div class="resumen__item">
+        <span class="resumen__label">Activas</span>
+        <span class="resumen__valor">{{ activos() }}</span>
+      </div>
+      <div class="resumen__item">
+        <span class="resumen__label">Invitaciones pendientes</span>
+        <span class="resumen__valor" [class.resumen__valor--aviso]="pendientes() > 0">
+          {{ pendientes() }}
+        </span>
+      </div>
+      <div class="resumen__item">
+        <span class="resumen__label">Suspendidas</span>
+        <span class="resumen__valor" [class.resumen__valor--alerta]="suspendidos() > 0">
+          {{ suspendidos() }}
+        </span>
+      </div>
+    </section>
+
+    <div class="pestanas" role="tablist" aria-label="Vista">
+      <button role="tab" [attr.aria-selected]="pestana() === 'personas'"
+              [class.activa]="pestana() === 'personas'"
+              (click)="pestana.set('personas')">
+        Personas <span class="pestanas__n">{{ miembros().length }}</span>
+      </button>
+      <button role="tab" [attr.aria-selected]="pestana() === 'invitaciones'"
+              [class.activa]="pestana() === 'invitaciones'"
+              (click)="pestana.set('invitaciones')">
+        Invitaciones <span class="pestanas__n">{{ invitaciones().length }}</span>
+      </button>
+    </div>
+
+    <!-- ============ PERSONAS ============ -->
+    @if (pestana() === 'personas') {
+      @if (miembros().length > 0) {
+        <ul class="lista">
+          @for (m of miembros(); track m.uid) {
+            <li class="persona" [class.persona--inactiva]="m.estado !== 'activo'">
+              <div class="persona__avatar" aria-hidden="true">{{ inicialesDe(m.nombre) }}</div>
+
+              <div class="persona__cuerpo">
+                <div class="persona__cabecera">
+                  <h2>
+                    {{ m.nombre }}
+                    @if (esYo(m)) { <span class="persona__yo">tú</span> }
+                  </h2>
+                  <span class="chip" [style.color]="estadosMiembro[m.estado].token">
+                    {{ estadosMiembro[m.estado].label }}
+                  </span>
+                </div>
+
+                <p class="persona__correo">{{ m.email }}</p>
+
+                <div class="persona__meta">
+                  <span class="persona__rol">{{ roles[m.rol].label }}</span>
+                  <span>{{ etiquetaArea(m.area) }}</span>
+                  @if (m.cargo) { <span>{{ m.cargo }}</span> }
+                  <span>Último acceso: {{ fechaCorta(m.ultimoAcceso) }}</span>
+                </div>
+              </div>
+
+              <div class="persona__acciones">
+                @if (puedeEditarRol() && !esYo(m)) {
+                  <button class="btn-accion" (click)="abrirRol(m)">Cambiar rol</button>
+                }
+                @if (puedeSuspender() && !esYo(m)) {
+                  @if (m.estado === 'activo') {
+                    <button class="btn-accion btn-accion--peligro" (click)="abrirSuspender(m)">
+                      Suspender
+                    </button>
+                  } @else if (m.estado === 'suspendido') {
+                    <button class="btn-accion" (click)="reactivar(m)">Reactivar</button>
+                  }
+                }
+              </div>
+            </li>
+          }
+        </ul>
+      } @else {
+        <div class="vacio">
+          <app-icon name="user" [size]="44" />
+          <p>Todavía no hay nadie más en la empresa.</p>
+        </div>
+      }
+    }
+
+    <!-- ============ INVITACIONES ============ -->
+    @if (pestana() === 'invitaciones') {
+      @if (invitaciones().length > 0) {
+        <ul class="lista">
+          @for (i of invitaciones(); track i.id) {
+            <li class="persona">
+              <div class="persona__avatar persona__avatar--tenue" aria-hidden="true">
+                {{ inicialesDe(i.nombre) }}
+              </div>
+
+              <div class="persona__cuerpo">
+                <div class="persona__cabecera">
+                  <h2>{{ i.nombre }}</h2>
+                  <span class="chip" [style.color]="estadosInvitacion[i.estado].token">
+                    {{ estadosInvitacion[i.estado].label }}
+                  </span>
+                </div>
+
+                <p class="persona__correo">{{ i.email }}</p>
+
+                <div class="persona__meta">
+                  <span class="persona__rol">{{ roles[i.rol].label }}</span>
+                  <span>{{ etiquetaArea(i.area) }}</span>
+                  <span>La envió {{ i.invitadaPorNombre }}</span>
+                  @if (i.estado === 'pendiente') {
+                    <span [class.persona__urgente]="diasQueQuedan(i) <= 1">
+                      Caduca en {{ diasQueQuedan(i) }} {{ diasQueQuedan(i) === 1 ? 'día' : 'días' }}
+                    </span>
+                  }
+                </div>
+
+                @if (i.motivoRevocacion) {
+                  <p class="persona__motivo">Revocada: {{ i.motivoRevocacion }}</p>
+                }
+              </div>
+
+              @if (puedeInvitar()) {
+                <div class="persona__acciones">
+                  @if (i.estado === 'pendiente') {
+                    <button class="btn-accion" (click)="copiarEnlace(i)">
+                      {{ copiado() ? 'Copiado' : 'Copiar enlace' }}
+                    </button>
+                    <button class="btn-accion btn-accion--peligro" (click)="abrirRevocar(i)">
+                      Revocar
+                    </button>
+                  } @else if (i.estado === 'expirada' || i.estado === 'revocada') {
+                    <button class="btn-accion" (click)="reenviar(i)">Reenviar</button>
+                  }
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      } @else {
+        <div class="vacio">
+          <app-icon name="mail" [size]="44" />
+          <p>No se ha enviado ninguna invitación todavía.</p>
+        </div>
+      }
+    }
+  }
+</div>
+
+<!-- ============ INVITAR ============ -->
+@if (modalInvitar()) {
+  <div class="overlay" (click)="cerrarInvitar()">
+    <div class="modal" appDialogo (cerrar)="cerrarInvitar()"
+         aria-labelledby="titulo-invitar" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-invitar">
+          {{ invitacionCreada() ? 'Invitación lista' : 'Invitar a la empresa' }}
+        </h3>
+        <button class="btn-cerrar" (click)="cerrarInvitar()" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        @if (invitacionCreada(); as inv) {
+          <p class="aclaracion">
+            Copia este enlace y hazlo llegar a {{ inv.nombre }}. Caduca en
+            {{ diasQueQuedan(inv) }} días y solo sirve una vez.
+          </p>
+          <div class="enlace">
+            <code>{{ enlaceDe(inv) }}</code>
+          </div>
+          <button class="btn btn--primary" (click)="copiarEnlace(inv)">
+            <app-icon name="copy" [size]="16" />
+            {{ copiado() ? 'Enlace copiado' : 'Copiar enlace' }}
+          </button>
+          <p class="nota">
+            ARCHIVA todavía no envía correos por su cuenta: eso necesita un servicio
+            de servidor. Mientras tanto, el enlace se entrega a mano.
+          </p>
+        } @else {
+          <div class="campo">
+            <label for="in-nombre">Nombre y apellidos</label>
+            <input id="in-nombre" type="text" [value]="fNombre()"
+                   (input)="fNombre.set($any($event.target).value)"
+                   placeholder="ej. María Quispe Ramos">
+          </div>
+
+          <div class="campo">
+            <label for="in-email">Correo</label>
+            <input id="in-email" type="email" [value]="fEmail()"
+                   (input)="fEmail.set($any($event.target).value)"
+                   placeholder="maria.quispe@empresa.com">
+          </div>
+
+          <div class="campo__fila">
+            <div class="campo">
+              <label for="in-rol">Rol</label>
+              <select id="in-rol" [value]="fRol()" (change)="fRol.set($any($event.target).value)">
+                @for (r of rolesAsignables(); track r.value) {
+                  <option [value]="r.value">{{ r.label }}</option>
+                }
+              </select>
+              <span class="campo__pista">{{ roles[fRol()].descripcion }}</span>
+            </div>
+
+            <div class="campo">
+              <label for="in-area">Área</label>
+              <select id="in-area" [value]="fArea()" (change)="fArea.set($any($event.target).value)">
+                @for (a of areasActivas(); track a.value) {
+                  <option [value]="a.value">{{ a.label }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="campo">
+            <label for="in-cargo">Cargo <span class="opcional">opcional</span></label>
+            <input id="in-cargo" type="text" [value]="fCargo()"
+                   (input)="fCargo.set($any($event.target).value)"
+                   placeholder="ej. Asistente de archivo">
+          </div>
+
+          @if (errorForm()) {
+            <p class="error-form" role="alert">{{ errorForm() }}</p>
+          }
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="cerrarInvitar()">
+          {{ invitacionCreada() ? 'Cerrar' : 'Cancelar' }}
+        </button>
+        @if (!invitacionCreada()) {
+          <button class="btn btn--primary" (click)="invitar()" [disabled]="enviando()">
+            {{ enviando() ? 'Creando…' : 'Crear invitación' }}
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ CAMBIAR ROL ============ -->
+@if (modalRol(); as m) {
+  <div class="overlay" (click)="modalRol.set(null)">
+    <div class="modal modal--estrecho" appDialogo (cerrar)="modalRol.set(null)"
+         aria-labelledby="titulo-rol" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-rol">Rol de {{ m.nombre }}</h3>
+        <button class="btn-cerrar" (click)="modalRol.set(null)" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        <fieldset class="opciones">
+          <legend>Elige el rol</legend>
+          @for (r of rolesAsignables(); track r.value) {
+            <label class="opcion" [class.opcion--elegida]="rolElegido() === r.value">
+              <input type="radio" name="rol" [value]="r.value"
+                     [checked]="rolElegido() === r.value"
+                     (change)="rolElegido.set(r.value)">
+              <span class="opcion__texto">
+                <strong>{{ r.label }}</strong>
+                <small>{{ r.descripcion }}</small>
+              </span>
+            </label>
+          }
+        </fieldset>
+
+        @if (errorForm()) {
+          <p class="error-form" role="alert">{{ errorForm() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="modalRol.set(null)">Cancelar</button>
+        <button class="btn btn--primary" (click)="guardarRol()" [disabled]="guardandoRol()">
+          {{ guardandoRol() ? 'Guardando…' : 'Guardar rol' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ SUSPENDER ============ -->
+@if (modalSuspender(); as m) {
+  <div class="overlay" (click)="modalSuspender.set(null)">
+    <div class="modal modal--estrecho" appDialogo (cerrar)="modalSuspender.set(null)"
+         aria-labelledby="titulo-susp" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-susp">Suspender a {{ m.nombre }}</h3>
+        <button class="btn-cerrar" (click)="modalSuspender.set(null)" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        <p class="aclaracion">
+          Dejará de poder entrar, pero su historial se conserva intacto: los documentos
+          que registró y las etapas que aprobó siguen ahí con su nombre.
+        </p>
+        <div class="campo">
+          <label for="su-motivo">Motivo</label>
+          <textarea id="su-motivo" rows="3" [value]="motivoSuspension()"
+                    (input)="motivoSuspension.set($any($event.target).value)"
+                    placeholder="Por qué se retira el acceso"></textarea>
+        </div>
+        @if (errorForm()) {
+          <p class="error-form" role="alert">{{ errorForm() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="modalSuspender.set(null)">Conservar acceso</button>
+        <button class="btn btn--peligro" (click)="confirmarSuspension()" [disabled]="suspendiendo()">
+          {{ suspendiendo() ? 'Suspendiendo…' : 'Suspender' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ REVOCAR ============ -->
+@if (modalRevocar(); as i) {
+  <div class="overlay" (click)="modalRevocar.set(null)">
+    <div class="modal modal--estrecho" appDialogo (cerrar)="modalRevocar.set(null)"
+         aria-labelledby="titulo-rev" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-rev">Revocar la invitación de {{ i.nombre }}</h3>
+        <button class="btn-cerrar" (click)="modalRevocar.set(null)" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        <p class="aclaracion">El enlace dejará de funcionar de inmediato.</p>
+        <div class="campo">
+          <label for="rv-motivo">Motivo <span class="opcional">opcional</span></label>
+          <textarea id="rv-motivo" rows="2" [value]="motivoRevocar()"
+                    (input)="motivoRevocar.set($any($event.target).value)"></textarea>
+        </div>
+        @if (errorForm()) {
+          <p class="error-form" role="alert">{{ errorForm() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="modalRevocar.set(null)">Conservar</button>
+        <button class="btn btn--peligro" (click)="confirmarRevocar()" [disabled]="revocando()">
+          {{ revocando() ? 'Revocando…' : 'Revocar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

@@ -611,3 +611,16 @@
 .login-hero p  { color: rgba(255, 255, 255, 0.86); }
 .login-hero .benefit-item { color: rgba(255, 255, 255, 0.92); }
 .login-hero__mascota { width: 100%; max-width: 320px; height: auto; color: rgba(255,255,255,0.92); }
+
+// El acceso deja claro que no hay alta publica: la unica via de entrada es
+// una invitacion emitida por alguien de la empresa.
+.login-nota {
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  text-align: center;
+  color: var(--color-text-muted);
+  text-wrap: pretty;
+}

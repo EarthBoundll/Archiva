@@ -4,8 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 
 import { WorkflowService } from '../../core/services/workflow';
+import { TenantService } from '../../core/services/tenant';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { DialogoDirective } from '../../core/directives/dialogo.directive';
+import { ApprovalsService } from '../../core/services/approvals';
+import { MembersService } from '../../core/services/members';
+import { Miembro } from '../../core/models/member.model';
+import { Permiso } from '../../core/models/rbac.model';
 import {
   FlujoAprobacion,
   FlujoAprobacionPayload,
@@ -18,6 +23,10 @@ import {
   ESTADOS_FLUJO,
   validarFlujo,
   ajustarNombresEtapas,
+  ajustarEtapas,
+  validarEtapas,
+  duplicarFlujo,
+  EtapaDefinida,
   nombreDeEtapa,
   siguienteOrden,
   admiteResolucion
@@ -32,6 +41,9 @@ import {
 })
 export class WorkflowsComponent implements OnInit {
   private service = inject(WorkflowService);
+  private approvals = inject(ApprovalsService);
+  private members = inject(MembersService);
+  tenant = inject(TenantService);
   private router = inject(Router);
 
   flujos   = signal<FlujoAprobacion[]>([]);
@@ -78,6 +90,13 @@ export class WorkflowsComponent implements OnInit {
   fLimite      = signal('');
   fNotas       = signal('');
   fEtapas      = signal<string[]>(['', '', '']);
+  fEtapasDef   = signal<EtapaDefinida[]>(ajustarEtapas([], 3));
+
+  /** Quién puede recibir una etapa: los roles que aprueban. */
+  aprobadores = signal<Miembro[]>([]);
+
+  puedeCrear = computed(() => this.tenant.puede(Permiso.FLUJO_CREAR));
+  puedeAnular = computed(() => this.tenant.puede(Permiso.FLUJO_ANULAR));
 
   visibles = computed(() => {
     const f = this.filtro();
@@ -101,6 +120,7 @@ export class WorkflowsComponent implements OnInit {
 
   async ngOnInit() {
     await this.cargar();
+    this.aprobadores.set(await this.members.getAprobadores());
   }
 
   async cargar() {
@@ -169,6 +189,7 @@ export class WorkflowsComponent implements OnInit {
     this.fLimite.set('');
     this.fNotas.set('');
     this.fEtapas.set(['', '', '']);
+    this.fEtapasDef.set(ajustarEtapas([], 3));
     this.errorForm.set('');
     this.modalAbierto.set(true);
   }
@@ -184,6 +205,7 @@ export class WorkflowsComponent implements OnInit {
     this.fLimite.set(f.fechaLimiteCierre ?? '');
     this.fNotas.set(f.notes ?? '');
     this.fEtapas.set(ajustarNombresEtapas(f.nombresEtapas ?? [], f.etapasTotales));
+    this.fEtapasDef.set(ajustarEtapas(f.etapasDefinidas ?? [], f.etapasTotales));
     this.errorForm.set('');
     this.modalAbierto.set(true);
   }
@@ -193,6 +215,7 @@ export class WorkflowsComponent implements OnInit {
     const n = Math.max(1, Math.min(20, Math.round(valor || 1)));
     this.fTotales.set(n);
     this.fEtapas.set(ajustarNombresEtapas(this.fEtapas(), n));
+    this.fEtapasDef.set(ajustarEtapas(this.fEtapasDef(), n));
     if (this.fPorPeriodo() > n) this.fPorPeriodo.set(n);
   }
 
@@ -200,6 +223,25 @@ export class WorkflowsComponent implements OnInit {
     const copia = [...this.fEtapas()];
     copia[i] = valor;
     this.fEtapas.set(copia);
+    this.actualizarEtapa(i, { nombre: valor });
+  }
+
+  /** Cambia un campo de la etapa i sin tocar las demás. */
+  actualizarEtapa(i: number, cambios: Partial<EtapaDefinida>) {
+    const copia = [...this.fEtapasDef()];
+    if (!copia[i]) return;
+    copia[i] = { ...copia[i], ...cambios };
+    this.fEtapasDef.set(copia);
+  }
+
+  /** Al elegir responsable hay que guardar también su nombre. */
+  asignarResponsable(i: number, uid: string) {
+    const persona = this.aprobadores().find(m => m.uid === uid);
+    this.actualizarEtapa(i, {
+      responsableUid: uid,
+      responsableNombre: persona?.nombre ?? '',
+      area: persona?.area
+    });
   }
 
   cerrarModal() {
@@ -217,20 +259,28 @@ export class WorkflowsComponent implements OnInit {
       etapasTotales: this.fTotales(),
       etapasPorPeriodo: this.fPorPeriodo(),
       nombresEtapas: this.fEtapas(),
+      etapasDefinidas: this.fEtapasDef(),
       priority: this.fPrioridad(),
       fechaLimiteCierre: this.fLimite() || undefined,
       notes: this.fNotas() || undefined
     };
 
-    const invalido = validarFlujo(payload);
+    const invalido = validarFlujo(payload) ?? validarEtapas(this.fEtapasDef());
     if (invalido) { this.errorForm.set(invalido); return; }
 
     this.guardando.set(true);
     this.errorForm.set('');
     try {
       const enEdicion = this.editando();
-      if (enEdicion) await this.service.update(enEdicion.id, payload);
-      else           await this.service.create(payload);
+      if (enEdicion) {
+        await this.service.update(enEdicion.id, payload);
+      } else {
+        // Al crear el flujo se abren sus tareas: una por etapa, y solo la
+        // primera queda pendiente. Sin esto las etapas no aparecerian en
+        // ninguna bandeja y el expediente no llegaria a nadie.
+        const creado = await this.service.create(payload);
+        await this.approvals.abrirFlujo(creado, this.fEtapasDef());
+      }
 
       this.modalAbierto.set(false);
       await this.cargar();
@@ -239,6 +289,29 @@ export class WorkflowsComponent implements OnInit {
     } finally {
       this.guardando.set(false);
     }
+  }
+
+  /**
+   * Copia un flujo como plantilla nueva, sin su historial.
+   *
+   * Abre el formulario relleno en vez de guardarlo directo: casi siempre
+   * hay que cambiar algo, y guardar sin mirar deja duplicados inútiles.
+   */
+  duplicar(f: FlujoAprobacion) {
+    const copia = duplicarFlujo(f);
+    this.editando.set(null);
+    this.fNombre.set(copia.name);
+    this.fTipo.set(copia.category);
+    this.fDescripcion.set(copia.description ?? '');
+    this.fTotales.set(copia.etapasTotales);
+    this.fPorPeriodo.set(copia.etapasPorPeriodo);
+    this.fPrioridad.set(copia.priority ?? 'medium');
+    this.fLimite.set('');
+    this.fNotas.set(copia.notes ?? '');
+    this.fEtapas.set(ajustarNombresEtapas(copia.nombresEtapas ?? [], copia.etapasTotales));
+    this.fEtapasDef.set(ajustarEtapas(copia.etapasDefinidas ?? [], copia.etapasTotales));
+    this.errorForm.set('');
+    this.modalAbierto.set(true);
   }
 
   // ------------------------------------------

@@ -1,32 +1,61 @@
 import { TestBed } from '@angular/core/testing';
-import { UrlTree, type CanActivateFn } from '@angular/router';
+import { UrlTree, type CanActivateFn, type ActivatedRouteSnapshot } from '@angular/router';
 import { signal } from '@angular/core';
 import { isObservable, type Observable } from 'rxjs';
 
 import { authGuard } from './auth-guard';
 import { guestGuard } from './guest-guard';
 import { Auth } from '../services/auth';
+import { TenantService } from '../services/tenant';
+import { Rol } from '../models/rbac.model';
+import { Miembro } from '../models/member.model';
 
 /**
- * Estas pruebas fijan el contrato que se rompio en produccion.
+ * Contrato de las guardas, en tres pasos.
  *
- * El guard original resolvia mientras isLoading seguia en true y expulsaba
- * al login a usuarios con sesion valida: bastaba un F5 en cualquier pagina
- * protegida. onAuthStateChanged de Firebase es asincrono, asi que el guard
- * DEBE esperar a que el estado se resuelva antes de decidir.
+ * 1. Esperar a que Firebase resuelva la sesión. El guard original decidía
+ *    con isLoading todavía en true y expulsaba al login a quien tenía
+ *    sesión válida: bastaba un F5 en cualquier página protegida.
+ * 2. Resolver a qué empresa pertenece y con qué rol. Sin este paso, la
+ *    plataforma multiempresa dejaría entrar a cuentas sin pertenencia.
+ * 3. Comprobar que el rol alcanza la ruta pedida.
  */
-describe('Guards de sesion', () => {
+describe('Guardas de sesión y tenencia', () => {
 
   /** Doble de Auth con signals reales, para cambiar el estado en caliente. */
-  function crearAuthFalso(cargando: boolean, autenticado: boolean) {
+  function authFalso(cargando: boolean, autenticado: boolean) {
     return {
       isLoading: signal(cargando),
       isAuthenticated: () => autenticado
     };
   }
 
+  function miembro(p: Partial<Miembro> = {}): Miembro {
+    return {
+      uid: 'u1', empresaId: 'e1',
+      email: 'maria@empresa.com', nombre: 'María',
+      rol: Rol.COLABORADOR, estado: 'activo',
+      area: 'administracion', fechaAlta: '2026-01-01',
+      ...p
+    } as Miembro;
+  }
+
+  /** Doble de la tenencia: devuelve la pertenencia que la prueba decida. */
+  function tenantFalso(m: Miembro | null) {
+    return {
+      resolver: () => Promise.resolve(m),
+      miembro: () => m,
+      rol: () => m?.rol ?? null
+    };
+  }
+
+  /** Ruta simulada; el guard toma de ella el primer segmento. */
+  function rutaDe(path: string): ActivatedRouteSnapshot {
+    return { routeConfig: { path } } as ActivatedRouteSnapshot;
+  }
+
   /**
-   * toObservable se apoya en effect(): sin forzar la deteccion de cambios
+   * toObservable se apoya en effect(): sin forzar la detección de cambios
    * el observable nunca emite dentro de una prueba.
    */
   function propagar(): void {
@@ -35,16 +64,29 @@ describe('Guards de sesion', () => {
     else if (tb.flushEffects) tb.flushEffects();
   }
 
-  /** Ejecuta el guard y devuelve un recolector del valor emitido. */
-  function ejecutar(guard: CanActivateFn, authFalso: unknown) {
+  /** Deja que se resuelvan las promesas encadenadas del guard. */
+  async function asentar(): Promise<void> {
+    propagar();
+    await Promise.resolve();
+    await Promise.resolve();
+    propagar();
+  }
+
+  function ejecutar(
+    guard: CanActivateFn,
+    auth: unknown,
+    tenant: unknown = tenantFalso(miembro()),
+    ruta: ActivatedRouteSnapshot = rutaDe('dashboard')
+  ) {
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      providers: [{ provide: Auth, useValue: authFalso }]
+      providers: [
+        { provide: Auth, useValue: auth },
+        { provide: TenantService, useValue: tenant }
+      ]
     });
 
-    const resultado = TestBed.runInInjectionContext(() =>
-      guard(null as never, null as never)
-    );
-
+    const resultado = TestBed.runInInjectionContext(() => guard(ruta, null as never));
     const emitido: (boolean | UrlTree)[] = [];
 
     if (isObservable(resultado)) {
@@ -57,67 +99,159 @@ describe('Guards de sesion', () => {
     return emitido;
   }
 
-  describe('authGuard', () => {
+  // ------------------------------------------
+  // PASO 1: LA SESION
+  // ------------------------------------------
 
-    it('NO decide mientras el estado de sesion sigue cargando', () => {
-      const auth = crearAuthFalso(true, true);
-      const emitido = ejecutar(authGuard, auth);
+  describe('authGuard · espera de la sesión', () => {
 
-      // Este es exactamente el fallo original: aqui el guard antiguo ya
-      // habia devuelto un UrlTree hacia /login.
-      expect(emitido.length).toBe(0);
+    it('NO decide mientras el estado de sesión sigue cargando', () => {
+      // Este es exactamente el fallo original: aquí el guard antiguo ya
+      // había devuelto un UrlTree hacia /login.
+      const auth = authFalso(true, true);
+      expect(ejecutar(authGuard, auth).length).toBe(0);
     });
 
-    it('permite el paso cuando la sesion termina de cargar y es valida', () => {
-      const auth = crearAuthFalso(true, true);
+    it('deja pasar cuando la sesión termina de cargar y es válida', async () => {
+      const auth = authFalso(true, true);
       const emitido = ejecutar(authGuard, auth);
 
       expect(emitido.length).toBe(0);
 
-      auth.isLoading.set(false);   // Firebase resuelve la sesion
-      propagar();
+      auth.isLoading.set(false);   // Firebase resuelve la sesión
+      await asentar();
 
       expect(emitido).toEqual([true]);
     });
 
-    it('redirige al login cuando termina de cargar y no hay sesion', () => {
-      const auth = crearAuthFalso(true, false);
+    it('redirige al login cuando termina de cargar y no hay sesión', async () => {
+      const auth = authFalso(true, false);
       const emitido = ejecutar(authGuard, auth);
 
       auth.isLoading.set(false);
-      propagar();
+      await asentar();
 
       expect(emitido[0]).toBeInstanceOf(UrlTree);
       expect(String(emitido[0])).toBe('/login');
     });
 
-    it('permite el paso cuando la sesion ya estaba resuelta', () => {
-      const emitido = ejecutar(authGuard, crearAuthFalso(false, true));
-      expect(emitido).toEqual([true]);
-    });
-
-    it('redirige cuando no hay sesion y el estado ya estaba resuelto', () => {
-      const emitido = ejecutar(authGuard, crearAuthFalso(false, false));
+    it('redirige cuando no hay sesión y el estado ya estaba resuelto', async () => {
+      const emitido = ejecutar(authGuard, authFalso(false, false));
+      await asentar();
       expect(String(emitido[0])).toBe('/login');
     });
   });
 
-  describe('guestGuard', () => {
+  // ------------------------------------------
+  // PASO 2: LA PERTENENCIA
+  // ------------------------------------------
 
-    it('deja pasar a quien no tiene sesion', () => {
-      const emitido = ejecutar(guestGuard, crearAuthFalso(false, false));
+  describe('authGuard · pertenencia a una empresa', () => {
+
+    it('deja pasar a un miembro activo', async () => {
+      const emitido = ejecutar(authGuard, authFalso(false, true), tenantFalso(miembro()));
+      await asentar();
       expect(emitido).toEqual([true]);
     });
 
-    it('devuelve al tablero a quien ya tiene sesion', () => {
-      const emitido = ejecutar(guestGuard, crearAuthFalso(false, true));
+    it('desvía a quien no pertenece a ninguna empresa', async () => {
+      // Autenticado pero sin pertenencia: hay una pantalla que lo explica,
+      // en vez de un tablero vacío sin motivo aparente.
+      const emitido = ejecutar(authGuard, authFalso(false, true), tenantFalso(null));
+      await asentar();
+      expect(String(emitido[0])).toBe('/sin-acceso');
+    });
 
+    it('desvía a quien está suspendido', async () => {
+      const suspendido = tenantFalso(miembro({ estado: 'suspendido' }));
+      const emitido = ejecutar(authGuard, authFalso(false, true), suspendido);
+      await asentar();
+      expect(String(emitido[0])).toBe('/sin-acceso');
+    });
+
+    it('desvía a quien no completó su invitación', async () => {
+      const invitado = tenantFalso(miembro({ estado: 'invitado' }));
+      const emitido = ejecutar(authGuard, authFalso(false, true), invitado);
+      await asentar();
+      expect(String(emitido[0])).toBe('/sin-acceso');
+    });
+  });
+
+  // ------------------------------------------
+  // PASO 3: EL PERMISO
+  // ------------------------------------------
+
+  describe('authGuard · permiso de la ruta', () => {
+
+    it('un colaborador no alcanza la sección de personas', async () => {
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.COLABORADOR })),
+        rutaDe('usuarios')
+      );
+      await asentar();
+      expect(String(emitido[0])).toBe('/sin-permiso');
+    });
+
+    it('un administrador sí la alcanza', async () => {
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.ADMIN_EMPRESA })),
+        rutaDe('usuarios')
+      );
+      await asentar();
+      expect(emitido).toEqual([true]);
+    });
+
+    it('un colaborador no alcanza la bandeja de aprobaciones', async () => {
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.COLABORADOR })),
+        rutaDe('bandeja')
+      );
+      await asentar();
+      expect(String(emitido[0])).toBe('/sin-permiso');
+    });
+
+    it('un supervisor sí llega a la bandeja', async () => {
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.SUPERVISOR })),
+        rutaDe('bandeja')
+      );
+      await asentar();
+      expect(emitido).toEqual([true]);
+    });
+
+    it('una ruta sin permiso declarado no bloquea a nadie', async () => {
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.COLABORADOR })),
+        rutaDe('ruta-sin-declarar')
+      );
+      await asentar();
+      expect(emitido).toEqual([true]);
+    });
+  });
+
+  // ------------------------------------------
+  // ACCESO PARA VISITANTES
+  // ------------------------------------------
+
+  describe('guestGuard', () => {
+
+    it('deja pasar a quien no tiene sesión', () => {
+      expect(ejecutar(guestGuard, authFalso(false, false))).toEqual([true]);
+    });
+
+    it('devuelve al tablero a quien ya tiene sesión', () => {
+      const emitido = ejecutar(guestGuard, authFalso(false, true));
       expect(emitido[0]).toBeInstanceOf(UrlTree);
       expect(String(emitido[0])).toBe('/dashboard');
     });
 
-    it('tambien espera a que el estado se resuelva', () => {
-      const auth = crearAuthFalso(true, true);
+    it('también espera a que el estado se resuelva', () => {
+      const auth = authFalso(true, true);
       const emitido = ejecutar(guestGuard, auth);
 
       expect(emitido.length).toBe(0);

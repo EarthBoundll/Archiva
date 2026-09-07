@@ -80,29 +80,200 @@ export class FirebaseService {
   // ============================================
   // USER PROFILE
   // ============================================
-  async getUserProfile(userId: string) {
-    const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docSnap.data() : null;
+  // ============================================
+  // PERFIL GLOBAL DEL USUARIO
+  // ============================================
+  //
+  // Vive fuera de la empresa: es el documento que dice a que empresa
+  // pertenece quien inicia sesion, y hay que poder leerlo antes de saber
+  // cual es esa empresa.
+
+  async getPerfilGlobal(uid: string) {
+    const snap = await getDoc(doc(this.firestore, `usuarios/${uid}`));
+    return snap.exists() ? snap.data() : null;
   }
 
-  async createUserProfile(userId: string, data: any) {
-    const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    return setDoc(docRef, this.limpiar(data), { merge: true });
+  async guardarPerfilGlobal(uid: string, data: any) {
+    return setDoc(doc(this.firestore, `usuarios/${uid}`), this.limpiar(data), { merge: true });
   }
 
   // ============================================
   // USER PROFILE (NEW - Onboarding)
   // ============================================
-  async getUserProfileComplete(userId: string) {
-    const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docSnap.data() : null;
+  // ============================================
+  // EMPRESA
+  // ============================================
+
+  async getEmpresa(empresaId: string): Promise<any | null> {
+    const snap = await getDoc(doc(this.firestore, `empresas/${empresaId}`));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   }
 
-  async saveUserProfile(userId: string, data: any) {
-    const docRef = doc(this.firestore, `users/${userId}/profile/data`);
-    return setDoc(docRef, this.limpiar(data), { merge: true });
+  async guardarEmpresa(empresaId: string, data: any) {
+    return setDoc(doc(this.firestore, `empresas/${empresaId}`), this.limpiar(data), { merge: true });
+  }
+
+  async crearEmpresa(data: any): Promise<string> {
+    const ref = doc(collection(this.firestore, 'empresas'));
+    await setDoc(ref, this.limpiar({ ...data, id: ref.id }));
+    return ref.id;
+  }
+
+  /** Compatibilidad con el nombre anterior del perfil de empresa. */
+  async getUserProfileComplete(empresaId: string): Promise<any | null> {
+    return this.getEmpresa(empresaId);
+  }
+
+  async saveUserProfile(empresaId: string, data: any) {
+    return this.guardarEmpresa(empresaId, data);
+  }
+
+  // ============================================
+  // MIEMBROS
+  // ============================================
+
+  async getMiembro(empresaId: string, uid: string): Promise<any | null> {
+    const snap = await getDoc(doc(this.firestore, `empresas/${empresaId}/miembros/${uid}`));
+    return snap.exists() ? { uid: snap.id, ...snap.data() } : null;
+  }
+
+  async getMiembros(empresaId: string): Promise<any[]> {
+    const snap = await getDocs(collection(this.firestore, `empresas/${empresaId}/miembros`));
+    return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  }
+
+  async guardarMiembro(empresaId: string, uid: string, data: any) {
+    return setDoc(
+      doc(this.firestore, `empresas/${empresaId}/miembros/${uid}`),
+      this.limpiar({ ...data, uid, empresaId }),
+      { merge: true }
+    );
+  }
+
+  /** Deja constancia del ultimo acceso, sin bloquear el arranque. */
+  async marcarAcceso(empresaId: string, uid: string) {
+    return setDoc(
+      doc(this.firestore, `empresas/${empresaId}/miembros/${uid}`),
+      this.limpiar({ ultimoAcceso: new Date().toISOString() }),
+      { merge: true }
+    );
+  }
+
+  // ============================================
+  // INVITACIONES
+  // ============================================
+  //
+  // El indice por testigo vive fuera de la empresa: quien acepta una
+  // invitacion todavia no pertenece a ninguna, asi que no podria leer nada
+  // que colgara de ella.
+
+  async crearInvitacion(empresaId: string, data: any): Promise<string> {
+    const ref = doc(collection(this.firestore, `empresas/${empresaId}/invitaciones`));
+    await setDoc(ref, this.limpiar({ ...data, id: ref.id, empresaId }));
+
+    await setDoc(doc(this.firestore, `invitaciones/${data.token}`), this.limpiar({
+      token: data.token,
+      empresaId,
+      invitacionId: ref.id,
+      email: data.email,
+      estado: 'pendiente',
+      fechaExpira: data.fechaExpira
+    }));
+
+    return ref.id;
+  }
+
+  async getInvitaciones(empresaId: string): Promise<any[]> {
+    const snap = await getDocs(collection(this.firestore, `empresas/${empresaId}/invitaciones`));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a: any, b: any) => (b.fechaEnvio ?? '').localeCompare(a.fechaEnvio ?? ''));
+  }
+
+  /** Busca por testigo, sin conocer la empresa. */
+  async getInvitacionPorToken(token: string): Promise<any | null> {
+    const indice = await getDoc(doc(this.firestore, `invitaciones/${token}`));
+    if (!indice.exists()) return null;
+
+    const datos = indice.data() as any;
+    const snap = await getDoc(
+      doc(this.firestore, `empresas/${datos.empresaId}/invitaciones/${datos.invitacionId}`)
+    );
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  }
+
+  async actualizarInvitacion(empresaId: string, invitacionId: string, token: string, data: any) {
+    await setDoc(
+      doc(this.firestore, `empresas/${empresaId}/invitaciones/${invitacionId}`),
+      this.limpiar(data), { merge: true }
+    );
+    if (data.estado) {
+      await setDoc(doc(this.firestore, `invitaciones/${token}`),
+        this.limpiar({ estado: data.estado }), { merge: true });
+    }
+  }
+
+  // ============================================
+  // TAREAS DE APROBACION
+  // ============================================
+
+  async crearTarea(empresaId: string, data: any): Promise<any> {
+    const ref = doc(collection(this.firestore, `empresas/${empresaId}/tareas`));
+    const tarea = { ...data, id: ref.id, empresaId };
+    await setDoc(ref, this.limpiar(tarea));
+    return tarea;
+  }
+
+  async getTareas(empresaId: string): Promise<any[]> {
+    const snap = await getDocs(collection(this.firestore, `empresas/${empresaId}/tareas`));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  /** Bandeja de una persona: lo asignado a ella. */
+  async getTareasDe(empresaId: string, uid: string): Promise<any[]> {
+    const q = query(
+      collection(this.firestore, `empresas/${empresaId}/tareas`),
+      where('asignadoUid', '==', uid)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  async getTareasDeFlujo(empresaId: string, flujoId: string): Promise<any[]> {
+    const q = query(
+      collection(this.firestore, `empresas/${empresaId}/tareas`),
+      where('flujoId', '==', flujoId)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  async actualizarTarea(empresaId: string, tareaId: string, data: any) {
+    return setDoc(
+      doc(this.firestore, `empresas/${empresaId}/tareas/${tareaId}`),
+      this.limpiar(data), { merge: true }
+    );
+  }
+
+  // ============================================
+  // AUDITORIA
+  // ============================================
+  //
+  // Solo se anade. No hay metodo de edicion ni de borrado a proposito: es
+  // la evidencia que se presenta ante una auditoria.
+
+  async registrarAuditoria(empresaId: string, asiento: any): Promise<void> {
+    const ref = doc(collection(this.firestore, `empresas/${empresaId}/auditoria`));
+    await setDoc(ref, this.limpiar({ ...asiento, id: ref.id, empresaId }));
+  }
+
+  async getAuditoria(empresaId: string, limite = 300): Promise<any[]> {
+    const q = query(
+      collection(this.firestore, `empresas/${empresaId}/auditoria`),
+      orderBy('timestamp', 'desc'),
+      limit(limite)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
 
   // ============================================
@@ -132,15 +303,15 @@ export class FirebaseService {
   // por el prefijo de la fecha, que ya viene en formato ISO.
 
   /** Asientos de un mes concreto. */
-  async getHistorialPorPeriodo(userId: string, year: number, month: number) {
+  async getHistorialPorPeriodo(empresaId: string, year: number, month: number) {
     const prefijo = `${year}-${String(month).padStart(2, '0')}`;
-    const todos = await this.getBitacora(userId);
+    const todos = await this.getBitacora(empresaId);
     return todos.filter((r: any) => String(r.date ?? '').startsWith(prefijo));
   }
 
   /** Alta de asiento. Se conserva el nombre por compatibilidad. */
-  async crearRegistro(userId: string, data: any): Promise<any> {
-    const id = await this.agregarBitacora(userId, {
+  async crearRegistro(empresaId: string, data: any): Promise<any> {
+    const id = await this.agregarBitacora(empresaId, {
       ...data,
       createdAt: data.createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -148,16 +319,16 @@ export class FirebaseService {
     return { ...data, id };
   }
 
-  async actualizarRegistro(userId: string, registroId: string, data: any): Promise<void> {
-    await this.actualizarBitacora(userId, registroId, data);
+  async actualizarRegistro(empresaId: string, registroId: string, data: any): Promise<void> {
+    await this.actualizarBitacora(empresaId, registroId, data);
   }
 
   /**
    * La bitacora es evidencia ante una auditoria: no se borra, se marca.
    * Un asiento retirado deja de contar en los agregados pero sigue ahi.
    */
-  async eliminarRegistro(userId: string, registroId: string): Promise<void> {
-    await this.actualizarBitacora(userId, registroId, {
+  async eliminarRegistro(empresaId: string, registroId: string): Promise<void> {
+    await this.actualizarBitacora(empresaId, registroId, {
       anulado: true,
       anuladoEl: new Date().toISOString()
     });
@@ -170,19 +341,19 @@ export class FirebaseService {
    * Se ejecuta una sola vez por usuario: deja constancia en el perfil para
    * no recorrer las subcolecciones en cada arranque.
    */
-  async migrarHistorialAntiguo(userId: string): Promise<number> {
-    const perfil = await this.getUserProfileComplete(userId);
+  async migrarHistorialAntiguo(empresaId: string): Promise<number> {
+    const perfil = await this.getUserProfileComplete(empresaId);
     if (perfil?.['bitacoraUnificada']) return 0;
 
-    const periodos = await getDocs(collection(this.firestore, `users/${userId}/periodos`));
+    const periodos = await getDocs(collection(this.firestore, `empresas/${empresaId}/periodos`));
     const yaEnBitacora = new Set(
-      (await this.getBitacora(userId)).map((r: any) => this.huella(r))
+      (await this.getBitacora(empresaId)).map((r: any) => this.huella(r))
     );
 
     let movidos = 0;
     for (const periodo of periodos.docs) {
       const asientos = await getDocs(
-        collection(this.firestore, `users/${userId}/periodos/${periodo.id}/historial`)
+        collection(this.firestore, `empresas/${empresaId}/periodos/${periodo.id}/historial`)
       );
 
       for (const asiento of asientos.docs) {
@@ -191,13 +362,13 @@ export class FirebaseService {
         if (!datos['accion']) continue;
         if (yaEnBitacora.has(this.huella(datos))) continue;
 
-        await this.agregarBitacora(userId, { ...datos, migradoDe: periodo.id });
+        await this.agregarBitacora(empresaId, { ...datos, migradoDe: periodo.id });
         yaEnBitacora.add(this.huella(datos));
         movidos++;
       }
     }
 
-    await this.saveUserProfile(userId, {
+    await this.saveUserProfile(empresaId, {
       bitacoraUnificada: true,
       bitacoraUnificadaEl: new Date().toISOString(),
       bitacoraAsientosMigrados: movidos
@@ -221,9 +392,9 @@ export class FirebaseService {
   // ============================================
   
   // Get all goals (new - multiple)
-  async getFlujos(userId: string) {
+  async getFlujos(empresaId: string) {
     const q = query(
-      collection(this.firestore, `users/${userId}/flujos`),
+      collection(this.firestore, `empresas/${empresaId}/flujos`),
       where('status', '==', 'active')
     );
     const snapshot = await getDocs(q);
@@ -231,29 +402,29 @@ export class FirebaseService {
   }
 
   // Get all goals including completed/paused/cancelled
-  async getTodosLosFlujos(userId: string) {
+  async getTodosLosFlujos(empresaId: string) {
     const q = query(
-      collection(this.firestore, `users/${userId}/flujos`)
+      collection(this.firestore, `empresas/${empresaId}/flujos`)
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   }
 
   // Get single goal
-  async getFlujoPorId(userId: string, flujoId: string): Promise<any> {
-    const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
+  async getFlujoPorId(empresaId: string, flujoId: string): Promise<any> {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/flujos/${flujoId}`);
     const docSnap = await getDoc(docRef);
     return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
   }
 
   // Create goal
-  async crearFlujo(userId: string, data: any): Promise<any> {
-    const docRef = doc(collection(this.firestore, `users/${userId}/flujos`));
+  async crearFlujo(empresaId: string, data: any): Promise<any> {
+    const docRef = doc(collection(this.firestore, `empresas/${empresaId}/flujos`));
     const now = new Date().toISOString();
     const goalData = {
       ...data,
       id: docRef.id,
-      userId,
+      empresaId,
       etapasCompletadas: data.etapasCompletadas || 0,
       status: 'active',
       estaCompletado: false,
@@ -266,8 +437,8 @@ export class FirebaseService {
   }
 
   // Update goal
-  async actualizarFlujo(userId: string, flujoId: string, data: any) {
-    const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
+  async actualizarFlujo(empresaId: string, flujoId: string, data: any) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/flujos/${flujoId}`);
     await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
@@ -279,8 +450,8 @@ export class FirebaseService {
    * sigue pendiente— y rechazarla suspende el flujo: la negativa firme de
    * un aprobador no puede quedar como un tramite mas.
    */
-  async resolverEtapa(userId: string, flujoId: string, etapa: any) {
-    const flujo: any = await this.getFlujoPorId(userId, flujoId);
+  async resolverEtapa(empresaId: string, flujoId: string, etapa: any) {
+    const flujo: any = await this.getFlujoPorId(empresaId, flujoId);
     if (!flujo) throw new Error('El flujo ya no existe.');
 
     const registro = {
@@ -303,7 +474,7 @@ export class FirebaseService {
     else if (estaCompletado)             status = 'completed';
     else                                 status = 'active';
 
-    const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
+    const docRef = doc(this.firestore, `empresas/${empresaId}/flujos/${flujoId}`);
     await setDoc(docRef, this.limpiar({
       etapasCompletadas: completadas,
       estaCompletado,
@@ -317,8 +488,8 @@ export class FirebaseService {
    * Retira el flujo del seguimiento sin borrarlo del expediente: en un
    * sistema documental nada desaparece, se anula y sigue consultable.
    */
-  async anularFlujo(userId: string, flujoId: string, motivo?: string) {
-    const docRef = doc(this.firestore, `users/${userId}/flujos/${flujoId}`);
+  async anularFlujo(empresaId: string, flujoId: string, motivo?: string) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/flujos/${flujoId}`);
     await setDoc(docRef, this.limpiar({
       status: 'cancelled',
       motivoAnulacion: motivo,
@@ -331,9 +502,9 @@ export class FirebaseService {
   // ============================================
   
   // Todos los documentos del usuario
-  async getDocumentos(userId: string) {
+  async getDocumentos(empresaId: string) {
     const q = query(
-      collection(this.firestore, `users/${userId}/documentos`),
+      collection(this.firestore, `empresas/${empresaId}/documentos`),
       orderBy('name')
     );
     const snapshot = await getDocs(q);
@@ -341,9 +512,9 @@ export class FirebaseService {
   }
 
   // Documentos activos
-  async getDocumentosActivos(userId: string) {
+  async getDocumentosActivos(empresaId: string) {
     const q = query(
-      collection(this.firestore, `users/${userId}/documentos`),
+      collection(this.firestore, `empresas/${empresaId}/documentos`),
       where('activo', '==', true)
     );
     const snapshot = await getDocs(q);
@@ -351,13 +522,13 @@ export class FirebaseService {
   }
 
   // Alta de documento
-  async crearDocumento(userId: string, data: any): Promise<any> {
-    const docRef = doc(collection(this.firestore, `users/${userId}/documentos`));
+  async crearDocumento(empresaId: string, data: any): Promise<any> {
+    const docRef = doc(collection(this.firestore, `empresas/${empresaId}/documentos`));
     const now = new Date().toISOString();
     const sourceData = {
       ...data,
       id: docRef.id,
-      userId,
+      empresaId,
       activo: true,
       createdAt: now,
       updatedAt: now
@@ -367,20 +538,20 @@ export class FirebaseService {
   }
 
   // Actualizacion de documento
-  async actualizarDocumento(userId: string, documentoId: string, data: any) {
-    const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
+  async actualizarDocumento(empresaId: string, documentoId: string, data: any) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/documentos/${documentoId}`);
     await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
   // Baja logica del documento
-  async archivarDocumento(userId: string, documentoId: string) {
-    const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
+  async archivarDocumento(empresaId: string, documentoId: string) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/documentos/${documentoId}`);
     await setDoc(docRef, this.limpiar({ activo: false, updatedAt: new Date().toISOString() }));
   }
 
   // Deja constancia de la aprobacion
-  async registrarVersionDocumento(userId: string, documentoId: string, amount: number, receivedDate: string) {
-    const docRef = doc(this.firestore, `users/${userId}/documentos/${documentoId}`);
+  async registrarVersionDocumento(empresaId: string, documentoId: string, amount: number, receivedDate: string) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/documentos/${documentoId}`);
     await setDoc(docRef, this.limpiar({ 
       actualAmount: amount,
       lastPaymentDate: receivedDate,
@@ -403,15 +574,15 @@ export class FirebaseService {
    * documentos separados, la ficha sigue siendo ligera de listar aunque
    * tenga varios archivos pesados colgando.
    */
-  async guardarArchivo(userId: string, documentoId: string, archivo: any): Promise<string> {
-    const ref = doc(collection(this.firestore, `users/${userId}/documentos/${documentoId}/archivos`));
+  async guardarArchivo(empresaId: string, documentoId: string, archivo: any): Promise<string> {
+    const ref = doc(collection(this.firestore, `empresas/${empresaId}/documentos/${documentoId}/archivos`));
     await setDoc(ref, this.limpiar({ ...archivo, id: ref.id }));
     return ref.id;
   }
 
   /** Metadatos de los adjuntos, sin el contenido: listar no debe descargar megas. */
-  async getArchivosMeta(userId: string, documentoId: string): Promise<any[]> {
-    const snap = await getDocs(collection(this.firestore, `users/${userId}/documentos/${documentoId}/archivos`));
+  async getArchivosMeta(empresaId: string, documentoId: string): Promise<any[]> {
+    const snap = await getDocs(collection(this.firestore, `empresas/${empresaId}/documentos/${documentoId}/archivos`));
     return snap.docs.map(d => {
       const { contenido, ...meta } = d.data() as any;
       return { ...meta, id: d.id };
@@ -419,23 +590,23 @@ export class FirebaseService {
   }
 
   /** Contenido completo de un adjunto, solo cuando se va a descargar. */
-  async getArchivo(userId: string, documentoId: string, archivoId: string): Promise<any | null> {
-    const snap = await getDoc(doc(this.firestore, `users/${userId}/documentos/${documentoId}/archivos/${archivoId}`));
+  async getArchivo(empresaId: string, documentoId: string, archivoId: string): Promise<any | null> {
+    const snap = await getDoc(doc(this.firestore, `empresas/${empresaId}/documentos/${documentoId}/archivos/${archivoId}`));
     return snap.exists() ? snap.data() : null;
   }
 
-  async eliminarArchivo(userId: string, documentoId: string, archivoId: string): Promise<void> {
-    await deleteDoc(doc(this.firestore, `users/${userId}/documentos/${documentoId}/archivos/${archivoId}`));
+  async eliminarArchivo(empresaId: string, documentoId: string, archivoId: string): Promise<void> {
+    await deleteDoc(doc(this.firestore, `empresas/${empresaId}/documentos/${documentoId}/archivos/${archivoId}`));
   }
 
-  async agregarBitacora(userId: string, entry: any): Promise<string> {
-    const docRef = doc(collection(this.firestore, `users/${userId}/bitacora`));
+  async agregarBitacora(empresaId: string, entry: any): Promise<string> {
+    const docRef = doc(collection(this.firestore, `empresas/${empresaId}/bitacora`));
     await setDoc(docRef, this.limpiar({ ...entry, id: docRef.id }));
     return docRef.id;
   }
 
-  async getBitacora(userId: string): Promise<any[]> {
-    const snapshot = await getDocs(collection(this.firestore, `users/${userId}/bitacora`));
+  async getBitacora(empresaId: string): Promise<any[]> {
+    const snapshot = await getDocs(collection(this.firestore, `empresas/${empresaId}/bitacora`));
     const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     // Ordenar por fecha y hora descendente en el cliente
     return entries.sort((a: any, b: any) => {
@@ -445,8 +616,8 @@ export class FirebaseService {
     });
   }
 
-  async actualizarBitacora(userId: string, entryId: string, data: any): Promise<void> {
-    const docRef = doc(this.firestore, `users/${userId}/bitacora/${entryId}`);
+  async actualizarBitacora(empresaId: string, entryId: string, data: any): Promise<void> {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/bitacora/${entryId}`);
     await setDoc(docRef, this.limpiar(data), { merge: true });
   }
 
@@ -455,9 +626,9 @@ export class FirebaseService {
   // ============================================
 
   // Todas las solicitudes del usuario
-  async getSolicitudes(userId: string): Promise<any[]> {
+  async getSolicitudes(empresaId: string): Promise<any[]> {
     const q = query(
-      collection(this.firestore, `users/${userId}/solicitudes`),
+      collection(this.firestore, `empresas/${empresaId}/solicitudes`),
       orderBy('name')
     );
     const snapshot = await getDocs(q);
@@ -465,9 +636,9 @@ export class FirebaseService {
   }
 
   // Get active expenses
-  async getSolicitudesActivas(userId: string): Promise<any[]> {
+  async getSolicitudesActivas(empresaId: string): Promise<any[]> {
     const q = query(
-      collection(this.firestore, `users/${userId}/solicitudes`),
+      collection(this.firestore, `empresas/${empresaId}/solicitudes`),
       where('activo', '==', true)
     );
     const snapshot = await getDocs(q);
@@ -475,10 +646,10 @@ export class FirebaseService {
   }
 
   // Get expenses by month
-  async getSolicitudesPorPeriodo(userId: string, year: number, month: number): Promise<any[]> {
+  async getSolicitudesPorPeriodo(empresaId: string, year: number, month: number): Promise<any[]> {
     const periodoId = `${year}-${String(month).padStart(2, '0')}`;
     const q = query(
-      collection(this.firestore, `users/${userId}/periodos/${periodoId}/solicitudes`),
+      collection(this.firestore, `empresas/${empresaId}/periodos/${periodoId}/solicitudes`),
       orderBy('name')
     );
     const snapshot = await getDocs(q);
@@ -486,13 +657,13 @@ export class FirebaseService {
   }
 
   // Alta de solicitud
-  async crearSolicitud(userId: string, data: any): Promise<any> {
-    const docRef = doc(collection(this.firestore, `users/${userId}/solicitudes`));
+  async crearSolicitud(empresaId: string, data: any): Promise<any> {
+    const docRef = doc(collection(this.firestore, `empresas/${empresaId}/solicitudes`));
     const now = new Date().toISOString();
     const expenseData = {
       ...data,
       id: docRef.id,
-      userId,
+      empresaId,
       activo: true,
       actualAmount: 0,
       status: 'pending',
@@ -504,14 +675,14 @@ export class FirebaseService {
   }
 
   // Actualizacion de solicitud
-  async actualizarSolicitud(userId: string, solicitudId: string, data: any) {
-    const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
+  async actualizarSolicitud(empresaId: string, solicitudId: string, data: any) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/solicitudes/${solicitudId}`);
     await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
   // Marca la solicitud como atendida
-  async marcarSolicitudAtendida(userId: string, solicitudId: string, paidAmount: number, fechaAtencion?: string) {
-    const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
+  async marcarSolicitudAtendida(empresaId: string, solicitudId: string, paidAmount: number, fechaAtencion?: string) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/solicitudes/${solicitudId}`);
     await setDoc(docRef, this.limpiar({
       actualAmount: paidAmount,
       fechaAtencion: fechaAtencion || new Date().toISOString(),
@@ -521,8 +692,8 @@ export class FirebaseService {
   }
 
   // Anula la solicitud
-  async anularSolicitud(userId: string, solicitudId: string) {
-    const docRef = doc(this.firestore, `users/${userId}/solicitudes/${solicitudId}`);
+  async anularSolicitud(empresaId: string, solicitudId: string) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/solicitudes/${solicitudId}`);
     await setDoc(docRef, this.limpiar({
       status: 'cancelled',
       isRecurring: false,
@@ -536,10 +707,10 @@ export class FirebaseService {
   // ============================================
   
   // Get budgets for a month
-  async getCuotasPorPeriodo(userId: string, year: number, month: number): Promise<any[]> {
+  async getCuotasPorPeriodo(empresaId: string, year: number, month: number): Promise<any[]> {
     const periodoId = `${year}-${String(month).padStart(2, '0')}`;
     const q = query(
-      collection(this.firestore, `users/${userId}/periodos/${periodoId}/almacenamiento`),
+      collection(this.firestore, `empresas/${empresaId}/periodos/${periodoId}/almacenamiento`),
       orderBy('esPrioritaria'),
       orderBy('budgetedAmount', 'desc')
     );
@@ -548,9 +719,9 @@ export class FirebaseService {
   }
 
   // Create or update budget for a category
-  async definirCuota(userId: string, data: any): Promise<any> {
+  async definirCuota(empresaId: string, data: any): Promise<any> {
     const periodoId = data.periodoId;
-    const docRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}/almacenamiento/${data.category}`);
+    const docRef = doc(this.firestore, `empresas/${empresaId}/periodos/${periodoId}/almacenamiento/${data.category}`);
     const now = new Date().toISOString();
     
     const budgetData = {
@@ -569,8 +740,8 @@ export class FirebaseService {
   }
 
   // Update actual spent for a budget
-  async actualizarConsumoCuota(userId: string, category: string, periodoId: string, actualAmount: number) {
-    const docRef = doc(this.firestore, `users/${userId}/periodos/${periodoId}/almacenamiento/${category}`);
+  async actualizarConsumoCuota(empresaId: string, category: string, periodoId: string, actualAmount: number) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/periodos/${periodoId}/almacenamiento/${category}`);
     const docSnap = await getDoc(docRef);
     
     if (!docSnap.exists()) return;
@@ -603,11 +774,11 @@ export class FirebaseService {
   }
 
   // Calculate monthly budget summary with actuals
-  async calcularResumenAlmacenamiento(userId: string, year: number, month: number): Promise<any> {
+  async calcularResumenAlmacenamiento(empresaId: string, year: number, month: number): Promise<any> {
     const periodoId = `${year}-${String(month).padStart(2, '0')}`;
     
     // Get budgets for the month
-    let budgets = await this.getCuotasPorPeriodo(userId, year, month);
+    let budgets = await this.getCuotasPorPeriodo(empresaId, year, month);
     
     // If no budgets exist, create empty summary
     if (!budgets || budgets.length === 0) {
@@ -629,7 +800,7 @@ export class FirebaseService {
     }
     
     // Get actual expenses from transactions
-    const transactions = await this.getHistorialPorPeriodo(userId, year, month);
+    const transactions = await this.getHistorialPorPeriodo(empresaId, year, month);
     const expenses = transactions.filter((t: any) => t.amount < 0);
     
     // Group expenses by category and update budgets
@@ -703,32 +874,32 @@ export class FirebaseService {
   // ============================================
   // SURPLUS & NOTIFICATIONS
   // ============================================
-  async guardarRegistroCuota(userId: string, id: string, data: any) {
-    const docRef = doc(this.firestore, `users/${userId}/cuotas/${id}`);
+  async guardarRegistroCuota(empresaId: string, id: string, data: any) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/cuotas/${id}`);
     return setDoc(docRef, this.limpiar(data), { merge: true });
   }
 
-  async getRegistroCuota(userId: string, id: string): Promise<any> {
-    const docRef = doc(this.firestore, `users/${userId}/cuotas/${id}`);
+  async getRegistroCuota(empresaId: string, id: string): Promise<any> {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/cuotas/${id}`);
     const docSnap = await getDoc(docRef);
     return docSnap.exists() ? docSnap.data() : null;
   }
 
-  async getSurplusHistory(userId: string): Promise<any[]> {
-    const colRef = collection(this.firestore, `users/${userId}/cuotas`);
+  async getSurplusHistory(empresaId: string): Promise<any[]> {
+    const colRef = collection(this.firestore, `empresas/${empresaId}/cuotas`);
     const q = query(colRef, orderBy('calculatedAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
   }
 
-  async saveNotification(userId: string, notification: any) {
+  async saveNotification(empresaId: string, notification: any) {
     const id = `${notification.year}-${String(notification.month).padStart(2, '0')}-${Date.now()}`;
-    const docRef = doc(this.firestore, `users/${userId}/notifications/${id}`);
+    const docRef = doc(this.firestore, `empresas/${empresaId}/notifications/${id}`);
     return setDoc(docRef, this.limpiar(notification), { merge: true });
   }
 
-  async getNotifications(userId: string, unreadOnly: boolean = false): Promise<any[]> {
-    const colRef = collection(this.firestore, `users/${userId}/notifications`);
+  async getNotifications(empresaId: string, unreadOnly: boolean = false): Promise<any[]> {
+    const colRef = collection(this.firestore, `empresas/${empresaId}/notifications`);
     let q = query(colRef, orderBy('createdAt', 'desc'), limit(20));
     
     if (unreadOnly) {
@@ -739,8 +910,8 @@ export class FirebaseService {
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
   }
 
-  async markNotificationAsRead(userId: string, notificationId: string) {
-    const docRef = doc(this.firestore, `users/${userId}/notifications/${notificationId}`);
+  async markNotificationAsRead(empresaId: string, notificationId: string) {
+    const docRef = doc(this.firestore, `empresas/${empresaId}/notifications/${notificationId}`);
     return setDoc(docRef, this.limpiar({ isRead: true }), { merge: true });
   }
 }

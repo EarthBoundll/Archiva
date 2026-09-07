@@ -39,9 +39,18 @@ export interface FlujoAprobacion {
   etapasCompletadas: number;
   etapasPorPeriodo: number;
 
-  /** Nombres de las etapas, en orden. */
+  /** Definicion de cada etapa, en orden. */
+  etapasDefinidas?: EtapaDefinida[];
+
+  /** Nombres sueltos de las etapas. Se conserva para los flujos antiguos. */
   nombresEtapas?: string[];
-  
+
+  /** Un flujo desactivado no admite nuevos expedientes. */
+  activo?: boolean;
+
+  /** De que flujo se copio, si nacio de un duplicado. */
+  duplicadoDe?: string;
+
   // Fechas
   fechaLimiteCierre?: string;          // Fecha objetivo específica
   createdAt: string;
@@ -143,8 +152,10 @@ export interface FlujoAprobacionPayload {
   etapasCompletadas?: number;
   etapasPorPeriodo: number;
 
+  etapasDefinidas?: EtapaDefinida[];
   /** Nombres de las etapas, en orden. */
   nombresEtapas?: string[];
+  activo?: boolean;
   fechaLimiteCierre?: string;
   priority?: PrioridadFlujo;
   notes?: string;
@@ -338,5 +349,108 @@ export function resumirFlujos(flujos: FlujoAprobacion[]): ResumenFlujos {
       f.fechaLimiteCierre &&
       f.fechaLimiteCierre < hoy
     ).length
+  };
+}
+
+// ============================================
+// DEFINICION DE ETAPAS
+// ============================================
+
+/**
+ * Una etapa del flujo con su responsable.
+ *
+ * Antes la etapa era solo un nombre en un arreglo de cadenas: no habia
+ * forma de saber a quien le tocaba, asi que la bandeja de una persona no
+ * podia existir. Aqui la etapa declara quien responde de ella, con que rol
+ * minimo y en cuantos dias deberia resolverse.
+ */
+export interface EtapaDefinida {
+  orden: number;
+  nombre: string;
+
+  /** Persona concreta que responde de la etapa. */
+  responsableUid: string;
+  responsableNombre: string;
+
+  /** Rol minimo exigido; sirve para reasignar sin romper el flujo. */
+  rolRequerido?: string;
+  area?: string;
+
+  /** Plazo sugerido en dias desde que la etapa se abre. */
+  plazoDias?: number;
+  /** Indicaciones para quien la resuelve. */
+  instrucciones?: string;
+}
+
+/** Etapa vacia lista para rellenar en el formulario. */
+export function etapaVacia(orden: number): EtapaDefinida {
+  return {
+    orden,
+    nombre: '',
+    responsableUid: '',
+    responsableNombre: '',
+    plazoDias: 3
+  };
+}
+
+/** Ajusta la lista de etapas al numero declarado, sin perder lo escrito. */
+export function ajustarEtapas(etapas: EtapaDefinida[], total: number): EtapaDefinida[] {
+  const salida = etapas.slice(0, total).map((e, i) => ({ ...e, orden: i + 1 }));
+  while (salida.length < total) salida.push(etapaVacia(salida.length + 1));
+  return salida;
+}
+
+/**
+ * Primer motivo por el que las etapas no sirven, o null.
+ *
+ * Una etapa sin responsable no genera tarea y el expediente se queda
+ * parado sin que nadie sepa a quien reclamarle.
+ */
+export function validarEtapas(etapas: EtapaDefinida[] | undefined): string | null {
+  if (!etapas?.length) return 'El flujo necesita al menos una etapa.';
+
+  for (const e of etapas) {
+    if (!e.nombre?.trim()) {
+      return `La etapa ${e.orden} necesita un nombre.`;
+    }
+    if (!e.responsableUid) {
+      return `La etapa ${e.orden} no tiene responsable: nadie recibiria el expediente.`;
+    }
+    if (e.plazoDias != null && (e.plazoDias < 1 || e.plazoDias > 180)) {
+      return `El plazo de la etapa ${e.orden} va de 1 a 180 dias.`;
+    }
+  }
+
+  return null;
+}
+
+/** Convierte los nombres sueltos de un flujo antiguo en etapas definidas. */
+export function migrarNombresAEtapas(
+  nombres: string[] | undefined,
+  total: number
+): EtapaDefinida[] {
+  return ajustarEtapas(
+    (nombres ?? []).map((n, i) => ({
+      ...etapaVacia(i + 1),
+      nombre: n?.trim() || `Etapa ${i + 1}`
+    })),
+    total
+  );
+}
+
+/** Copia un flujo como plantilla nueva, sin su historial. */
+export function duplicarFlujo(f: FlujoAprobacion): FlujoAprobacionPayload {
+  return {
+    name: `${f.name} (copia)`,
+    description: f.description,
+    category: f.category,
+    etapasTotales: f.etapasTotales,
+    etapasCompletadas: 0,
+    etapasPorPeriodo: f.etapasPorPeriodo,
+    etapasDefinidas: (f.etapasDefinidas ?? []).map(e => ({ ...e })),
+    nombresEtapas: [...(f.nombresEtapas ?? [])],
+    priority: f.priority,
+    notes: f.notes,
+    activo: true
   };
 }

@@ -15,11 +15,13 @@ import {
   calcularEstadoSolicitud,
   esTipoPrioritario
 } from '../models/review-request.model';
+import { TenantService } from './tenant';
 
 @Injectable({ providedIn: 'root' })
 export class ReviewRequestService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
+  private tenant = inject(TenantService);
 
   private hoy(): string {
     const d = new Date();
@@ -31,7 +33,7 @@ export class ReviewRequestService {
   // ============================================
 
   async getAll(): Promise<SolicitudRevision[]> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return [];
     const data = await this.firebase.getSolicitudes(userId);
     return (data as any[]).map(s => this.normalizar(s));
@@ -53,7 +55,7 @@ export class ReviewRequestService {
   // ============================================
 
   async create(payload: SolicitudRevisionPayload): Promise<SolicitudRevision> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     // Reincidencia: ya hubo una solicitud igual, y atendida, sobre este mismo
@@ -95,7 +97,7 @@ export class ReviewRequestService {
   }
 
   async update(solicitudId: string, cambios: Partial<SolicitudRevisionPayload>): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     await this.firebase.actualizarSolicitud(userId, solicitudId, {
@@ -106,7 +108,7 @@ export class ReviewRequestService {
 
   /** Pasa a en proceso: alguien la tomó y está trabajando en ella. */
   async tomar(s: SolicitudRevision, revisor: string): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     if (s.status === 'atendida' || s.status === 'anulada') {
@@ -121,7 +123,7 @@ export class ReviewRequestService {
   }
 
   async marcarAtendida(s: SolicitudRevision, diasReales: number): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     if (s.status === 'anulada') {
@@ -134,7 +136,7 @@ export class ReviewRequestService {
   }
 
   async anular(s: SolicitudRevision, motivo: string): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     if (!motivo.trim()) {

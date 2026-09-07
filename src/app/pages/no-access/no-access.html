@@ -1,0 +1,23 @@
+<div class="pantalla">
+  <div class="tarjeta">
+    <div class="icono" [class.icono--permiso]="esFaltaDePermiso()">
+      <app-icon [name]="icono()" [size]="40" />
+    </div>
+
+    <h1>{{ titulo() }}</h1>
+    <p class="explicacion">{{ explicacion() }}</p>
+
+    @if (correo()) {
+      <p class="cuenta">
+        Has entrado como <strong>{{ correo() }}</strong>
+      </p>
+    }
+
+    <div class="acciones">
+      @if (esFaltaDePermiso()) {
+        <button class="btn btn--primary" (click)="volver()">Volver al tablero</button>
+      }
+      <button class="btn" (click)="salir()">Cerrar sesión</button>
+    </div>
+  </div>
+</div>

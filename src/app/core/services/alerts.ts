@@ -4,6 +4,7 @@ import { ReviewRequestService } from './review-request';
 import { StorageService } from './storage';
 import { Documento } from '../models/document.model';
 import { SolicitudRevision } from '../models/review-request.model';
+import { TenantService } from './tenant';
 
 // ============================================
 // ALERTAS DOCUMENTALES — ARCHIVA

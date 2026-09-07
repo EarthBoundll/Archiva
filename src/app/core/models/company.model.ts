@@ -1,25 +1,15 @@
 // ============================================
 // EMPRESA ARCHIVANTE — ARCHIVA
 // ============================================
-// Quién custodia el acervo, a nombre de qué organización y con qué prefijo
-// se codifican sus series.
-//
-// Estos datos los recogía el asistente inicial y no los leía nadie: el
-// prefijo que el propio asistente prometía usar en el código —«CON-ADM-0001»—
-// no llegaba al generador, y la pantalla de Configuración no mostraba ni
-// permitía editar ninguno de ellos.
+// La empresa es ahora la raiz de todo: documentos, flujos, solicitudes,
+// bitacora y personas cuelgan de ella. Antes el acervo colgaba del usuario
+// y cada cuenta era una isla.
 
 import { AreaEmisora, AREAS_EMISORAS } from './document.model';
 
 export type SectorEmpresa =
-  | 'construccion'
-  | 'comercio'
-  | 'servicios'
-  | 'manufactura'
-  | 'salud'
-  | 'educacion'
-  | 'publico'
-  | 'otro';
+  | 'construccion' | 'comercio' | 'servicios' | 'manufactura'
+  | 'salud' | 'educacion' | 'publico' | 'otro';
 
 export const SECTORES: Record<SectorEmpresa, { label: string; descripcion: string }> = {
   construccion: { label: 'Construcción',   descripcion: 'Obras, expedientes técnicos y valorizaciones' },
@@ -32,111 +22,138 @@ export const SECTORES: Record<SectorEmpresa, { label: string; descripcion: strin
   otro:         { label: 'Otro',           descripcion: 'Cualquier otra actividad' }
 };
 
-/** Perfil archivístico de la organización. */
+export type EstadoEmpresa = 'activa' | 'suspendida' | 'baja';
+
+export const ESTADOS_EMPRESA: Record<EstadoEmpresa, { label: string; token: string }> = {
+  activa:     { label: 'Activa',     token: 'var(--estado-aprobado)' },
+  suspendida: { label: 'Suspendida', token: 'var(--estado-observado)' },
+  baja:       { label: 'De baja',    token: 'var(--estado-archivado)' }
+};
+
 export interface Empresa {
-  /** Nombre con el que figura en cabeceras y reportes. */
+  id: string;
+
+  // Identificacion
   razonSocial: string;
-
-  /** Registro Único de Contribuyentes: once dígitos. */
+  nombreComercial: string;
   ruc: string;
-
   sector: SectorEmpresa;
 
-  /** Área que custodia el acervo. */
+  // Contacto
+  direccion: string;
+  telefono: string;
+  email: string;
+
+  /** Data URL del logo. Se limita el tamaño al guardarlo. */
+  logo?: string;
+
+  // Ciclo de vida
+  fechaRegistro: string;
+  estado: EstadoEmpresa;
+
+  // Archivistica
+  /** Area que custodia el acervo. */
   areaArchivo: AreaEmisora;
-
-  /** Persona que responde del archivo ante una auditoría. */
+  /** Areas activas de la empresa; restringe lo que se puede elegir. */
+  areasActivas: AreaEmisora[];
+  /** Persona que responde del archivo ante una auditoria. */
   responsableArchivo: string;
-
-  /**
-   * Tres a cinco letras que identifican al archivo dentro del código.
-   * Un documento queda como CON-ADM-0001: categoría, prefijo y correlativo.
-   */
+  /** Tres a cinco letras dentro del codigo: CON-ADM-0001. */
   prefijoCodificacion: string;
-
-  /** Días de aviso previo al vencimiento, cuando el documento no fija otro. */
+  /** Aviso previo al vencimiento cuando el documento no fija el suyo. */
   diasAlertaPorDefecto: number;
 
+  creadoPor?: string;
   actualizadoEl?: string;
 }
 
-/** Lo que se guarda cuando aún no se ha configurado nada. */
-export const EMPRESA_POR_DEFECTO: Empresa = {
+export const EMPRESA_POR_DEFECTO: Omit<Empresa, 'id'> = {
   razonSocial: '',
+  nombreComercial: '',
   ruc: '',
   sector: 'otro',
+  direccion: '',
+  telefono: '',
+  email: '',
+  fechaRegistro: '',
+  estado: 'activa',
   areaArchivo: 'administracion',
+  areasActivas: ['gerencia', 'administracion', 'legal', 'finanzas',
+                 'recursos_humanos', 'operaciones', 'tecnologia', 'otros'],
   responsableArchivo: '',
   prefijoCodificacion: '',
   diasAlertaPorDefecto: 30
 };
 
+/** Tope del logo: viaja como data URL dentro del documento de empresa. */
+export const MAX_LOGO_BYTES = 120 * 1024;
+
 // ============================================
 // VALIDACION
 // ============================================
 
-/** Un prefijo válido son tres a cinco letras, sin números ni espacios. */
 export function esPrefijoValido(prefijo: string): boolean {
   return /^[A-ZÑ]{3,5}$/.test(prefijo.trim().toUpperCase());
 }
 
-/**
- * El RUC peruano tiene once dígitos y empieza por 10, 15, 17 o 20.
- * Se admite vacío: no toda organización lo tiene al empezar.
- */
+/** RUC peruano: once digitos que empiezan por 10, 15, 17 o 20. */
 export function esRucValido(ruc: string): boolean {
   const limpio = ruc.trim();
   if (!limpio) return true;
   return /^(10|15|17|20)\d{9}$/.test(limpio);
 }
 
-/**
- * Primer motivo por el que la configuración no puede guardarse, o null si
- * está completa. Vive en el modelo para que la pantalla y el servicio
- * apliquen exactamente las mismas reglas.
- */
-export function validarEmpresa(e: Partial<Empresa>): string | null {
-  if (!e.razonSocial?.trim()) {
-    return 'La razón social es el nombre con el que la empresa figura en los reportes.';
-  }
-  if (e.razonSocial.trim().length < 3) {
-    return 'La razón social necesita al menos tres caracteres.';
-  }
-  if (!esRucValido(e.ruc ?? '')) {
-    return 'El RUC tiene once dígitos y empieza por 10, 15, 17 o 20.';
-  }
-  if (!e.responsableArchivo?.trim()) {
-    return 'Indica quién responde del archivo: queda registrado en cada documento.';
-  }
-  if (!e.prefijoCodificacion || !esPrefijoValido(e.prefijoCodificacion)) {
-    return 'El prefijo debe tener entre tres y cinco letras, sin números ni espacios.';
-  }
-  if (e.diasAlertaPorDefecto == null || e.diasAlertaPorDefecto < 1 || e.diasAlertaPorDefecto > 365) {
-    return 'El aviso previo va de 1 a 365 días.';
-  }
-  return null;
+export function esEmailValido(email: string): boolean {
+  const limpio = email.trim();
+  if (!limpio) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(limpio);
+}
+
+export function esTelefonoValido(tel: string): boolean {
+  const limpio = tel.trim();
+  if (!limpio) return true;
+  return /^[\d\s()+-]{6,20}$/.test(limpio);
 }
 
 /**
- * Deriva un prefijo razonable del área que custodia el archivo.
- * «Administración» da ADM, «Recursos Humanos» da RRH.
+ * Primer motivo por el que la empresa no puede guardarse, o null si esta
+ * completa. Vive en el modelo para que pantalla y servicio apliquen
+ * exactamente la misma regla.
  */
+export function validarEmpresa(e: Partial<Empresa>): string | null {
+  if (!e.razonSocial?.trim())            return 'La razón social es el nombre legal de la empresa.';
+  if (e.razonSocial.trim().length < 3)   return 'La razón social necesita al menos tres caracteres.';
+  if (!esRucValido(e.ruc ?? ''))         return 'El RUC tiene once dígitos y empieza por 10, 15, 17 o 20.';
+  if (!esEmailValido(e.email ?? ''))     return 'El correo de contacto no tiene un formato válido.';
+  if (!esTelefonoValido(e.telefono ?? ''))return 'El teléfono admite dígitos, espacios, paréntesis, + y guiones.';
+  if (!e.responsableArchivo?.trim())     return 'Indica quién responde del archivo.';
+  if (!e.prefijoCodificacion || !esPrefijoValido(e.prefijoCodificacion))
+    return 'El prefijo debe tener entre tres y cinco letras, sin números ni espacios.';
+  if (e.diasAlertaPorDefecto == null || e.diasAlertaPorDefecto < 1 || e.diasAlertaPorDefecto > 365)
+    return 'El aviso previo va de 1 a 365 días.';
+  if (!e.areasActivas?.length)           return 'La empresa necesita al menos un área activa.';
+  return null;
+}
+
+/** Deriva un prefijo razonable del área que custodia el archivo. */
 export function sugerirPrefijo(area: AreaEmisora | string): string {
   const siglas = AREAS_EMISORAS[area as AreaEmisora]?.siglas;
   if (siglas && esPrefijoValido(siglas)) return siglas.toUpperCase();
 
-  const limpio = String(area)
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .toUpperCase().trim();
-
+  const limpio = String(area).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
   if (!limpio) return '';
 
   const palabras = limpio.split(/\s+/).filter(p => p.length > 2);
   if (palabras.length > 1) return palabras.slice(0, 3).map(p => p[0]).join('');
-  return (palabras[0] ?? limpio).replace(/[^A-Z]/g, '').slice(0, 3);
+  return (palabras[0] ?? limpio).replace(/[^A-ZÑ]/g, '').slice(0, 3);
 }
 
-/** ¿Hay lo mínimo para operar? */
 export function estaConfigurada(e: Empresa | null): boolean {
   return !!e && !!e.razonSocial.trim() && esPrefijoValido(e.prefijoCodificacion);
+}
+
+/** Nombre para mostrar: el comercial si existe, si no el legal. */
+export function nombreVisible(e: Empresa | null): string {
+  if (!e) return '';
+  return e.nombreComercial?.trim() || e.razonSocial.trim();
 }

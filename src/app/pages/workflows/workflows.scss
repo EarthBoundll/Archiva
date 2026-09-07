@@ -677,3 +677,51 @@
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
 }
+
+// ------------------------------------------
+// ETAPA CON RESPONSABLE
+// ------------------------------------------
+// Tres campos por etapa: nombre, quien la resuelve y el plazo. En pantalla
+// ancha van en fila; por debajo de 560 px se apilan, porque tres campos en
+// 320 px dejarian cada uno en menos de cien pixeles.
+.etapa-def {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+
+  & + & { margin-top: var(--space-3); }
+
+  .etapas__n { margin-top: 10px; }
+
+  &__campos {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 72px);
+    gap: var(--space-2);
+
+    input, select {
+      width: 100%;
+      min-width: 0;
+      min-height: 44px;
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: var(--font-body);
+      font-size: 16px;
+
+      &:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+      }
+    }
+
+    @media (max-width: 560px) {
+      grid-template-columns: 1fr;
+    }
+  }
+}

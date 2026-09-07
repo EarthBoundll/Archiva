@@ -50,6 +50,12 @@ jobs:
         run: pnpm exec ng test --watch=false
 
       # El sitio se publica en /Archiva/, no en la raiz del dominio.
+      # Las reglas se despliegan aparte, con la CLI de Firebase: el flujo
+      # de Pages solo publica el sitio. Se comprueba que el archivo existe
+      # para que nadie lo borre sin darse cuenta.
+      - name: Comprobar que las reglas de Firestore siguen ahi
+        run: test -f firestore.rules && test -f firebase.json
+
       - name: Compilar
         run: pnpm exec ng build --base-href /Archiva/
 

@@ -15,14 +15,17 @@ import {
   estaConfigurada,
   EMPRESA_POR_DEFECTO,
   SECTORES,
+  nombreVisible,
   Empresa
 } from './company.model';
 import { generarCodigo, esCodigoValido } from './document.model';
 
 function empresa(parcial: Partial<Empresa> = {}): Empresa {
   return {
+    id: 'e1',
     ...EMPRESA_POR_DEFECTO,
     razonSocial: 'Constructora Andes S.A.C.',
+    nombreComercial: 'Andes',
     ruc: '20123456789',
     responsableArchivo: 'M. Quispe',
     prefijoCodificacion: 'ADM',
@@ -113,7 +116,7 @@ describe('Empresa · estado de configuración', () => {
 
   it('no está configurada mientras falte lo mínimo', () => {
     expect(estaConfigurada(null)).toBe(false);
-    expect(estaConfigurada(EMPRESA_POR_DEFECTO)).toBe(false);
+    expect(estaConfigurada({ id: 'e1', ...EMPRESA_POR_DEFECTO })).toBe(false);
     expect(estaConfigurada(empresa({ prefijoCodificacion: '' }))).toBe(false);
     expect(estaConfigurada(empresa({ razonSocial: '' }))).toBe(false);
   });
@@ -159,5 +162,35 @@ describe('Empresa · el prefijo llega al código del documento', () => {
   it('rellena el correlativo a cuatro dígitos', () => {
     expect(generarCodigo('oficio', 'gerencia', 7, 'GER')).toBe('OFI-GER-0007');
     expect(generarCodigo('oficio', 'gerencia', 1234, 'GER')).toBe('OFI-GER-1234');
+  });
+});
+
+describe('Empresa · datos de contacto y presentación', () => {
+
+  it('valida el correo de contacto', () => {
+    expect(validarEmpresa(empresa({ email: 'contacto@andes.pe' }))).toBeNull();
+    expect(validarEmpresa(empresa({ email: 'sin-arroba' }))).toContain('correo');
+    // Vacío se admite: no toda organización lo declara al empezar.
+    expect(validarEmpresa(empresa({ email: '' }))).toBeNull();
+  });
+
+  it('valida el teléfono sin imponer un formato rígido', () => {
+    expect(validarEmpresa(empresa({ telefono: '+51 (01) 234-5678' }))).toBeNull();
+    expect(validarEmpresa(empresa({ telefono: 'llámame' }))).toContain('teléfono');
+    expect(validarEmpresa(empresa({ telefono: '' }))).toBeNull();
+  });
+
+  it('exige al menos un área activa: sin ninguna no se puede registrar nada', () => {
+    expect(validarEmpresa(empresa({ areasActivas: [] }))).toContain('área activa');
+  });
+
+  it('el nombre visible prefiere el comercial y cae al legal', () => {
+    expect(nombreVisible(empresa({ nombreComercial: 'Andes' }))).toBe('Andes');
+    expect(nombreVisible(empresa({ nombreComercial: '' }))).toBe('Constructora Andes S.A.C.');
+    expect(nombreVisible(null)).toBe('');
+  });
+
+  it('la empresa nace activa', () => {
+    expect(EMPRESA_POR_DEFECTO.estado).toBe('activa');
   });
 });

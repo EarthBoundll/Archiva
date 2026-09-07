@@ -5,10 +5,12 @@
       <h1>Flujos de Aprobación</h1>
       <p class="page-subtitle">Recorrido por etapas de cada documento que necesita conformidad</p>
     </div>
-    <button class="btn btn--primary" (click)="nuevo()">
-      <app-icon name="file-plus" [size]="16" />
-      Nuevo flujo
-    </button>
+    @if (puedeCrear()) {
+      <button class="btn btn--primary" (click)="nuevo()">
+        <app-icon name="file-plus" [size]="16" />
+        Nuevo flujo
+      </button>
+    }
   </header>
 
   @if (error()) {
@@ -140,13 +142,14 @@
 
             <div class="flujo__acciones">
               <a class="btn-accion" [routerLink]="['/flujos', f.id]">Ver etapas</a>
-              @if (f.status !== 'cancelled') {
+              @if (f.status !== 'cancelled' && puedeCrear()) {
                 <button class="btn-accion" (click)="editar(f)">Editar</button>
+                <button class="btn-accion" (click)="duplicar(f)">Duplicar</button>
               }
               @if (f.status === 'paused') {
                 <button class="btn-accion btn-accion--destacada" (click)="reanudar(f)">Reanudar</button>
               }
-              @if (f.status !== 'cancelled') {
+              @if (f.status !== 'cancelled' && puedeAnular()) {
                 <button class="btn-accion btn-accion--peligro" (click)="pedirAnular(f)">Anular</button>
               }
             </div>
@@ -225,18 +228,35 @@
         </div>
 
         <fieldset class="etapas">
-          <legend>Nombre de cada etapa <span class="opcional">opcional</span></legend>
+          <legend>Etapas y responsables</legend>
           <p class="etapas__nota">
-            Si las dejas en blanco se numeran solas. Ponerles nombre ayuda a saber
-            quién debe resolver cada una.
+            Cada etapa necesita un responsable: es quien la recibirá en su bandeja.
+            El plazo en días fija cuándo pasa a estar fuera de tiempo.
           </p>
-          @for (nombre of fEtapas(); track $index) {
-            <div class="etapas__fila">
+          @for (e of fEtapasDef(); track $index) {
+            <div class="etapa-def">
               <span class="etapas__n">{{ $index + 1 }}</span>
-              <input type="text" [value]="nombre"
-                     [attr.aria-label]="'Nombre de la etapa ' + ($index + 1)"
-                     (input)="cambiarNombreEtapa($index, $any($event.target).value)"
-                     placeholder="ej. Visto bueno de gerencia">
+
+              <div class="etapa-def__campos">
+                <input type="text" [value]="e.nombre"
+                       [attr.aria-label]="'Nombre de la etapa ' + ($index + 1)"
+                       (input)="cambiarNombreEtapa($index, $any($event.target).value)"
+                       placeholder="ej. Visto bueno de gerencia">
+
+                <select [value]="e.responsableUid"
+                        [attr.aria-label]="'Responsable de la etapa ' + ($index + 1)"
+                        (change)="asignarResponsable($index, $any($event.target).value)">
+                  <option value="">Quién la resuelve…</option>
+                  @for (m of aprobadores(); track m.uid) {
+                    <option [value]="m.uid">{{ m.nombre }}</option>
+                  }
+                </select>
+
+                <input type="number" min="1" max="180" [value]="e.plazoDias"
+                       [attr.aria-label]="'Plazo en dias de la etapa ' + ($index + 1)"
+                       (input)="actualizarEtapa($index, { plazoDias: $any($event.target).valueAsNumber })"
+                       placeholder="Días">
+              </div>
             </div>
           }
         </fieldset>

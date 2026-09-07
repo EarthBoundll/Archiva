@@ -3,14 +3,13 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { Auth } from '../../core/services/auth';
-import { PasswordStrengthComponent } from '../../core/components/password-strength/password-strength';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { log } from '../../core/utils/logger';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterModule, PasswordStrengthComponent, IconComponent],
+  imports: [CommonModule, ReactiveFormsModule, RouterModule, IconComponent],
   templateUrl: './login.html',
   styleUrl: './login.scss'
 })
@@ -20,14 +19,12 @@ export class LoginComponent {
   private authService = inject(Auth);
   private router      = inject(Router);
 
-  isRegister   = signal(false);
   isLoading    = signal(false);
   errorMsg     = signal('');
   showPassword = signal(false);
   passwordValue = signal('');
 
   form = this.fb.group({
-    fullName: [''],
     email:    ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(6)]]
   });
@@ -40,24 +37,8 @@ export class LoginComponent {
     // Precargar imagen 2.png para cambio instantáneo
   }
 
-  toggleMode() {
-    this.isRegister.update(v => !v);
-    this.errorMsg.set('');
-    this.form.reset();
-    this.passwordValue.set('');
-  }
-
   togglePassword() {
     this.showPassword.update(v => !v);
-  }
-
-  get showStrength(): boolean {
-    return this.isRegister() && this.passwordValue().length > 0;
-  }
-
-  isPasswordValid(): boolean {
-    const pwd = this.passwordValue();
-    return pwd.length >= 8 && /\d/.test(pwd) && /[A-Z]/.test(pwd);
   }
 
   async onSubmit() {
@@ -69,43 +50,19 @@ export class LoginComponent {
       return;
     }
 
-    if (this.isRegister() && !this.form.value.fullName?.trim()) {
-      this.errorMsg.set('Escribe tu nombre completo.');
-      return;
-    }
-
-    // En modo registro, verificar requisitos de contraseña fuerte
-    if (this.isRegister() && !this.isPasswordValid()) {
-      this.errorMsg.set('La contraseña debe tener al menos 8 caracteres, un número y una mayúscula.');
-      return;
-    }
-
     this.isLoading.set(true);
     this.errorMsg.set('');
 
-    const { email, password, fullName } = this.form.value;
+    const { email, password } = this.form.value;
 
     try {
-      if (this.isRegister()) {
-        await this.authService.signUp(email!, password!, fullName ?? '');
-      } else {
-        await this.authService.signIn(email!, password!);
-      }
+      await this.authService.signIn(email!, password!);
+      // El destino lo decide la guarda cuando la empresa este resuelta.
+      await this.router.navigate(['/dashboard'], { replaceUrl: true });
     } catch (error: any) {
       log.error('Login error:', error);
       this.errorMsg.set(this.parseError(error));
     } finally {
-      this.isLoading.set(false);
-    }
-  }
-
-  async loginWithGoogle() {
-    this.isLoading.set(true);
-    this.errorMsg.set('');
-    try {
-      await this.authService.signInWithGoogle();
-    } catch (error: any) {
-      this.errorMsg.set(this.parseError(error));
       this.isLoading.set(false);
     }
   }

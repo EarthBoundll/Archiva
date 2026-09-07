@@ -24,6 +24,7 @@ import {
   ESTADOS_FLUJO,
   RESULTADOS_ETAPA
 } from '../models/workflow.model';
+import { TenantService } from './tenant';
 
 /**
  * Flujos de aprobación por etapas.
@@ -37,6 +38,7 @@ import {
 export class WorkflowService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
+  private tenant = inject(TenantService);
   private historyService = inject(HistoryService);
 
   // ============================================
@@ -51,7 +53,7 @@ export class WorkflowService {
    * última etapa: justo cuando más interesa verlo.
    */
   async getAll(): Promise<FlujoAprobacion[]> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return [];
 
     const data = await this.firebase.getTodosLosFlujos(userId);
@@ -66,7 +68,7 @@ export class WorkflowService {
   }
 
   async getById(flujoId: string): Promise<FlujoAprobacion | null> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return null;
 
     const data = await this.firebase.getFlujoPorId(userId, flujoId);
@@ -82,7 +84,7 @@ export class WorkflowService {
   // ============================================
 
   async create(payload: FlujoAprobacionPayload): Promise<FlujoAprobacion> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const invalido = validarFlujo(payload);
@@ -115,7 +117,7 @@ export class WorkflowService {
   }
 
   async update(flujoId: string, payload: Partial<FlujoAprobacionPayload>): Promise<FlujoAprobacion> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const existente = await this.getById(flujoId);
@@ -173,7 +175,7 @@ export class WorkflowService {
    * anulado y sigue consultable, porque forma parte del expediente.
    */
   async delete(flujoId: string, motivo?: string): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const flujo = await this.getById(flujoId);
@@ -185,7 +187,7 @@ export class WorkflowService {
 
   /** Devuelve al curso un flujo suspendido por rechazo. */
   async reanudar(flujoId: string): Promise<FlujoAprobacion> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const flujo = await this.getById(flujoId);
@@ -218,7 +220,7 @@ export class WorkflowService {
     flujoId: string,
     datos: { aprobador: string; resultado: ResultadoEtapa; observacion?: string }
   ): Promise<FlujoAprobacion> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const flujo = await this.getById(flujoId);

@@ -3,6 +3,7 @@ import { FirebaseService } from './firebase';
 import { Auth } from './auth';
 import { CuotaAlmacenamiento, CuotaPayload, ResumenAlmacenamiento, calcularEstadoCuota } from '../models/storage.model';
 import { CATEGORIAS_DOCUMENTALES, type CategoriaDocumental } from '../models/document.model';
+import { TenantService } from './tenant';
 
 /**
  * Series documentales cuya conservacion exige la norma. Son las que se
@@ -16,9 +17,10 @@ const SERIES_EXIGIDAS: CategoriaDocumental[] = [
 export class StorageService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
+  private tenant = inject(TenantService);
 
   async getPorPeriodo(year: number, month: number): Promise<CuotaAlmacenamiento[]> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return [];
 
     const data = await this.firebase.getCuotasPorPeriodo(userId, year, month);
@@ -26,7 +28,7 @@ export class StorageService {
   }
 
   async asignarCuota(payload: CuotaPayload): Promise<CuotaAlmacenamiento> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const result = await this.firebase.definirCuota(userId, payload);
@@ -34,7 +36,7 @@ export class StorageService {
   }
 
   async getResumenPeriodo(year: number, month: number): Promise<ResumenAlmacenamiento> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const data = await this.firebase.calcularResumenAlmacenamiento(userId, year, month);
@@ -54,7 +56,7 @@ export class StorageService {
    * poco: son las que no pueden quedarse sin espacio.
    */
   async autoDistribuirCuotas(capacidadTotalMb: number, year: number, month: number): Promise<number> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId || capacidadTotalMb <= 0) return 0;
 
     // No pisa un reparto ya hecho a mano.
@@ -97,7 +99,7 @@ export class StorageService {
 
   /** Megabytes que ocupa hoy cada categoria del acervo. */
   async getOcupacionPorCategoria(): Promise<Record<string, number>> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return {};
 
     const docs = await this.firebase.getDocumentos(userId);

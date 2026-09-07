@@ -1,26 +1,209 @@
-// ===============================================
-// FIREBASE FIRESTORE SECURITY RULES
-// ===============================================
-// Para desplegar: firebase deploy --only firestore:rules
-// ===============================================
-
 rules_version = '2';
+
+// ===============================================
+// REGLAS DE SEGURIDAD — ARCHIVA
+// ===============================================
+//
+// Las guardas del cliente son de experiencia: cualquiera puede saltárselas
+// con las herramientas del navegador. La frontera real es esto.
+//
+// Modelo: los datos cuelgan de la empresa, no de la persona. La pertenencia
+// —empresas/{eid}/miembros/{uid}— es lo que concede acceso y fija el rol.
+//
+// Para desplegar:  firebase deploy --only firestore:rules
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // ---------------------------
-    // USUARIOS (solo él mismo)
-    // ---------------------------
-    match /users/{userId} {
-      // Solo el usuario puede leer/escribir sus propios datos
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      
-      // Subcolecciones del usuario
-      match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
+
+    // -------------------------------------------
+    // AYUDAS
+    // -------------------------------------------
+
+    function autenticado() {
+      return request.auth != null;
     }
-    
+
+    function miPerfil() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
+    function miMembresia(eid) {
+      return get(/databases/$(database)/documents/empresas/$(eid)/miembros/$(request.auth.uid)).data;
+    }
+
+    function existeMembresia(eid) {
+      return autenticado() &&
+             exists(/databases/$(database)/documents/empresas/$(eid)/miembros/$(request.auth.uid));
+    }
+
+    // Solo un miembro activo opera. Invitado y suspendido conservan su
+    // historial pero no entran.
+    function esMiembroActivo(eid) {
+      return existeMembresia(eid) && miMembresia(eid).estado == 'activo';
+    }
+
+    function miRol(eid) {
+      return miMembresia(eid).rol;
+    }
+
+    function tieneRol(eid, roles) {
+      return esMiembroActivo(eid) && miRol(eid) in roles;
+    }
+
+    function esAdmin(eid) {
+      return tieneRol(eid, ['ADMIN_EMPRESA']);
+    }
+
+    // Quien puede resolver etapas de aprobación.
+    function esAprobador(eid) {
+      return tieneRol(eid, ['ADMIN_EMPRESA', 'GERENTE', 'JEFE_AREA', 'SUPERVISOR']);
+    }
+
+    // Quien puede definir flujos y cuotas.
+    function esGestor(eid) {
+      return tieneRol(eid, ['ADMIN_EMPRESA', 'GERENTE', 'JEFE_AREA']);
+    }
+
+    // -------------------------------------------
+    // PERFIL GLOBAL
+    // -------------------------------------------
+    // Dice a qué empresa pertenece cada persona. Hay que poder leerlo antes
+    // de conocer la empresa, así que no puede colgar de ella.
+
+    match /usuarios/{uid} {
+      allow read: if autenticado() && request.auth.uid == uid;
+
+      // Se crea al aceptar una invitación. El vínculo con la empresa no se
+      // reescribe desde el cliente: cambiarlo sería saltar de empresa.
+      allow create: if autenticado() && request.auth.uid == uid;
+      allow update: if autenticado() && request.auth.uid == uid
+                    && request.resource.data.empresaId == resource.data.empresaId;
+      allow delete: if false;
+    }
+
+    // -------------------------------------------
+    // ÍNDICE DE INVITACIONES POR TESTIGO
+    // -------------------------------------------
+    // Quien acepta una invitación todavía no pertenece a ninguna empresa,
+    // así que necesita leer este índice sin estar autenticado. Solo guarda
+    // el mínimo para localizar la invitación: empresa, identificador,
+    // correo y vencimiento. Conocer el testigo es la credencial.
+
+    match /invitaciones/{token} {
+      allow get: if true;
+      allow list: if false;   // no se puede enumerar
+      allow create, update: if autenticado();
+      allow delete: if false;
+    }
+
+    // -------------------------------------------
+    // EMPRESA
+    // -------------------------------------------
+
+    match /empresas/{eid} {
+
+      // La lee cualquier miembro; la edita solo quien administra.
+      allow read: if esMiembroActivo(eid);
+      allow update: if esAdmin(eid);
+
+      // El alta de empresas no se hace desde el cliente: la crea el
+      // aprovisionamiento inicial con credenciales de servidor.
+      allow create, delete: if false;
+
+      // ---- Personas ----
+      match /miembros/{uid} {
+        // Cada persona lee su propia pertenencia aunque aún no esté
+        // activa: es como la aplicación descubre que está suspendida.
+        allow get: if autenticado() &&
+                   (request.auth.uid == uid || esMiembroActivo(eid));
+        allow list: if esMiembroActivo(eid);
+
+        // Solo quien administra concede o retira acceso, y nunca sobre sí
+        // mismo: el único administrador no puede dejarse fuera.
+        allow create: if esAdmin(eid) || request.auth.uid == uid;
+        allow update: if esAdmin(eid) && request.auth.uid != uid;
+        allow delete: if false;   // se suspende, no se borra
+      }
+
+      // ---- Invitaciones ----
+      match /invitaciones/{id} {
+        allow read: if esMiembroActivo(eid);
+        allow create, update: if esAdmin(eid);
+        allow delete: if false;
+      }
+
+      // ---- Acervo documental ----
+      match /documentos/{id} {
+        allow read: if esMiembroActivo(eid);
+        allow create: if esMiembroActivo(eid);
+        allow update: if esMiembroActivo(eid);
+        allow delete: if false;   // se archiva, no se borra
+
+        match /archivos/{archivoId} {
+          allow read, write: if esMiembroActivo(eid);
+        }
+      }
+
+      match /solicitudes/{id} {
+        allow read: if esMiembroActivo(eid);
+        allow create: if esMiembroActivo(eid);
+        allow update: if esAprobador(eid) ||
+                         resource.data.solicitante == miMembresia(eid).nombre;
+        allow delete: if false;
+      }
+
+      // ---- Flujos y aprobaciones ----
+      match /flujos/{id} {
+        allow read: if esMiembroActivo(eid);
+        allow create, update: if esGestor(eid);
+        allow delete: if false;
+      }
+
+      match /tareas/{id} {
+        allow read: if esMiembroActivo(eid);
+        allow create: if esGestor(eid);
+
+        // Una etapa la resuelve quien la tiene asignada, o quien
+        // administra para poder desatascarla.
+        allow update: if esAprobador(eid) &&
+                      (resource.data.asignadoUid == request.auth.uid ||
+                       resource.data.responsableUid == request.auth.uid ||
+                       esAdmin(eid));
+        allow delete: if false;
+      }
+
+      // ---- Bitácora ----
+      // Registro permanente: se añade y se lee, nunca se modifica.
+      match /bitacora/{id} {
+        allow read: if esMiembroActivo(eid);
+        allow create: if esMiembroActivo(eid);
+        allow update: if esMiembroActivo(eid) &&
+                      request.resource.data.diff(resource.data)
+                        .affectedKeys().hasOnly(['anulado', 'anuladoEl']);
+        allow delete: if false;
+      }
+
+      // ---- Auditoría ----
+      // La evidencia ante una auditoría no se toca una vez escrita.
+      match /auditoria/{id} {
+        allow read: if esMiembroActivo(eid);
+        allow create: if esMiembroActivo(eid);
+        allow update, delete: if false;
+      }
+
+      // ---- Almacenamiento ----
+      match /periodos/{periodoId} {
+        allow read: if esMiembroActivo(eid);
+        allow write: if esGestor(eid);
+
+        match /{documento=**} {
+          allow read: if esMiembroActivo(eid);
+          allow write: if esGestor(eid);
+        }
+      }
+
+      // Cualquier otra subcolección queda denegada por omisión: añadir una
+      // exige declararla aquí, y eso es deliberado.
+    }
   }
 }

@@ -19,6 +19,7 @@ import {
   AREAS_EMISORAS,
   TIPOS_DOCUMENTALES
 } from '../models/document.model';
+import { TenantService } from './tenant';
 
 /** Adjunto de un documento, sin el contenido salvo al descargarlo. */
 export interface ArchivoAdjunto {
@@ -49,6 +50,7 @@ export interface ResumenAcervo {
 export class DocumentService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
+  private tenant = inject(TenantService);
   private historyService = inject(HistoryService);
   private company = inject(CompanyService);
 
@@ -62,7 +64,7 @@ export class DocumentService {
   // ============================================
 
   async getAll(): Promise<Documento[]> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return [];
     const data = await this.firebase.getDocumentos(userId);
     return data.map((d: any) => this.normalizar(d));
@@ -92,7 +94,7 @@ export class DocumentService {
   // ============================================
 
   async create(payload: DocumentoPayload): Promise<Documento> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     // El codigo siempre se genera: es un correlativo del sistema, no un
@@ -149,8 +151,17 @@ export class DocumentService {
   }
 
   async update(documentoId: string, payload: Partial<DocumentoPayload>): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
+
+    // Un documento con etapas de aprobacion vivas queda bloqueado: si se
+    // edita mientras alguien lo aprueba, la aprobacion deja de valer.
+    if (await this.enFlujoActivo(documentoId)) {
+      throw new Error(
+        'Este documento está recorriendo un flujo de aprobación. ' +
+        'Para modificarlo, pide que la etapa en curso se devuelva con una corrección.'
+      );
+    }
 
     const cambios: Record<string, unknown> = { updatedAt: new Date().toISOString() };
 
@@ -191,7 +202,7 @@ export class DocumentService {
     nuevoEstado: EstadoDocumental,
     opciones: { motivo?: string; responsable?: string } = {}
   ): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     if (!puedeTransicionar(doc.estado, nuevoEstado)) {
@@ -240,7 +251,7 @@ export class DocumentService {
     doc: Documento,
     datos: { folios?: number; resumenCambio: string }
   ): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const proximasRenovaciones = generarOcurrencias(doc.renovacion, 6);
@@ -298,7 +309,7 @@ export class DocumentService {
   ];
 
   async adjuntarArchivo(documentoId: string, file: File): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     if (file.size > DocumentService.MAX_ARCHIVO_BYTES) {
@@ -338,21 +349,21 @@ export class DocumentService {
   }
 
   async getArchivos(documentoId: string): Promise<ArchivoAdjunto[]> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return [];
     return this.firebase.getArchivosMeta(userId, documentoId) as Promise<ArchivoAdjunto[]>;
   }
 
   /** Devuelve la data URL completa, solo cuando se va a descargar. */
   async getContenidoArchivo(documentoId: string, archivoId: string): Promise<string | null> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return null;
     const a = await this.firebase.getArchivo(userId, documentoId, archivoId);
     return a?.['contenido'] ?? null;
   }
 
   async eliminarArchivo(documentoId: string, archivoId: string): Promise<void> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
     await this.firebase.eliminarArchivo(userId, documentoId, archivoId);
   }
@@ -448,6 +459,30 @@ export class DocumentService {
   // ============================================
 
   /** Correlativo siguiente dentro de la misma categoria y area. */
+  /**
+   * ¿Tiene el documento etapas de aprobacion sin resolver?
+   *
+   * Se consulta contra la coleccion de tareas. Es una lectura mas por
+   * edicion, y evita el problema mucho mayor de aprobar una version y
+   * archivar otra.
+   */
+  private async enFlujoActivo(documentoId: string): Promise<boolean> {
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return false;
+
+    try {
+      const tareas = await this.firebase.getTareas(empresaId);
+      return (tareas as any[]).some(t =>
+        t.documentoId === documentoId &&
+        ['pendiente', 'en_curso', 'delegada'].includes(t.estado)
+      );
+    } catch {
+      // Si no se puede comprobar, no se bloquea: impedir editar por un
+      // fallo de red seria peor que el riesgo que se intenta evitar.
+      return false;
+    }
+  }
+
   private async siguienteCodigo(category: CategoriaDocumental, area: AreaEmisora): Promise<string> {
     const docs = await this.getAll();
 

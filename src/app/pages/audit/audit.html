@@ -1,0 +1,94 @@
+<div class="page">
+
+  <header class="page-header">
+    <div>
+      <h1>Auditoría</h1>
+      <p class="page-subtitle">
+        Quién hizo qué y cuándo. Los asientos no se editan ni se borran.
+      </p>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="aviso" role="alert">
+      <app-icon name="shield-alert" [size]="20" />
+      <p>{{ error() }}</p>
+    </div>
+  }
+
+  @if (cargando()) {
+    <div class="cargando">
+      <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+    </div>
+  } @else if (asientos().length > 0) {
+
+    <div class="filtros">
+      <div class="filtros__tipos" role="group" aria-label="Filtrar por tipo">
+        @for (e of entidades; track e.value) {
+          @if (conteoPorEntidad()[e.value] > 0) {
+            <button class="pill" [class.pill--activa]="filtroEntidad() === e.value"
+                    [attr.aria-pressed]="filtroEntidad() === e.value"
+                    (click)="alternar(e.value)">
+              {{ e.label }}
+              <span class="pill__n">{{ conteoPorEntidad()[e.value] }}</span>
+            </button>
+          }
+        }
+      </div>
+
+      <label class="campo">
+        <span class="sr-only">Buscar en el registro</span>
+        <app-icon name="search" [size]="16" />
+        <input type="search" placeholder="Buscar por persona, documento o motivo…"
+               [value]="busqueda()" (input)="busqueda.set($any($event.target).value)">
+      </label>
+    </div>
+
+    @if (porDia().length > 0) {
+      @for (dia of porDia(); track dia.fecha) {
+        <section class="dia">
+          <h2 class="dia__fecha">{{ fechaLarga(dia.fecha) }}</h2>
+
+          <ol class="asientos">
+            @for (a of dia.asientos; track a.id) {
+              <li class="asiento">
+                <span class="asiento__hora">{{ a.hora }}</span>
+                <span class="asiento__marca" [style.background]="token(a)" aria-hidden="true"></span>
+
+                <div class="asiento__cuerpo">
+                  <p class="asiento__frase">{{ frase(a) }}</p>
+                  @if (a.detalle) {
+                    <p class="asiento__detalle">{{ a.detalle }}</p>
+                  }
+                  <div class="asiento__meta">
+                    <span>{{ a.actorRol }}</span>
+                    @if (a.agente) {
+                      <span class="asiento__agente" [title]="a.agente">
+                        Desde el navegador
+                      </span>
+                    }
+                  </div>
+                </div>
+              </li>
+            }
+          </ol>
+        </section>
+      }
+    } @else {
+      <div class="vacio">
+        <app-icon name="search" [size]="40" />
+        <p>Ningún asiento coincide con el filtro.</p>
+        <button class="btn" (click)="filtroEntidad.set(null); busqueda.set('')">Ver todo</button>
+      </div>
+    }
+  } @else {
+    <div class="vacio">
+      <app-icon name="scroll-text" [size]="48" />
+      <h2>El registro está vacío</h2>
+      <p>
+        En cuanto alguien registre un documento, apruebe una etapa o cambie la
+        configuración, quedará constancia aquí.
+      </p>
+    </div>
+  }
+</div>

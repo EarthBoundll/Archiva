@@ -9,6 +9,7 @@ import {
   TipoMovimiento,
   tipoDeAccion
 } from '../models/history.model';
+import { TenantService } from './tenant';
 
 /**
  * Bitacora documental.
@@ -21,9 +22,10 @@ import {
 export class HistoryService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
+  private tenant = inject(TenantService);
 
   async getPorPeriodo(year: number, month: number): Promise<RegistroHistorial[]> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return [];
 
     await this.asegurarUnificada(userId);
@@ -33,7 +35,7 @@ export class HistoryService {
 
   /** Bitacora completa, para la vista de auditoria. */
   async getBitacora(): Promise<RegistroHistorial[]> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) return [];
 
     await this.asegurarUnificada(userId);
@@ -47,7 +49,7 @@ export class HistoryService {
   }
 
   async create(payload: RegistroHistorialPayload): Promise<RegistroHistorial> {
-    const userId = this.authService.getUserId();
+    const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
     const ahora = new Date().toISOString();

@@ -25,6 +25,20 @@ No es un repositorio de archivos. Es un sistema de **control**: responde en todo
 
 ## Módulos
 
+### Empresa y personas
+- **Multiempresa**: documentos, flujos, solicitudes, bitácora y cuotas cuelgan de la empresa, no del usuario
+- **Cinco roles** con permisos declarados en una matriz: administrador, gerencia, jefatura de área, supervisión y colaborador
+- **Invitaciones** con testigo de un solo uso y siete días de vigencia; revocables y reenviables
+- **Suspensión** que retira el acceso sin borrar el historial
+- **Aislamiento** aplicado en el cliente y, sobre todo, en las reglas de Firestore
+
+### Bandeja y aprobaciones
+- **Cinco bandejas**: mis pendientes, mis aprobaciones, mis observaciones, mis documentos e historial
+- **Seis acciones** sobre una etapa: aprobar, observar, rechazar, solicitar corrección, delegar y reasignar
+- **Delegar** mantiene al titular; **reasignar** transfiere la responsabilidad
+- Un documento con etapas vivas **queda bloqueado para edición**
+- **Trazabilidad**: quién creó, editó, aprobó, observó o rechazó, con fecha, hora y navegador
+
 ### Documentos
 - **12 categorías documentales**: contratos, facturas, órdenes de compra, memorandos, oficios, informes, resoluciones, convenios, manuales, políticas, procedimientos y otros
 - **28 tipos documentales** agrupados por categoría
@@ -50,6 +64,8 @@ No es un repositorio de archivos. Es un sistema de **control**: responde en todo
 - **Filtros** por acción, categoría, documento y texto libre
 
 ### Flujos de Aprobación
+- **Etapas con responsable**: cada una declara quién la resuelve y en cuántos días
+- **Duplicar** un flujo como plantilla, sin arrastrar su historial
 - **Alta, edición y anulación** con motivo registrado
 - **Resolución por etapas** en orden: aprobar avanza, observar devuelve, rechazar suspende
 - **Reanudación** de un flujo suspendido, conservando lo ya resuelto
@@ -99,7 +115,12 @@ src/app/
 │   ├── layout/            # Sidebar, Topbar y navegación móvil
 │   ├── directives/        # Diálogo accesible: Escape, foco y retorno
 │   ├── models/
+│   │   ├── rbac.model.ts           # Roles, permisos y matriz
 │   │   ├── company.model.ts        # Empresa, RUC, sector y prefijo
+│   │   ├── member.model.ts         # Pertenencia y estado
+│   │   ├── invitation.model.ts     # Invitaciones y testigos
+│   │   ├── approval.model.ts       # Tareas de aprobación y bandejas
+│   │   ├── audit.model.ts          # Trazabilidad
 │   │   ├── document.model.ts       # Documentos, estados y vencimiento
 │   │   ├── review-request.model.ts # Solicitudes de revisión
 │   │   ├── history.model.ts        # Bitácora documental
@@ -114,7 +135,11 @@ src/app/
 │   │   ├── workflow.ts             # Flujos de aprobación
 │   │   ├── storage.ts              # Almacenamiento
 │   │   ├── alerts.ts               # Motor de alertas
+│   │   ├── tenant.ts               # Empresa y rol de la sesión
 │   │   ├── company.ts              # Configuración de la empresa
+│   │   ├── members.ts              # Personas e invitaciones
+│   │   ├── approvals.ts            # Tareas de aprobación
+│   │   ├── audit.ts                # Registro de trazabilidad
 │   │   └── dev-settings.ts
 │   └── utils/
 └── pages/
@@ -128,10 +153,38 @@ src/app/
     ├── archive/           # Archivo histórico
     ├── indicators/        # Indicadores documentales
     ├── alerts/            # Alertas
+    ├── inbox/             # Bandeja de aprobaciones
+    ├── users/             # Personas e invitaciones
+    ├── audit/             # Registro de trazabilidad
     ├── settings/          # Configuración empresarial
-    ├── onboarding/        # Configuración inicial
+    ├── invitation/        # Aceptar una invitación
+    ├── no-access/         # Sin pertenencia o sin permiso
     └── login/             # Acceso
 ```
+
+---
+
+## Modelo de datos
+
+```
+usuarios/{uid}                          → a qué empresa pertenece
+invitaciones/{token}                    → índice público mínimo, por testigo
+
+empresas/{empresaId}
+  ├── miembros/{uid}                    → rol y estado: concede el acceso
+  ├── invitaciones/{id}
+  ├── documentos/{id}/archivos/{id}
+  ├── solicitudes/{id}
+  ├── flujos/{id}
+  ├── tareas/{id}                       → etapas de aprobación
+  ├── bitacora/{id}
+  ├── auditoria/{id}                    → solo se añade
+  └── periodos/{periodoId}/almacenamiento/{categoria}
+```
+
+La pertenencia es lo que abre la puerta: las reglas de Firestore leen
+`empresas/{eid}/miembros/{uid}` en cada operación y comprueban estado y rol.
+Sin ella, todo queda denegado por omisión.
 
 ---
 

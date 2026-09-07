@@ -1,0 +1,135 @@
+<div class="pantalla">
+  <div class="tarjeta">
+
+    <div class="marca">
+      <svg class="marca__logo" viewBox="0 0 260 48" role="img" aria-label="ARCHIVA" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="10" width="40" height="30" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M2 18 h40" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M14 8 h18 l3 4 H11 z" fill="currentColor"/>
+        <path d="M14 27 h16 M14 33 h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        <text x="56" y="35" font-family="Archivo, sans-serif" font-size="27" font-weight="700" letter-spacing="3" fill="currentColor">ARCHIVA</text>
+      </svg>
+    </div>
+
+    @switch (fase()) {
+
+      @case ('comprobando') {
+        <div class="estado">
+          <div class="giro" aria-hidden="true"></div>
+          <p>Comprobando la invitación…</p>
+        </div>
+      }
+
+      @case ('invalida') {
+        <div class="estado estado--alto">
+          <app-icon name="file-x" [size]="44" />
+          <h1>Esta invitación no sirve</h1>
+          <p>{{ motivo() }}</p>
+          <a class="btn" routerLink="/login">Ir al acceso</a>
+        </div>
+      }
+
+      @case ('hecha') {
+        <div class="estado estado--alto">
+          <app-icon name="check-circle" [size]="44" />
+          <h1>Cuenta activada</h1>
+          <p>Entrando en {{ invitacion()?.empresaNombre || 'tu empresa' }}…</p>
+        </div>
+      }
+
+      @default {
+        @if (invitacion(); as inv) {
+          <header class="cabecera">
+            <h1>Te han invitado a ARCHIVA</h1>
+            <p class="cabecera__sub">
+              Elige una contraseña para activar tu cuenta. Nadie más puede usar este enlace.
+            </p>
+          </header>
+
+          <dl class="datos">
+            <div>
+              <dt>Nombre</dt>
+              <dd>{{ inv.nombre }}</dd>
+            </div>
+            <div>
+              <dt>Correo</dt>
+              <dd class="mono">{{ inv.email }}</dd>
+            </div>
+            <div>
+              <dt>Rol</dt>
+              <dd>{{ etiquetaRol() }}</dd>
+            </div>
+            <div>
+              <dt>Área</dt>
+              <dd>{{ etiquetaArea() }}</dd>
+            </div>
+            @if (inv.cargo) {
+              <div>
+                <dt>Cargo</dt>
+                <dd>{{ inv.cargo }}</dd>
+              </div>
+            }
+            <div>
+              <dt>Te invitó</dt>
+              <dd>{{ inv.invitadaPorNombre }}</dd>
+            </div>
+          </dl>
+
+          <p class="vigencia">
+            @if (dias() <= 1) {
+              El enlace caduca hoy.
+            } @else {
+              El enlace caduca en {{ dias() }} días.
+            }
+          </p>
+
+          <form class="formulario" (submit)="$event.preventDefault(); aceptar()">
+
+            <div class="campo">
+              <label for="inv-pass">Tu contraseña</label>
+              <div class="campo__caja">
+                <input [type]="verContrasena() ? 'text' : 'password'"
+                       id="inv-pass" autocomplete="new-password"
+                       [value]="contrasena()"
+                       (input)="contrasena.set($any($event.target).value)"
+                       placeholder="Al menos 8 caracteres">
+                <button type="button" class="campo__ojo"
+                        (click)="verContrasena.set(!verContrasena())"
+                        [attr.aria-label]="verContrasena() ? 'Ocultar contraseña' : 'Mostrar contraseña'">
+                  <app-icon [name]="verContrasena() ? 'x-circle' : 'search'" [size]="18" />
+                </button>
+              </div>
+              <app-password-strength [password]="contrasena()" />
+            </div>
+
+            <div class="campo">
+              <label for="inv-pass2">Repítela</label>
+              <input [type]="verContrasena() ? 'text' : 'password'"
+                     id="inv-pass2" autocomplete="new-password"
+                     [value]="repeticion()"
+                     (input)="repeticion.set($any($event.target).value)"
+                     [attr.aria-invalid]="!coinciden()">
+              @if (!coinciden()) {
+                <span class="campo__error">Las dos contraseñas no coinciden.</span>
+              }
+            </div>
+
+            @if (error()) {
+              <p class="aviso" role="alert">{{ error() }}</p>
+            }
+
+            <button type="submit" class="btn btn--primary"
+                    [disabled]="!puedeEnviar() || fase() === 'creando'">
+              {{ fase() === 'creando' ? 'Activando…' : 'Activar mi cuenta' }}
+            </button>
+          </form>
+
+          <p class="pie">
+            ARCHIVA no admite altas por cuenta propia. Esta invitación la emitió
+            un administrador de {{ inv.empresaNombre || 'la empresa' }}.
+          </p>
+        }
+      }
+    }
+  </div>
+</div>

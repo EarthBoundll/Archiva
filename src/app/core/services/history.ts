@@ -10,6 +10,8 @@ import {
   tipoDeAccion
 } from '../models/history.model';
 import { TenantService } from './tenant';
+import { AuditService } from './audit';
+import { AccionAuditada, EntidadAuditada } from '../models/audit.model';
 
 /**
  * Bitacora documental.
@@ -18,11 +20,30 @@ import { TenantService } from './tenant';
  * acciones del ciclo de vida, nunca a mano, y no se edita ni se borra.
  * Esa inmutabilidad es lo que la hace valer como evidencia.
  */
+/**
+ * Que asiento de auditoria corresponde a cada movimiento documental.
+ *
+ * La tabla es explicita porque los dos vocabularios no son el mismo: la
+ * bitacora habla de lo que le pasa a un documento, la auditoria de lo
+ * que hizo una persona.
+ */
+const EQUIVALE: Record<AccionDocumental, AccionAuditada> = {
+  creacion:       'creo',
+  edicion:        'edito',
+  nueva_version:  'edito',
+  envio_revision: 'envio_revision',
+  aprobacion:     'aprobo',
+  observacion:    'observo',
+  rechazo:        'rechazo',
+  archivado:      'archivo'
+};
+
 @Injectable({ providedIn: 'root' })
 export class HistoryService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
   private tenant = inject(TenantService);
+  private audit = inject(AuditService);
 
   async getPorPeriodo(year: number, month: number): Promise<RegistroHistorial[]> {
     const userId = this.tenant.empresaOpcional();
@@ -48,7 +69,20 @@ export class HistoryService {
       .sort((a, b) => (b.date + (b.time ?? '')).localeCompare(a.date + (a.time ?? '')));
   }
 
-  async create(payload: RegistroHistorialPayload): Promise<RegistroHistorial> {
+  /**
+   * Registra un movimiento.
+   *
+   * De aqui salen los dos asientos: el de la bitacora, que cuenta lo que
+   * le paso al documento, y el de la auditoria, que cuenta quien lo hizo.
+   * Escribir los dos desde el mismo sitio es lo que impide que discrepen.
+   *
+   * @param traza sobre que entidad se anota en auditoria. Por omision, el
+   *              documento; las etapas de aprobacion pasan su tarea.
+   */
+  async create(
+    payload: RegistroHistorialPayload,
+    traza?: { entidad: EntidadAuditada; entidadId: string; etiqueta?: string }
+  ): Promise<RegistroHistorial> {
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
@@ -71,6 +105,17 @@ export class HistoryService {
     };
 
     const creado = await this.firebase.crearRegistro(userId, registro);
+
+    // La auditoria nunca bloquea: el movimiento ya quedo escrito, y
+    // perderlo por no poder anotar quien lo hizo seria peor.
+    await this.audit.registrarSobre(
+      EQUIVALE[payload.accion],
+      traza?.entidad ?? 'documento',
+      traza?.entidadId ?? payload.documentoId ?? creado.id,
+      traza?.etiqueta ?? `${payload.codigo} · ${payload.titulo}`,
+      payload.detalle
+    );
+
     return this.normalizar(creado);
   }
 

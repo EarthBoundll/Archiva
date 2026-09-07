@@ -153,15 +153,43 @@ service cloud.firestore {
       }
 
       // ---- Flujos y aprobaciones ----
+      // ---- Flujos ----
+      // Se distinguen dos cosas que viven en la misma colección:
+      //
+      //   plantilla  → sin documentoId. Define QUIÉN aprueba y en qué
+      //                orden. Solo la jefatura la escribe.
+      //   expediente → con documentoId. Es el paso de un documento
+      //                concreto por una plantilla.
+      //
+      // Cualquier miembro activo puede abrir un expediente sobre un
+      // documento —quien redacta un contrato tiene que poder mandarlo a
+      // aprobar—, pero no puede tocar la plantilla, que es donde se
+      // decide quién lo aprueba. Sin esta distinción habría que elegir
+      // entre que nadie envíe nada o que cualquiera se nombre aprobador.
       match /flujos/{id} {
         allow read: if esMiembroActivo(eid);
-        allow create, update: if esGestor(eid);
+
+        allow create: if esGestor(eid) ||
+                      (esMiembroActivo(eid) &&
+                       request.resource.data.documentoId is string &&
+                       request.resource.data.duplicadoDe is string);
+
+        // El avance del expediente lo escribe el motor de aprobaciones al
+        // resolver una etapa: no exige ser gestor, pero sí ser aprobador.
+        allow update: if esGestor(eid) ||
+                      (esAprobador(eid) && resource.data.documentoId is string);
+
         allow delete: if false;
       }
 
       match /tareas/{id} {
         allow read: if esMiembroActivo(eid);
-        allow create: if esGestor(eid);
+
+        // El responsable de una etapa tiene que ser alguien que exista en
+        // la empresa. Sin esta comprobación, quien abre un expediente
+        // podría inventarse un aprobador y firmar su propio documento.
+        allow create: if (esGestor(eid) || esMiembroActivo(eid)) &&
+                      exists(/databases/$(database)/documents/empresas/$(eid)/miembros/$(request.resource.data.responsableUid));
 
         // Una etapa la resuelve quien la tiene asignada, o quien
         // administra para poder desatascarla.

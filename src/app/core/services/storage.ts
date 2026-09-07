@@ -4,6 +4,7 @@ import { Auth } from './auth';
 import { CuotaAlmacenamiento, CuotaPayload, ResumenAlmacenamiento, calcularEstadoCuota } from '../models/storage.model';
 import { CATEGORIAS_DOCUMENTALES, type CategoriaDocumental } from '../models/document.model';
 import { TenantService } from './tenant';
+import { AuditService } from './audit';
 
 /**
  * Series documentales cuya conservacion exige la norma. Son las que se
@@ -18,6 +19,7 @@ export class StorageService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
   private tenant = inject(TenantService);
+  private audit = inject(AuditService);
 
   async getPorPeriodo(year: number, month: number): Promise<CuotaAlmacenamiento[]> {
     const userId = this.tenant.empresaOpcional();
@@ -32,6 +34,12 @@ export class StorageService {
     if (!userId) throw new Error('No autenticado');
 
     const result = await this.firebase.definirCuota(userId, payload);
+    await this.audit.registrarSobre(
+      'edito', 'cuota', payload.category,
+      'Cuota de ' + payload.category,
+      'Capacidad fijada en ' + payload.budgetedAmount + ' MB'
+    );
+
     return result as CuotaAlmacenamiento;
   }
 

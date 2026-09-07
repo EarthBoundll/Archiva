@@ -142,17 +142,34 @@
               </span>
 
               <div class="doc__acciones">
-                @for (a of accionesDe(d); track a.value) {
-                  <button class="btn-accion" (click)="pedirCambioEstado(d, a.value)"
-                          [title]="a.descripcion">
-                    {{ a.label }}
+                @if (estaBloqueado(d)) {
+                  <span class="doc__candado" title="Alguien lo está aprobando ahora mismo">
+                    <app-icon name="lock" [size]="13" />
+                    En aprobación
+                  </span>
+                } @else {
+                  @for (a of accionesDe(d); track a.value) {
+                    <button class="btn-accion" (click)="pedirCambioEstado(d, a.value)"
+                            [title]="a.descripcion">
+                      {{ a.label }}
+                    </button>
+                  }
+                }
+
+                @if (puedeEnviar(d)) {
+                  <button class="btn-accion btn-accion--flujo" (click)="abrirEnvio(d)"
+                          title="Abrir un expediente de aprobación sobre este documento">
+                    Enviar a aprobación
                   </button>
                 }
+
                 <button class="btn-accion" (click)="abrirArchivos(d)">
                   Archivos
                 </button>
-                <button class="btn-accion" (click)="abrirNuevaVersion(d)">Nueva versión</button>
-                <button class="btn-accion" (click)="abrirEdicion(d)">Editar</button>
+                @if (!estaBloqueado(d)) {
+                  <button class="btn-accion" (click)="abrirNuevaVersion(d)">Nueva versión</button>
+                  <button class="btn-accion" (click)="abrirEdicion(d)">Editar</button>
+                }
               </div>
             </div>
           </li>
@@ -484,3 +501,62 @@
   }
 
 </div>
+
+<!-- ===== Modal: enviar a aprobación ===== -->
+@if (modalFlujo(); as doc) {
+  <div class="overlay" (click)="cerrarEnvio()">
+    <div class="modal modal--sm" appDialogo (cerrar)="cerrarEnvio()"
+         aria-labelledby="titulo-envio" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-envio">Enviar a aprobación</h3>
+        <button class="btn-cerrar" (click)="cerrarEnvio()" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        <p class="modal__contexto">
+          <strong>{{ doc.codigo }}</strong> · {{ doc.titulo }}
+        </p>
+
+        @if (plantillas().length === 0) {
+          <p class="aviso-vacio">
+            No hay ningún flujo con etapas definidas. Crea uno en
+            <strong>Flujos</strong> antes de enviar documentos a aprobación.
+          </p>
+        } @else {
+          <div class="campo-form">
+            <label for="env-flujo">Flujo por el que debe pasar</label>
+            <select id="env-flujo" [value]="fPlantilla()"
+                    (change)="fPlantilla.set($any($event.target).value)">
+              <option value="">Elige un flujo…</option>
+              @for (f of plantillas(); track f.id) {
+                <option [value]="f.id">
+                  {{ f.name }} · {{ f.etapasDefinidas?.length }} etapas
+                </option>
+              }
+            </select>
+          </div>
+
+          <p class="nota-form">
+            Se abre un expediente propio para este documento. Quedará
+            bloqueado para edición hasta que el flujo termine.
+          </p>
+        }
+
+        @if (errorMsg()) {
+          <p class="error-form" role="alert">{{ errorMsg() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="cerrarEnvio()">Cancelar</button>
+        <button class="btn btn--primary" (click)="confirmarEnvio()"
+                [disabled]="enviando() || plantillas().length === 0">
+          {{ enviando() ? 'Abriendo…' : 'Abrir expediente' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

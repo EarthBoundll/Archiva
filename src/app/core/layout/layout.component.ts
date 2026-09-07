@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { Auth } from '../services/auth';
@@ -6,6 +6,7 @@ import { LayoutService } from '../services/layout.service';
 import { ThemeService } from '../services/theme.service';
 import { DialogoDirective } from '../directives/dialogo.directive';
 import { TenantService } from '../services/tenant';
+import { SessionService } from '../services/session';
 import { CompanyService } from '../services/company';
 import { Permiso } from '../models/rbac.model';
 
@@ -269,6 +270,20 @@ import { Permiso } from '../models/rbac.model';
     </div>
 
       <!-- Confirmacion de cierre de sesion -->
+      <!-- Aviso de sesion a punto de caducar -->
+      @if (sesion.avisoRestante() !== null) {
+        <div class="aviso-sesion" role="alertdialog" aria-live="assertive"
+             aria-labelledby="aviso-sesion-titulo">
+          <div class="aviso-sesion__texto">
+            <strong id="aviso-sesion-titulo">Tu sesión va a cerrarse</strong>
+            <span>Sin actividad desde hace un rato. Se cerrará en {{ cuentaAtras() }}.</span>
+          </div>
+          <button class="aviso-sesion__btn" (click)="sesion.continuar()">
+            Sigo aquí
+          </button>
+        </div>
+      }
+
       @if (confirmandoSalida()) {
         <div class="salida-overlay" (click)="confirmandoSalida.set(false)">
           <div class="salida" appDialogo (cerrar)="confirmandoSalida.set(false)" (click)="$event.stopPropagation()" aria-labelledby="salida-titulo">
@@ -293,13 +308,14 @@ import { Permiso } from '../models/rbac.model';
   `,
   styleUrl: './layout.component.scss'
 })
-export class LayoutComponent implements OnInit {
+export class LayoutComponent implements OnInit, OnDestroy {
   /** Se expone al marcado para poder envolver cada enlace en su permiso. */
   readonly Permiso = Permiso;
   private auth = inject(Auth);
   layoutService = inject(LayoutService);
   theme = inject(ThemeService);
   tenant = inject(TenantService);
+  sesion = inject(SessionService);
   empresa = inject(CompanyService);
   
   toggleSidebar() {
@@ -350,7 +366,22 @@ export class LayoutComponent implements OnInit {
     return this.tenant.puede(p);
   }
 
+  ngOnDestroy() {
+    this.sesion.detener();
+  }
+
+  /** Minutos y segundos que faltan, para el aviso. */
+  cuentaAtras(): string {
+    const s = this.sesion.avisoRestante() ?? 0;
+    return String(Math.floor(s / 60)) + ':' + String(s % 60).padStart(2, '0');
+  }
+
   async ngOnInit() {
+    // La vigilancia arranca aqui porque el layout solo existe con sesion
+    // abierta: hacerlo en la raiz pondria el reloj a correr tambien en la
+    // pantalla de acceso, donde no hay nada que proteger.
+    this.sesion.iniciar();
+
     // La barra superior muestra el nombre de la empresa: hay que tenerlo
     // antes de pintarla.
     await this.empresa.cargar();
@@ -369,7 +400,9 @@ export class LayoutComponent implements OnInit {
     if (this.saliendo()) return;
     this.saliendo.set(true);
     try {
-      await this.auth.signOut();
+      // Por el servicio de sesion, no por auth directamente: es lo que
+      // deja el asiento de salida antes de perder la empresa resuelta.
+      await this.sesion.cerrar('voluntario');
     } finally {
       this.saliendo.set(false);
       this.confirmandoSalida.set(false);

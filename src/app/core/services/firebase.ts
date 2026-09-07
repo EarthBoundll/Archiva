@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from '@angular/fire/auth';
+import { Auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, onAuthStateChanged, User } from '@angular/fire/auth';
 import { Firestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, limit, writeBatch } from '@angular/fire/firestore';
 
 @Injectable({
@@ -72,12 +72,7 @@ export class FirebaseService {
     return signOut(this.auth);
   }
 
-  async signInWithGoogle() {
-    const provider = new GoogleAuthProvider();
-    return signInWithPopup(this.auth, provider);
-  }
-
-  // ============================================
+// ============================================
   // USER PROFILE
   // ============================================
   // ============================================
@@ -442,49 +437,7 @@ export class FirebaseService {
     await setDoc(docRef, this.limpiar({ ...data, updatedAt: new Date().toISOString() }), { merge: true });
   }
 
-  /**
-   * Registra el resultado de una etapa y ajusta el estado del flujo.
-   *
-   * Solo una etapa aprobada hace avanzar el contador. Observarla lo deja
-   * donde estaba —el documento vuelve a quien lo presento y la misma etapa
-   * sigue pendiente— y rechazarla suspende el flujo: la negativa firme de
-   * un aprobador no puede quedar como un tramite mas.
-   */
-  async resolverEtapa(empresaId: string, flujoId: string, etapa: any) {
-    const flujo: any = await this.getFlujoPorId(empresaId, flujoId);
-    if (!flujo) throw new Error('El flujo ya no existe.');
-
-    const registro = {
-      id: `${Date.now()}-${etapa.orden}`,
-      orden: etapa.orden,
-      nombre: etapa.nombre,
-      aprobador: etapa.aprobador,
-      resultado: etapa.resultado,
-      observacion: etapa.observacion,
-      date: new Date().toISOString()
-    };
-
-    const avanza = etapa.resultado === 'aprobada';
-    const completadas = (flujo.etapasCompletadas || 0) + (avanza ? 1 : 0);
-    const totales = flujo.etapasTotales || 0;
-    const estaCompletado = completadas >= totales;
-
-    let status = flujo.status ?? 'active';
-    if (etapa.resultado === 'rechazada') status = 'paused';
-    else if (estaCompletado)             status = 'completed';
-    else                                 status = 'active';
-
-    const docRef = doc(this.firestore, `empresas/${empresaId}/flujos/${flujoId}`);
-    await setDoc(docRef, this.limpiar({
-      etapasCompletadas: completadas,
-      estaCompletado,
-      status,
-      etapas: [...(flujo.etapas || []), registro],
-      updatedAt: new Date().toISOString()
-    }), { merge: true });
-  }
-
-  /**
+/**
    * Retira el flujo del seguimiento sin borrarlo del expediente: en un
    * sistema documental nada desaparece, se anula y sigue consultable.
    */
@@ -869,49 +822,5 @@ export class FirebaseService {
       alerts,
       lastUpdated: new Date().toISOString()
     };
-  }
-
-  // ============================================
-  // SURPLUS & NOTIFICATIONS
-  // ============================================
-  async guardarRegistroCuota(empresaId: string, id: string, data: any) {
-    const docRef = doc(this.firestore, `empresas/${empresaId}/cuotas/${id}`);
-    return setDoc(docRef, this.limpiar(data), { merge: true });
-  }
-
-  async getRegistroCuota(empresaId: string, id: string): Promise<any> {
-    const docRef = doc(this.firestore, `empresas/${empresaId}/cuotas/${id}`);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docSnap.data() : null;
-  }
-
-  async getSurplusHistory(empresaId: string): Promise<any[]> {
-    const colRef = collection(this.firestore, `empresas/${empresaId}/cuotas`);
-    const q = query(colRef, orderBy('calculatedAt', 'desc'));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-  }
-
-  async saveNotification(empresaId: string, notification: any) {
-    const id = `${notification.year}-${String(notification.month).padStart(2, '0')}-${Date.now()}`;
-    const docRef = doc(this.firestore, `empresas/${empresaId}/notifications/${id}`);
-    return setDoc(docRef, this.limpiar(notification), { merge: true });
-  }
-
-  async getNotifications(empresaId: string, unreadOnly: boolean = false): Promise<any[]> {
-    const colRef = collection(this.firestore, `empresas/${empresaId}/notifications`);
-    let q = query(colRef, orderBy('createdAt', 'desc'), limit(20));
-    
-    if (unreadOnly) {
-      q = query(colRef, where('isRead', '==', false), orderBy('createdAt', 'desc'), limit(20));
-    }
-    
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-  }
-
-  async markNotificationAsRead(empresaId: string, notificationId: string) {
-    const docRef = doc(this.firestore, `empresas/${empresaId}/notifications/${notificationId}`);
-    return setDoc(docRef, this.limpiar({ isRead: true }), { merge: true });
   }
 }

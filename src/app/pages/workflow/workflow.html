@@ -141,10 +141,44 @@
                     @case ('aprobada')   { Aprobada }
                     @case ('actual')     { En curso }
                     @case ('suspendida') { Rechazada }
+                    @case ('devuelta')   { Devuelta }
+                    @case ('anulada')    { Sin efecto }
                     @default             { Pendiente }
                   }
                 </span>
               </div>
+
+              @if (e.tarea; as t) {
+                <p class="etapa__quien">
+                  <app-icon name="user" [size]="13" />
+                  <span>{{ t.asignadoNombre }}</span>
+                  @if (t.asignadoUid !== t.responsableUid) {
+                    <span class="etapa__delegada">por delegación de {{ t.responsableNombre }}</span>
+                  }
+                  @if (t.fechaLimite && e.estado === 'actual') {
+                    <span class="etapa__plazo" [class.etapa__plazo--vencido]="vencida(t)">
+                      {{ vencida(t) ? 'Fuera de plazo' : 'Vence ' + fechaLarga(t.fechaLimite) }}
+                    </span>
+                  }
+                </p>
+
+                @if (t.estado === 'resuelta') {
+                  <p class="etapa__resuelta">
+                    <strong>{{ etiquetaAccion(t.accion) }}</strong>
+                    por {{ t.resueltaPorNombre }} · {{ fechaHora(t.fechaResolucion!) }}
+                  </p>
+                  @if (t.motivo) {
+                    <p class="etapa__motivo">{{ t.motivo }}</p>
+                  }
+                }
+
+                @if (e.estado === 'actual' && t.estado !== 'resuelta') {
+                  <button class="btn btn--sm btn--primary etapa__accion"
+                          (click)="abrirResolver(t)">
+                    Resolver esta etapa
+                  </button>
+                }
+              }
 
               @if (e.resoluciones.length > 0) {
                 <ul class="resoluciones">
@@ -223,56 +257,63 @@
 </div>
 
 <!-- ============ RESOLVER ETAPA ============ -->
-@if (modalResolver() && siguiente(); as sig) {
+@if (modalResolver() && tareaActiva(); as t) {
   <div class="overlay" (click)="cerrarResolver()">
     <div class="modal" appDialogo (cerrar)="cerrarResolver()"
          aria-labelledby="titulo-resolver" (click)="$event.stopPropagation()">
 
       <div class="modal__header">
-        <h3 id="titulo-resolver">Resolver: {{ sig.nombre }}</h3>
+        <h3 id="titulo-resolver">Resolver: {{ t.etapaNombre }}</h3>
         <button class="btn-cerrar" (click)="cerrarResolver()" aria-label="Cerrar">
           <app-icon name="x" [size]="18" />
         </button>
       </div>
 
       <div class="modal__cuerpo">
-        <div class="campo-form">
-          <label for="re-aprobador">Quién resuelve</label>
-          <input id="re-aprobador" type="text" [value]="fAprobador()"
-                 (input)="fAprobador.set($any($event.target).value)"
-                 placeholder="Nombre y apellidos">
-        </div>
+        <p class="modal__contexto">
+          Etapa {{ t.orden }} de {{ t.etapasTotales }} ·
+          asignada a <strong>{{ t.asignadoNombre }}</strong>
+        </p>
 
         <fieldset class="opciones">
-          <legend>Resultado</legend>
-          @for (r of listaResultados; track r.value) {
-            <label class="opcion" [class.opcion--elegida]="fResultado() === r.value">
-              <input type="radio" name="resultado" [value]="r.value"
-                     [checked]="fResultado() === r.value"
-                     (change)="fResultado.set(r.value)">
-              <span class="opcion__marca" [style.color]="r.token">
-                <app-icon [name]="r.icon" [size]="16" />
+          <legend>Qué haces con esta etapa</legend>
+          @for (a of acciones(); track a.value) {
+            <label class="opcion" [class.opcion--elegida]="fAccion() === a.value">
+              <input type="radio" name="accion" [value]="a.value"
+                     [checked]="fAccion() === a.value"
+                     (change)="fAccion.set(a.value)">
+              <span class="opcion__marca" [style.color]="a.token">
+                <app-icon [name]="a.icon" [size]="16" />
               </span>
               <span class="opcion__texto">
-                <strong>{{ r.label }}</strong>
-                <small>{{ r.efecto }}</small>
+                <strong>{{ a.label }}</strong>
+                <small>{{ a.efecto }}</small>
               </span>
             </label>
           }
         </fieldset>
 
+        @if (exigeDestinatario) {
+          <div class="campo-form">
+            <label for="re-destino">A quién</label>
+            <select id="re-destino" [value]="fDestinatario()"
+                    (change)="fDestinatario.set($any($event.target).value)">
+              <option value="">Elige a una persona…</option>
+              @for (m of destinatarios(); track m.uid) {
+                <option [value]="m.uid">{{ m.nombre || m.email }} · {{ m.cargo || m.rol }}</option>
+              }
+            </select>
+          </div>
+        }
+
         <div class="campo-form">
-          <label for="re-obs">
-            {{ fResultado() === 'aprobada' ? 'Comentario' : 'Motivo' }}
+          <label for="re-motivo">
+            {{ fAccion() === 'aprobar' ? 'Comentario' : 'Motivo' }}
             @if (!exigeMotivo) { <span class="opcional">opcional</span> }
           </label>
-          <textarea id="re-obs" rows="3" [value]="fObservacion()"
-                    (input)="fObservacion.set($any($event.target).value)"
-                    [placeholder]="fResultado() === 'observada'
-                      ? 'Qué hay que corregir para volver a presentarla'
-                      : (fResultado() === 'rechazada'
-                          ? 'Por qué no procede'
-                          : 'Cualquier constancia adicional')"></textarea>
+          <textarea id="re-motivo" rows="3" [value]="fMotivo()"
+                    (input)="fMotivo.set($any($event.target).value)"
+                    placeholder="Queda registrado en el expediente"></textarea>
         </div>
 
         @if (errorForm()) {

@@ -869,3 +869,80 @@
   // Por debajo de 900 px el ancho util lo necesita el contenido.
   @media (max-width: 900px) { display: none; }
 }
+
+// ------------------------------------------
+// AVISO DE SESION A PUNTO DE CADUCAR
+// ------------------------------------------
+// Aparece abajo, no en el centro: no bloquea lo que se esta haciendo,
+// que es justo el motivo por el que alguien podria estar quieto.
+
+.aviso-sesion {
+  position: fixed;
+  z-index: 1200;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+
+  width: min(30rem, calc(100vw - 2rem));
+  padding: 0.85rem 1rem;
+
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-elevated);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 22%);
+
+  &__texto {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    // Sin esto el texto empuja al boton fuera de la caja.
+    min-width: 0;
+    flex: 1;
+
+    strong { font-size: 0.9rem; }
+    span {
+      font-size: 0.82rem;
+      color: var(--color-text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  &__btn {
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 0 1rem;
+    border: 0;
+    border-radius: 8px;
+    background: var(--color-primary);
+    // El sistema ya tiene un color pensado para ir encima del primario, y
+    // cambia con el tema. Poner #fff a mano daba 3.62:1 en oscuro, por
+    // debajo del 4.5:1 que pide la WCAG para texto normal.
+    color: var(--color-sobre-primario);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover { filter: brightness(1.07); }
+  }
+
+  @media (max-width: 480px) {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+
+    &__btn { width: 100%; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    animation: aviso-sesion-entra 0.22s ease-out;
+  }
+}
+
+@keyframes aviso-sesion-entra {
+  from { opacity: 0; transform: translate(-50%, 0.6rem); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}

@@ -16,12 +16,14 @@ import {
   esTipoPrioritario
 } from '../models/review-request.model';
 import { TenantService } from './tenant';
+import { AuditService } from './audit';
 
 @Injectable({ providedIn: 'root' })
 export class ReviewRequestService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
   private tenant = inject(TenantService);
+  private audit = inject(AuditService);
 
   private hoy(): string {
     const d = new Date();
@@ -93,6 +95,12 @@ export class ReviewRequestService {
     };
 
     const creada = await this.firebase.crearSolicitud(userId, solicitud);
+
+    await this.audit.registrarSobre(
+      'creo', 'solicitud', creada.id,
+      solicitud.codigoDocumento + ' \u00b7 ' + solicitud.titulo,
+      solicitud.detalle
+    );
     return this.normalizar(creada);
   }
 
@@ -120,6 +128,11 @@ export class ReviewRequestService {
       revisor: revisor.trim() || s.revisor || '',
       updatedAt: new Date().toISOString()
     });
+
+    await this.audit.registrarSobre(
+      'edito', 'solicitud', s.id, s.codigoDocumento + ' \u00b7 ' + s.titulo,
+      'Tomada por ' + (revisor.trim() || 'sin indicar')
+    );
   }
 
   async marcarAtendida(s: SolicitudRevision, diasReales: number): Promise<void> {
@@ -132,6 +145,11 @@ export class ReviewRequestService {
 
     await this.firebase.marcarSolicitudAtendida(
       userId, s.id, diasReales, this.hoy()
+    );
+
+    await this.audit.registrarSobre(
+      'aprobo', 'solicitud', s.id, s.codigoDocumento + ' \u00b7 ' + s.titulo,
+      'Atendida en ' + diasReales + ' dias'
     );
   }
 
@@ -149,6 +167,11 @@ export class ReviewRequestService {
       notes: motivo.trim(),
       updatedAt: new Date().toISOString()
     });
+
+    await this.audit.registrarSobre(
+      'elimino', 'solicitud', s.id, s.codigoDocumento + ' \u00b7 ' + s.titulo,
+      motivo.trim()
+    );
   }
 
   // ============================================

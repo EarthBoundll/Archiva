@@ -741,3 +741,76 @@
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
 }
+
+// ------------------------------------------
+// QUIEN RESPONDE DE CADA ETAPA
+// ------------------------------------------
+// Antes el recorrido solo decia el nombre de la etapa. Sin la persona
+// asignada no habia forma de saber a quien reclamar un expediente parado.
+
+.etapa {
+  &__quien {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.6rem;
+    margin: 0.3rem 0 0;
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+
+    app-icon { flex-shrink: 0; }
+    > span { min-width: 0; }
+  }
+
+  &__delegada {
+    font-style: italic;
+    opacity: 0.85;
+  }
+
+  &__plazo {
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: var(--color-bg);
+    font-size: 0.75rem;
+
+    &--vencido {
+      background: color-mix(in srgb, var(--color-error) 14%, transparent);
+      color: var(--color-error);
+      font-weight: 600;
+    }
+  }
+
+  &__resuelta {
+    margin: 0.35rem 0 0;
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+  }
+
+  &__motivo {
+    margin: 0.3rem 0 0;
+    padding: 0.5rem 0.65rem;
+    border-left: 2px solid var(--color-border);
+    background: var(--color-bg);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    // El motivo puede ser largo: que envuelva en vez de desbordar.
+    overflow-wrap: anywhere;
+  }
+
+  &__accion {
+    margin-top: 0.6rem;
+  }
+
+  // Sobre el ambar, negro: blanco sobre amarillo no llega al minimo.
+  &--devuelta &__marca { background: var(--color-warning); color: #10171A; }
+  &--anulada  { opacity: 0.55; }
+}
+
+.modal__contexto {
+  margin: 0 0 0.9rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}

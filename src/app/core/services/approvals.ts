@@ -3,6 +3,7 @@ import { FirebaseService } from './firebase';
 import { TenantService } from './tenant';
 import { AuditService } from './audit';
 import { HistoryService } from './history';
+import { DocumentService } from './document';
 import {
   TareaAprobacion,
   ResolucionPayload,
@@ -19,8 +20,11 @@ import {
   Traspaso
 } from '../models/approval.model';
 import { FlujoAprobacion, EtapaDefinida } from '../models/workflow.model';
+import { Documento, EstadoDocumental } from '../models/document.model';
 import { Permiso } from '../models/rbac.model';
 import { AccionAuditada } from '../models/audit.model';
+import { AccionDocumental } from '../models/history.model';
+import { log } from '../utils/logger';
 
 /** Qué asiento de auditoría corresponde a cada acción. */
 const AUDITORIA: Record<AccionAprobacion, AccionAuditada> = {
@@ -49,10 +53,81 @@ export class ApprovalsService {
   private tenant = inject(TenantService);
   private audit = inject(AuditService);
   private history = inject(HistoryService);
+  private documentos = inject(DocumentService);
 
   // ------------------------------------------
   // APERTURA DE EXPEDIENTE
   // ------------------------------------------
+
+  /**
+   * Envia un documento a aprobacion.
+   *
+   * La plantilla describe como se aprueba algo; el expediente es el paso
+   * de un documento concreto por esa plantilla. Se copia en vez de
+   * reutilizarse porque un flujo compartido por veinte documentos no
+   * podria decir en que etapa va cada uno.
+   */
+  async enviarAAprobacion(documento: Documento, plantilla: FlujoAprobacion): Promise<FlujoAprobacion> {
+    // Enviar a revision, no definir flujos: quien redacta un contrato debe
+    // poder mandarlo a aprobar sin poder decidir quien lo aprueba.
+    this.exigir(Permiso.DOC_ENVIAR_REVISION);
+    const empresaId = this.tenant.exigirEmpresa();
+
+    const etapas = plantilla.etapasDefinidas ?? [];
+    if (!etapas.length) {
+      throw new Error('Esa plantilla no tiene etapas definidas: nadie tendria que aprobarlo.');
+    }
+    if (plantilla.activo === false) {
+      throw new Error('Esa plantilla esta desactivada y no admite expedientes nuevos.');
+    }
+    if (await this.documentoBloqueado(documento.id)) {
+      throw new Error('Este documento ya esta recorriendo un flujo de aprobacion.');
+    }
+
+    const ahora = new Date().toISOString();
+    const expediente = await this.firebase.crearFlujo(empresaId, {
+      documentoId: documento.id,
+      codigoDocumento: documento.codigo,
+
+      name: documento.codigo + ' \u00b7 ' + documento.titulo,
+      description: 'Expediente abierto sobre la plantilla \u00ab' + plantilla.name + '\u00bb.',
+      category: plantilla.category,
+
+      etapasTotales: etapas.length,
+      etapasCompletadas: 0,
+      etapasPorPeriodo: plantilla.etapasPorPeriodo ?? 1,
+      etapasDefinidas: etapas,
+      nombresEtapas: etapas.map(e => e.nombre),
+
+      activo: true,
+      duplicadoDe: plantilla.id,
+      status: 'active',
+      priority: plantilla.priority ?? 'medium',
+      estaCompletado: false,
+      periodosParaCierre: null,
+      etapas: [],
+      createdAt: ahora,
+      updatedAt: ahora
+    });
+
+    const flujo = { ...expediente, id: expediente.id } as FlujoAprobacion;
+    await this.abrirFlujo(flujo, etapas);
+
+    // El documento pasa a pendiente de aprobacion: es lo que impide que
+    // se edite mientras alguien lo revisa.
+    try {
+      if (documento.estado !== 'pendiente_aprobacion') {
+        await this.documentos.cambiarEstado(documento, 'pendiente_aprobacion', {
+          motivo: 'Enviado al flujo \u00ab' + plantilla.name + '\u00bb.'
+        });
+      }
+    } catch {
+      // Si la transicion no procede desde su estado actual, el expediente
+      // sigue siendo valido: el documento se movera al resolverse.
+    }
+
+    return flujo;
+  }
 
   /**
    * Abre las tareas de un flujo.
@@ -243,6 +318,10 @@ export class ApprovalsService {
       await this.abrirSiguiente(tarea);
     }
 
+    // El expediente tiene que reflejar lo que acaba de pasar: sin esto la
+    // barra de avance del flujo y la bandeja contaban cosas distintas.
+    await this.repercutir(tarea, p, nombre);
+
     await this.asentar(tarea, p, nombre);
     return { ...tarea, ...cambios } as TareaAprobacion;
   }
@@ -258,6 +337,93 @@ export class ApprovalsService {
       estado: 'pendiente',
       fechaCreacion: new Date().toISOString()
     });
+  }
+
+  /**
+   * Traslada al expediente y al documento lo que decidio la etapa.
+   *
+   * El avance se recalcula desde las tareas en vez de llevarse en un
+   * contador aparte: dos cifras que cuentan lo mismo acaban discrepando,
+   * y en un expediente esa discrepancia es la diferencia entre aprobado
+   * y sin aprobar.
+   */
+  private async repercutir(tarea: TareaAprobacion, p: ResolucionPayload, quien: string): Promise<void> {
+    const empresaId = this.tenant.exigirEmpresa();
+    const hermanas = await this.getDeFlujo(tarea.flujoId);
+
+    const aprobadas = hermanas.filter(t => t.estado === 'resuelta' && t.accion === 'aprobar').length;
+    const detenido  = p.accion === 'rechazar';
+    const devuelto  = p.accion === 'observar' || p.accion === 'solicitar_correccion';
+    const completo  = p.accion === 'aprobar' && aprobadas >= hermanas.length;
+
+    const cambios: Record<string, unknown> = {
+      etapasCompletadas: aprobadas,
+      estaCompletado: completo,
+      status: detenido ? 'paused' : completo ? 'completed' : 'active',
+      updatedAt: new Date().toISOString()
+    };
+    if (detenido && p.motivo?.trim()) cambios['motivoAnulacion'] = p.motivo.trim();
+
+    await this.firebase.actualizarFlujo(empresaId, tarea.flujoId, cambios);
+
+    // Una etapa devuelta o rechazada detiene el expediente: las que venian
+    // detras no deben esperar un turno que ya no va a llegar.
+    if (detenido || devuelto) {
+      for (const t of hermanas) {
+        if (t.orden > tarea.orden && admiteResolucion(t)) {
+          await this.firebase.actualizarTarea(empresaId, t.id, { estado: 'anulada' });
+        }
+      }
+    }
+
+    if (tarea.documentoId) {
+      await this.moverDocumento(tarea.documentoId, p, quien, completo);
+    }
+  }
+
+  /** Lleva el documento al estado que le corresponde tras la etapa. */
+  private async moverDocumento(
+    documentoId: string,
+    p: ResolucionPayload,
+    quien: string,
+    completo: boolean
+  ): Promise<void> {
+    // Delegar y reasignar cambian de manos, no de estado. Se descartan
+    // aqui y no solo en quien llama: si manana alguien encamina las
+    // delegaciones por este metodo, un documento se daria por aprobado
+    // al delegar su ultima etapa.
+    if (p.accion === 'delegar' || p.accion === 'reasignar') return;
+
+    const destino =
+      p.accion === 'rechazar' ? 'rechazado' :
+      (p.accion === 'observar' || p.accion === 'solicitar_correccion') ? 'observado' :
+      completo ? 'aprobado' : null;
+
+    // Aprobar una etapa intermedia no mueve el documento: sigue pendiente
+    // hasta que se apruebe la ultima.
+    if (!destino) return;
+
+    try {
+      const doc = (await this.documentos.getAll()).find(d => d.id === documentoId);
+      if (!doc || doc.estado === destino) return;
+
+      await this.documentos.cambiarEstado(doc, destino as EstadoDocumental, {
+        motivo: p.motivo?.trim() || 'Resultado del flujo de aprobacion.',
+        responsable: quien
+      });
+    } catch (e) {
+      // La etapa ya quedo resuelta y auditada. Perder eso por un estado
+      // que un gestor puede corregir a mano seria peor.
+      log.warn('[Aprobaciones] no se pudo mover el documento:', e);
+    }
+  }
+
+  /** Etapas por las que ha pasado un documento, en orden. */
+  async expedienteDe(documentoId: string): Promise<TareaAprobacion[]> {
+    if (!documentoId) return [];
+    return (await this.getTodas())
+      .filter(t => t.documentoId === documentoId)
+      .sort((a, b) => a.orden - b.orden);
   }
 
   // ------------------------------------------
@@ -305,16 +471,17 @@ export class ApprovalsService {
     }
   }
 
-  /** Asiento de auditoría y de bitácora por cada resolución. */
+  /**
+   * Asiento por cada resolucion.
+   *
+   * Antes se escribian dos por separado: uno en auditoria y otro en
+   * bitacora. Ahora sale uno solo, y la bitacora se encarga de las dos
+   * proyecciones para que no puedan discrepar.
+   */
   private async asentar(t: TareaAprobacion, p: ResolucionPayload, quien: string): Promise<void> {
-    const etiqueta = `${t.flujoNombre} · ${t.etapaNombre}`;
+    const etiqueta = t.flujoNombre + ' \u00b7 ' + t.etapaNombre;
 
-    await this.audit.registrarSobre(
-      AUDITORIA[p.accion], 'tarea', t.id, etiqueta,
-      p.motivo?.trim() || ACCIONES_APROBACION[p.accion].efecto
-    );
-
-    const accionBitacora =
+    const accionBitacora: AccionDocumental =
       p.accion === 'aprobar' ? 'aprobacion' :
       p.accion === 'rechazar' ? 'rechazo' :
       p.accion === 'observar' || p.accion === 'solicitar_correccion' ? 'observacion' :
@@ -325,17 +492,26 @@ export class ApprovalsService {
         documentoId: t.documentoId ?? null,
         codigo: t.codigoDocumento ?? 'FLU',
         titulo: etiqueta,
-        accion: accionBitacora as any,
+        accion: accionBitacora,
         responsable: quien,
         detalle: p.motivo?.trim() || ACCIONES_APROBACION[p.accion].label,
         category: 'flujo',
         date: new Date().toISOString().slice(0, 10)
-      });
-    } catch {
-      // La bitácora no debe impedir que la etapa avance.
+      }, { entidad: 'tarea', entidadId: t.id, etiqueta });
+    } catch (e) {
+      // La bitacora no debe impedir que la etapa avance.
+      log.warn('[Aprobaciones] no se pudo asentar la resolucion:', e);
+    }
+
+    // Delegar y reasignar no son movimientos del documento: no cambian
+    // su estado, solo de quien depende. Se anotan solo en auditoria.
+    if (p.accion === 'delegar' || p.accion === 'reasignar') {
+      await this.audit.registrarSobre(
+        AUDITORIA[p.accion], 'tarea', t.id, etiqueta,
+        p.motivo?.trim() || ACCIONES_APROBACION[p.accion].efecto
+      );
     }
   }
-
   private porUrgencia = (a: TareaAprobacion, b: TareaAprobacion): number => {
     const va = estaVencida(a) ? 0 : 1;
     const vb = estaVencida(b) ? 0 : 1;

@@ -19,6 +19,11 @@ import {
   NIVELES_CONFIDENCIALIDAD
 } from '../../core/models/document.model';
 import { DialogoDirective } from '../../core/directives/dialogo.directive';
+import { WorkflowService } from '../../core/services/workflow';
+import { ApprovalsService } from '../../core/services/approvals';
+import { TenantService } from '../../core/services/tenant';
+import { FlujoAprobacion } from '../../core/models/workflow.model';
+import { Permiso } from '../../core/models/rbac.model';
 
 type FiltroEstado = EstadoDocumental | 'todos' | 'por_vencer';
 
@@ -32,6 +37,9 @@ type FiltroEstado = EstadoDocumental | 'todos' | 'por_vencer';
 export class DocumentsComponent implements OnInit {
 
   private documentService = inject(DocumentService);
+  private workflowService = inject(WorkflowService);
+  private approvals = inject(ApprovalsService);
+  private tenant = inject(TenantService);
 
   // ── Datos ──
   documentos = signal<Documento[]>([]);
@@ -81,6 +89,13 @@ export class DocumentsComponent implements OnInit {
   fAlerta       = signal(30);
 
   // ── Modal de cambio de estado ──
+  // ---- Envio a aprobacion ----
+  modalFlujo    = signal<Documento | null>(null);
+  plantillas    = signal<FlujoAprobacion[]>([]);
+  fPlantilla    = signal('');
+  enviando      = signal(false);
+  /** Documentos con un expediente vivo: no se editan ni se reenvian. */
+  bloqueados    = signal<Set<string>>(new Set());
   modalEstado   = signal<{ doc: Documento; destino: EstadoDocumental } | null>(null);
   motivoEstado  = signal('');
 
@@ -145,7 +160,20 @@ export class DocumentsComponent implements OnInit {
   async cargar() {
     this.cargando.set(true);
     try {
-      this.documentos.set(await this.documentService.getAll());
+      // Las tareas vivas dicen que documentos estan en manos de otro. Sin
+      // esto la tarjeta ofrecia «Editar» sobre un documento que el
+      // servicio iba a rechazar, y el usuario solo lo descubria al guardar.
+      const [docs, tareas] = await Promise.all([
+        this.documentService.getAll(),
+        this.approvals.getTodas().catch(() => [])
+      ]);
+
+      this.documentos.set(docs);
+      this.bloqueados.set(new Set(
+        tareas
+          .filter(x => x.documentoId && (x.estado === 'pendiente' || x.estado === 'delegada' || x.estado === 'en_curso'))
+          .map(x => x.documentoId!)
+      ));
     } catch (e) {
       log.error('Error cargando documentos:', e);
       this.errorMsg.set('No se pudieron cargar los documentos. Revisa tu conexión.');
@@ -368,6 +396,73 @@ export class DocumentsComponent implements OnInit {
       this.errorMsg.set(e?.message ?? 'No se pudo cambiar el estado.');
     } finally {
       this.guardando.set(false);
+    }
+  }
+
+  // ============================================
+  // ENVIO A APROBACION
+  // ============================================
+
+  /** ¿Este documento esta recorriendo un flujo ahora mismo? */
+  estaBloqueado(d: Documento): boolean {
+    return this.bloqueados().has(d.id);
+  }
+
+  /**
+   * Solo se envia lo que aun no esta aprobado ni archivado, y solo si
+   * el rol alcanza. Un documento ya aprobado que vuelve a un flujo
+   * invalidaria la aprobacion que ya tiene.
+   */
+  puedeEnviar(d: Documento): boolean {
+    if (!this.tenant.puede(Permiso.DOC_ENVIAR_REVISION)) return false;
+    if (this.estaBloqueado(d)) return false;
+    return d.estado === 'borrador' || d.estado === 'en_revision' || d.estado === 'observado';
+  }
+
+  async abrirEnvio(d: Documento) {
+    this.errorMsg.set('');
+    this.fPlantilla.set('');
+    this.modalFlujo.set(d);
+
+    try {
+      const todos = await this.workflowService.getAll();
+      // Una plantilla es un flujo con etapas definidas y sin documento
+      // propio. Un expediente ya abierto no sirve de molde.
+      this.plantillas.set(todos.filter(f =>
+        !f.documentoId &&
+        f.activo !== false &&
+        (f.etapasDefinidas?.length ?? 0) > 0
+      ));
+    } catch {
+      this.errorMsg.set('No se pudieron leer los flujos disponibles.');
+    }
+  }
+
+  cerrarEnvio() {
+    if (this.enviando()) return;
+    this.modalFlujo.set(null);
+  }
+
+  async confirmarEnvio() {
+    const doc = this.modalFlujo();
+    const plantilla = this.plantillas().find(f => f.id === this.fPlantilla());
+    if (!doc || this.enviando()) return;
+
+    if (!plantilla) {
+      this.errorMsg.set('Elige el flujo por el que debe pasar.');
+      return;
+    }
+
+    this.enviando.set(true);
+    this.errorMsg.set('');
+    try {
+      await this.approvals.enviarAAprobacion(doc, plantilla);
+      this.modalFlujo.set(null);
+      await this.cargar();
+    } catch (e: any) {
+      this.errorMsg.set(e?.message ?? 'No se pudo abrir el expediente.');
+    } finally {
+      this.enviando.set(false);
     }
   }
 

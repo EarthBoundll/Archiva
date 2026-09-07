@@ -450,7 +450,9 @@
 // ------------------------------------------
 .login-footer {
   text-align: center;
-  margin-top: var(--space-7);
+  // La escala salta del 6 al 8: no hay un 7. Sin escalon definido, esta
+  // linea no aplicaba ningun margen y el pie quedaba pegado al formulario.
+  margin-top: var(--space-8);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   color: var(--color-text-muted);

@@ -77,6 +77,11 @@
 }
 
 .btn-accion {
+  // El boton se ve de 32 px para que quepan cinco en la tarjeta sin
+  // convertirla en una columna de botones, pero el area que responde al
+  // dedo llega a los 44 px que exige la WCAG 2.5.5. Agrandar el boton en
+  // si romperia la tarjeta; agrandar solo el area no rompe nada.
+  position: relative;
   min-height: 32px;
   padding: 0 var(--space-3);
   border: 1px solid var(--color-border);
@@ -88,6 +93,14 @@
   cursor: pointer;
   white-space: nowrap;
   transition: all var(--duration-fast) var(--ease-out);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 50% 0 auto 0;
+    height: 44px;
+    transform: translateY(-50%);
+  }
 
   &:hover {
     background: var(--color-primary);
@@ -759,4 +772,48 @@
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
   }
+}
+
+// ------------------------------------------
+// ENVIO A APROBACION
+// ------------------------------------------
+
+.doc__candado {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  // El ambar puro sobre fondo claro se queda en 2.8:1. Mezclado con el
+  // color de texto pasa en los dos temas de una sola vez, porque ese
+  // token ya gira: es oscuro en claro y claro en oscuro.
+  color: color-mix(in srgb, var(--color-warning) 55%, var(--color-text));
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.btn-accion--flujo {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.aviso-vacio {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.nota-form {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }

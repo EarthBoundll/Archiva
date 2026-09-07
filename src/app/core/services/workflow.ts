@@ -216,54 +216,25 @@ export class WorkflowService {
    * esa comprobación cualquiera podía firmar la última etapa de un flujo
    * recién creado y darlo por cerrado.
    */
-  async resolverEtapa(
-    flujoId: string,
-    datos: { aprobador: string; resultado: ResultadoEtapa; observacion?: string }
-  ): Promise<FlujoAprobacion> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+  /**
+   * Recalcula el avance del flujo desde sus tareas.
+   *
+   * Antes habia aqui un resolverEtapa que escribia las resoluciones
+   * dentro del flujo pidiendo el aprobador como texto libre. Eso era
+   * un segundo motor de aprobacion que ignoraba roles, asignaciones y
+   * delegaciones, y que discrepaba de la bandeja. Las etapas se
+   * resuelven ahora en ApprovalsService, que es el unico sitio donde
+   * se comprueba quien puede hacerlo.
+   */
+  async sincronizarAvance(flujoId: string, aprobadas: number, total: number): Promise<void> {
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return;
 
-    const flujo = await this.getById(flujoId);
-    if (!flujo) throw new Error('Ese flujo ya no existe.');
-
-    if (!admiteResolucion(flujo)) {
-      throw new Error(
-        flujo.status === 'paused'
-          ? 'El flujo está suspendido: reanúdalo antes de seguir.'
-          : 'Este flujo no tiene etapas pendientes.'
-      );
-    }
-    if (!datos.aprobador.trim()) {
-      throw new Error('Indica quién resuelve la etapa: queda registrado en el expediente.');
-    }
-    if (datos.resultado !== 'aprobada' && !datos.observacion?.trim()) {
-      throw new Error(
-        datos.resultado === 'observada'
-          ? 'Indica qué hay que corregir: sin eso nadie sabe cómo continuar.'
-          : 'Indica el motivo del rechazo: sin él la suspensión no se puede justificar.'
-      );
-    }
-
-    const orden = siguienteOrden(flujo);
-    const nombre = nombreDeEtapa(flujo, orden);
-
-    await this.firebase.resolverEtapa(userId, flujoId, {
-      orden,
-      nombre,
-      aprobador: datos.aprobador.trim(),
-      resultado: datos.resultado,
-      observacion: datos.observacion?.trim()
+    await this.firebase.actualizarFlujo(empresaId, flujoId, {
+      etapasCompletadas: aprobadas,
+      estaCompletado: aprobadas >= total,
+      updatedAt: new Date().toISOString()
     });
-
-    const accion = datos.resultado === 'aprobada' ? 'aprobacion'
-                 : datos.resultado === 'observada' ? 'observacion'
-                 : 'rechazo';
-    await this.asentar(
-      `${flujo.name} · ${nombre}`, accion,
-      datos.observacion?.trim() || `Resuelta por ${datos.aprobador.trim()}`
-    );
-
-    return (await this.getById(flujoId))!;
   }
 
   // ============================================
@@ -291,7 +262,6 @@ export class WorkflowService {
   getTipos()       { return TIPOS_FLUJO; }
   getPrioridades() { return PRIORIDADES_FLUJO; }
   getEstados()     { return ESTADOS_FLUJO; }
-  getResultados()  { return RESULTADOS_ETAPA; }
 
   /** Compatibilidad con el nombre anterior. */
   getCategories()  { return TIPOS_FLUJO; }

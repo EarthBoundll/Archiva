@@ -43,9 +43,9 @@ export class ReviewRequestService {
   }
 
   async getAll(): Promise<SolicitudRevision[]> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return [];
-    const data = await this.firebase.getSolicitudes(userId);
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return [];
+    const data = await this.firebase.getSolicitudes(empresaId);
     return (data as any[]).map(s => this.normalizar(s));
   }
 
@@ -66,8 +66,8 @@ export class ReviewRequestService {
 
   async create(payload: SolicitudRevisionPayload): Promise<SolicitudRevision> {
     this.exigir(Permiso.SOL_CREAR);
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     // Reincidencia: ya hubo una solicitud igual, y atendida, sobre este mismo
     // documento. Repetir un hallazgo indica que la correccion no fue de fondo.
@@ -77,7 +77,7 @@ export class ReviewRequestService {
     const ahora = new Date().toISOString();
 
     const solicitud = {
-      userId,
+      empresaId,
       documentoId: payload.documentoId,
       codigoDocumento: payload.codigoDocumento,
       tituloDocumento: payload.tituloDocumento,
@@ -103,7 +103,7 @@ export class ReviewRequestService {
       updatedAt: ahora
     };
 
-    const creada = await this.firebase.crearSolicitud(userId, solicitud);
+    const creada = await this.firebase.crearSolicitud(empresaId, solicitud);
 
     await this.audit.registrarSobre(
       'creo', 'solicitud', creada.id,
@@ -114,10 +114,10 @@ export class ReviewRequestService {
   }
 
   async update(solicitudId: string, cambios: Partial<SolicitudRevisionPayload>): Promise<void> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
-    await this.firebase.actualizarSolicitud(userId, solicitudId, {
+    await this.firebase.actualizarSolicitud(empresaId, solicitudId, {
       ...cambios,
       updatedAt: new Date().toISOString()
     });
@@ -126,14 +126,14 @@ export class ReviewRequestService {
   /** Pasa a en proceso: alguien la tomó y está trabajando en ella. */
   async tomar(s: SolicitudRevision, revisor: string): Promise<void> {
     this.exigir(Permiso.SOL_ATENDER);
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     if (s.status === 'atendida' || s.status === 'anulada') {
       throw new Error('Una solicitud ya cerrada no puede volver a tomarse.');
     }
 
-    await this.firebase.actualizarSolicitud(userId, s.id, {
+    await this.firebase.actualizarSolicitud(empresaId, s.id, {
       status: 'en_proceso',
       revisor: revisor.trim() || s.revisor || '',
       updatedAt: new Date().toISOString()
@@ -147,15 +147,15 @@ export class ReviewRequestService {
 
   async marcarAtendida(s: SolicitudRevision, diasReales: number): Promise<void> {
     this.exigir(Permiso.SOL_ATENDER);
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     if (s.status === 'anulada') {
       throw new Error('Una solicitud anulada no puede marcarse como atendida.');
     }
 
     await this.firebase.marcarSolicitudAtendida(
-      userId, s.id, diasReales, this.hoy()
+      empresaId, s.id, diasReales, this.hoy()
     );
 
     await this.audit.registrarSobre(
@@ -166,14 +166,14 @@ export class ReviewRequestService {
 
   async anular(s: SolicitudRevision, motivo: string): Promise<void> {
     this.exigir(Permiso.SOL_ANULAR);
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     if (!motivo.trim()) {
       throw new Error('Indica por qué se anula: queda registrado en la solicitud.');
     }
 
-    await this.firebase.actualizarSolicitud(userId, s.id, {
+    await this.firebase.actualizarSolicitud(empresaId, s.id, {
       status: 'anulada',
       activo: false,
       notes: motivo.trim(),

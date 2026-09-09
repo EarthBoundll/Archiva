@@ -8,7 +8,8 @@ export type EstadoCuota = 'on_track' | 'at_risk' | 'exceeded' | 'unused';
 
 export interface CuotaAlmacenamiento {
   id: string;
-  userId: string;
+  /** Empresa a la que pertenece. */
+  empresaId: string;
   
   // Categoría
   category: string;

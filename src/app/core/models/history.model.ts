@@ -64,7 +64,8 @@ export const ACCIONES: Record<AccionDocumental, {
 
 export interface RegistroHistorial {
   id: string;
-  userId: string;
+  /** Empresa a la que pertenece. */
+  empresaId: string;
 
   documentoId: string | null;
   codigo: string;

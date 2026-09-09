@@ -140,7 +140,8 @@ export interface ReglaRenovacion {
 
 export interface Documento {
   id: string;
-  userId: string;
+  /** Empresa a la que pertenece. */
+  empresaId: string;
 
   // Identificacion
   codigo: string;

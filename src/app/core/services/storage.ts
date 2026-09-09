@@ -22,18 +22,18 @@ export class StorageService {
   private audit = inject(AuditService);
 
   async getPorPeriodo(year: number, month: number): Promise<CuotaAlmacenamiento[]> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return [];
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return [];
 
-    const data = await this.firebase.getCuotasPorPeriodo(userId, year, month);
+    const data = await this.firebase.getCuotasPorPeriodo(empresaId, year, month);
     return data as CuotaAlmacenamiento[];
   }
 
   async asignarCuota(payload: CuotaPayload): Promise<CuotaAlmacenamiento> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
-    const result = await this.firebase.definirCuota(userId, payload);
+    const result = await this.firebase.definirCuota(empresaId, payload);
     await this.audit.registrarSobre(
       'edito', 'cuota', payload.category,
       'Cuota de ' + payload.category,
@@ -44,10 +44,10 @@ export class StorageService {
   }
 
   async getResumenPeriodo(year: number, month: number): Promise<ResumenAlmacenamiento> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
-    const data = await this.firebase.calcularResumenAlmacenamiento(userId, year, month);
+    const data = await this.firebase.calcularResumenAlmacenamiento(empresaId, year, month);
     return data as ResumenAlmacenamiento;
   }
 
@@ -64,8 +64,8 @@ export class StorageService {
    * poco: son las que no pueden quedarse sin espacio.
    */
   async autoDistribuirCuotas(capacidadTotalMb: number, year: number, month: number): Promise<number> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId || capacidadTotalMb <= 0) return 0;
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId || capacidadTotalMb <= 0) return 0;
 
     // No pisa un reparto ya hecho a mano.
     const existentes = await this.getPorPeriodo(year, month);
@@ -107,10 +107,10 @@ export class StorageService {
 
   /** Megabytes que ocupa hoy cada categoria del acervo. */
   async getOcupacionPorCategoria(): Promise<Record<string, number>> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return {};
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return {};
 
-    const docs = await this.firebase.getDocumentos(userId);
+    const docs = await this.firebase.getDocumentos(empresaId);
     const porCategoria: Record<string, number> = {};
 
     for (const d of docs as any[]) {

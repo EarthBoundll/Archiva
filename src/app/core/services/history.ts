@@ -43,19 +43,19 @@ export class HistoryService {
   private audit = inject(AuditService);
 
   async getPorPeriodo(year: number, month: number): Promise<RegistroHistorial[]> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return [];
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return [];
 
-    const data = await this.firebase.getHistorialPorPeriodo(userId, year, month);
+    const data = await this.firebase.getHistorialPorPeriodo(empresaId, year, month);
     return (data as any[]).filter(r => !r.anulado).map(r => this.normalizar(r));
   }
 
   /** Bitacora completa, para la vista de auditoria. */
   async getBitacora(): Promise<RegistroHistorial[]> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return [];
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return [];
 
-    const data = await this.firebase.getBitacora(userId);
+    const data = await this.firebase.getBitacora(empresaId);
     return (data as any[])
       // Un asiento retirado sigue en la coleccion como evidencia, pero no
       // cuenta en la bitacora que se lee.
@@ -78,12 +78,12 @@ export class HistoryService {
     payload: RegistroHistorialPayload,
     traza?: { entidad: EntidadAuditada; entidadId: string; etiqueta?: string }
   ): Promise<RegistroHistorial> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     const ahora = new Date().toISOString();
     const registro = {
-      userId,
+      empresaId,
       documentoId: payload.documentoId ?? null,
       codigo: payload.codigo,
       titulo: payload.titulo,
@@ -99,7 +99,7 @@ export class HistoryService {
       updatedAt: ahora
     };
 
-    const creado = await this.firebase.crearRegistro(userId, registro);
+    const creado = await this.firebase.crearRegistro(empresaId, registro);
 
     // La auditoria nunca bloquea: el movimiento ya quedo escrito, y
     // perderlo por no poder anotar quien lo hizo seria peor.

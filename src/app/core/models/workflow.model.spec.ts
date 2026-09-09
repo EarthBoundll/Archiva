@@ -28,7 +28,7 @@ import {
 function flujo(parcial: Partial<FlujoAprobacion> = {}): FlujoAprobacion {
   return {
     id: 'f1',
-    userId: 'u1',
+    empresaId: 'u1',
     name: 'Aprobación del contrato',
     category: 'aprobacion_contrato',
     etapasTotales: 3,

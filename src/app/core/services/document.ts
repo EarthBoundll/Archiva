@@ -180,8 +180,8 @@ export class DocumentService {
 
   async create(payload: DocumentoPayload): Promise<Documento> {
     this.exigir(Permiso.DOC_CREAR);
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     // El codigo siempre se genera: es un correlativo del sistema, no un
     // dato que deba teclear quien registra el documento.
@@ -202,7 +202,7 @@ export class DocumentService {
 
     // Todo documento nace en borrador: el ciclo de vida no se salta.
     const doc: Omit<Documento, 'id'> = {
-      userId,
+      empresaId,
       codigo,
       titulo: payload.titulo.trim(),
       descripcion: payload.descripcion,
@@ -233,15 +233,15 @@ export class DocumentService {
       updatedAt: ahora
     };
 
-    const creado = await this.firebase.crearDocumento(userId, doc);
-    await this.registrarEnBitacora(userId, { ...doc, id: creado.id } as Documento, 'creacion');
+    const creado = await this.firebase.crearDocumento(empresaId, doc);
+    await this.registrarEnBitacora(empresaId, { ...doc, id: creado.id } as Documento, 'creacion');
     return this.normalizar(creado);
   }
 
   async update(documentoId: string, payload: Partial<DocumentoPayload>): Promise<void> {
     this.exigir(Permiso.DOC_EDITAR);
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     // Un documento con etapas de aprobacion vivas queda bloqueado: si se
     // edita mientras alguien lo aprueba, la aprobacion deja de valer.
@@ -273,7 +273,7 @@ export class DocumentService {
       cambios['proximasRenovaciones'] = generarOcurrencias(payload.renovacion, 6);
     }
 
-    await this.firebase.actualizarDocumento(userId, documentoId, cambios);
+    await this.firebase.actualizarDocumento(empresaId, documentoId, cambios);
   }
 
   // ============================================
@@ -291,8 +291,8 @@ export class DocumentService {
     nuevoEstado: EstadoDocumental,
     opciones: { motivo?: string; responsable?: string } = {}
   ): Promise<void> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     // Archivar retira un documento de la circulacion. No es una
     // transicion mas: por eso la matriz se la reserva a la jefatura, y
@@ -324,7 +324,7 @@ export class DocumentService {
     }
     if (nuevoEstado === 'archivado') cambios['activo'] = false;
 
-    await this.firebase.actualizarDocumento(userId, doc.id, cambios);
+    await this.firebase.actualizarDocumento(empresaId, doc.id, cambios);
 
     const accion = {
       en_revision: 'envio_revision',
@@ -337,7 +337,7 @@ export class DocumentService {
       vencido: 'edicion'
     }[nuevoEstado];
 
-    await this.registrarEnBitacora(userId, { ...doc, estado: nuevoEstado }, accion);
+    await this.registrarEnBitacora(empresaId, { ...doc, estado: nuevoEstado }, accion);
   }
 
   /** Registra una version nueva: incrementa el correlativo y reabre el ciclo. */
@@ -345,12 +345,12 @@ export class DocumentService {
     doc: Documento,
     datos: { folios?: number; resumenCambio: string }
   ): Promise<void> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     const proximasRenovaciones = generarOcurrencias(doc.renovacion, 6);
 
-    await this.firebase.actualizarDocumento(userId, doc.id, {
+    await this.firebase.actualizarDocumento(empresaId, doc.id, {
       version: doc.version + 1,
       folios: datos.folios ?? doc.folios,
       estado: 'en_revision',
@@ -367,7 +367,7 @@ export class DocumentService {
     });
 
     await this.registrarEnBitacora(
-      userId, { ...doc, version: doc.version + 1 }, 'nueva_version'
+      empresaId, { ...doc, version: doc.version + 1 }, 'nueva_version'
     );
   }
 
@@ -404,8 +404,8 @@ export class DocumentService {
   ];
 
   async adjuntarArchivo(documentoId: string, file: File): Promise<void> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     if (file.size > DocumentService.MAX_ARCHIVO_BYTES) {
       const mb = (file.size / 1024 / 1024).toFixed(1);
@@ -428,7 +428,7 @@ export class DocumentService {
 
     const contenido = await this.leerComoDataUrl(file);
 
-    await this.firebase.guardarArchivo(userId, documentoId, {
+    await this.firebase.guardarArchivo(empresaId, documentoId, {
       nombre: file.name,
       tipo: file.type,
       bytes: file.size,
@@ -437,30 +437,30 @@ export class DocumentService {
     });
 
     // El peso lo fija el archivo; los folios los declara la persona.
-    await this.firebase.actualizarDocumento(userId, documentoId, {
+    await this.firebase.actualizarDocumento(empresaId, documentoId, {
       tamanioMb: Math.round((file.size / 1024 / 1024) * 100) / 100,
       updatedAt: new Date().toISOString()
     });
   }
 
   async getArchivos(documentoId: string): Promise<ArchivoAdjunto[]> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return [];
-    return this.firebase.getArchivosMeta(userId, documentoId) as Promise<ArchivoAdjunto[]>;
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return [];
+    return this.firebase.getArchivosMeta(empresaId, documentoId) as Promise<ArchivoAdjunto[]>;
   }
 
   /** Devuelve la data URL completa, solo cuando se va a descargar. */
   async getContenidoArchivo(documentoId: string, archivoId: string): Promise<string | null> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return null;
-    const a = await this.firebase.getArchivo(userId, documentoId, archivoId);
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return null;
+    const a = await this.firebase.getArchivo(empresaId, documentoId, archivoId);
     return a?.['contenido'] ?? null;
   }
 
   async eliminarArchivo(documentoId: string, archivoId: string): Promise<void> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
-    await this.firebase.eliminarArchivo(userId, documentoId, archivoId);
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
+    await this.firebase.eliminarArchivo(empresaId, documentoId, archivoId);
   }
 
   private leerComoDataUrl(file: File): Promise<string> {
@@ -610,7 +610,7 @@ export class DocumentService {
    * tiene una sola puerta de entrada, y asi el asiento se normaliza igual
    * venga de donde venga.
    */
-  private async registrarEnBitacora(userId: string, doc: Documento, accion: string): Promise<void> {
+  private async registrarEnBitacora(empresaId: string, doc: Documento, accion: string): Promise<void> {
     try {
       await this.historyService.create({
         documentoId: doc.id,

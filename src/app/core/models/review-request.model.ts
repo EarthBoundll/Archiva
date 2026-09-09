@@ -84,7 +84,8 @@ export const ORIGENES: Record<OrigenSolicitud, { label: string; icon: string }> 
 
 export interface SolicitudRevision {
   id: string;
-  userId: string;
+  /** Empresa a la que pertenece. */
+  empresaId: string;
 
   /** Documento sobre el que recae. Sin el, la solicitud no tiene objeto. */
   documentoId: string;

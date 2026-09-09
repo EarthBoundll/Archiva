@@ -61,10 +61,10 @@ export class WorkflowService {
   }
 
   async getAll(): Promise<FlujoAprobacion[]> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return [];
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return [];
 
-    const data = await this.firebase.getTodosLosFlujos(userId);
+    const data = await this.firebase.getTodosLosFlujos(empresaId);
     return (data as any[])
       .map(f => this.normalizar(f))
       .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
@@ -76,10 +76,10 @@ export class WorkflowService {
   }
 
   async getById(flujoId: string): Promise<FlujoAprobacion | null> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return null;
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return null;
 
-    const data = await this.firebase.getFlujoPorId(userId, flujoId);
+    const data = await this.firebase.getFlujoPorId(empresaId, flujoId);
     return data ? this.normalizar(data) : null;
   }
 
@@ -92,8 +92,8 @@ export class WorkflowService {
   // ============================================
 
   async create(payload: FlujoAprobacionPayload): Promise<FlujoAprobacion> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     const invalido = validarFlujo(payload);
     if (invalido) throw new Error(invalido);
@@ -119,15 +119,15 @@ export class WorkflowService {
       etapas: []
     };
 
-    const creado = await this.firebase.crearFlujo(userId, data);
+    const creado = await this.firebase.crearFlujo(empresaId, data);
     await this.asentar(creado.name, 'creacion', `Flujo de ${payload.etapasTotales} etapas`);
     return this.normalizar(creado);
   }
 
   async update(flujoId: string, payload: Partial<FlujoAprobacionPayload>): Promise<FlujoAprobacion> {
     this.exigir(Permiso.FLUJO_EDITAR);
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     const existente = await this.getById(flujoId);
     if (!existente) throw new Error('Ese flujo ya no existe.');
@@ -171,7 +171,7 @@ export class WorkflowService {
       updatedAt: new Date().toISOString()
     };
 
-    await this.firebase.actualizarFlujo(userId, flujoId, cambios);
+    await this.firebase.actualizarFlujo(empresaId, flujoId, cambios);
     await this.asentar(cambios['name'] as string, 'edicion', 'Se ajustó la definición del flujo');
 
     return (await this.getById(flujoId))!;
@@ -184,20 +184,20 @@ export class WorkflowService {
    * anulado y sigue consultable, porque forma parte del expediente.
    */
   async delete(flujoId: string, motivo?: string): Promise<void> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     const flujo = await this.getById(flujoId);
     if (!flujo) throw new Error('Ese flujo ya no existe.');
 
-    await this.firebase.anularFlujo(userId, flujoId, motivo?.trim());
+    await this.firebase.anularFlujo(empresaId, flujoId, motivo?.trim());
     await this.asentar(flujo.name, 'archivado', motivo?.trim() || 'Flujo anulado');
   }
 
   /** Devuelve al curso un flujo suspendido por rechazo. */
   async reanudar(flujoId: string): Promise<FlujoAprobacion> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) throw new Error('No autenticado');
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) throw new Error('No autenticado');
 
     const flujo = await this.getById(flujoId);
     if (!flujo) throw new Error('Ese flujo ya no existe.');
@@ -205,7 +205,7 @@ export class WorkflowService {
       throw new Error('Solo se reanuda un flujo suspendido.');
     }
 
-    await this.firebase.actualizarFlujo(userId, flujoId, {
+    await this.firebase.actualizarFlujo(empresaId, flujoId, {
       status: 'active',
       updatedAt: new Date().toISOString()
     });

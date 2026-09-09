@@ -23,7 +23,8 @@ export type EstadoFlujo = 'active' | 'completed' | 'paused' | 'cancelled';
 
 export interface FlujoAprobacion {
   id: string;
-  userId: string;
+  /** Empresa a la que pertenece. */
+  empresaId: string;
   
   // Documento que recorre el flujo
   documentoId?: string;

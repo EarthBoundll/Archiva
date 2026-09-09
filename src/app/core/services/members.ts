@@ -186,9 +186,15 @@ export class MembersService {
     const actor = this.tenant.miembro()!;
     const ahora = new Date();
 
+    // El nombre de la empresa viaja en la invitacion para que la pantalla
+    // de aceptacion pueda decir a donde te estan invitando. Quien la abre
+    // no puede leer la ficha de la empresa: no pertenece a ella todavia.
+    const empresa = await this.firebase.getEmpresa(empresaId).catch(() => null);
+    const nombreEmpresa = empresa?.['nombreComercial'] || empresa?.['razonSocial'] || '';
+
     const invitacion: Omit<Invitacion, 'id'> = {
       empresaId,
-      empresaNombre: '',
+      empresaNombre: nombreEmpresa,
       email,
       nombre: p.nombre.trim(),
       rol: p.rol,

@@ -44,6 +44,20 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/empresas/$(eid)/miembros/$(request.auth.uid)).data.rol;
     }
 
+    // Una escritura que solo toca los campos indicados. Sirve para
+    // conceder un permiso estrecho sin abrir el documento entero.
+    function soloCambia(campos) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
+    }
+
+    // El correo con el que se autentico quien pide. Es lo que ata a la
+    // cuenta recien creada con la invitacion que le corresponde.
+    function miCorreo() {
+      return autenticado() && request.auth.token.email != null
+             ? request.auth.token.email.lower()
+             : '';
+    }
+
     function esMiembroActivo(eid) {
       return existeMembresia(eid) && miMembresia(eid).estado == 'activo';
     }
@@ -109,9 +123,35 @@ service cloud.firestore {
     // correo y vencimiento. Conocer el testigo es la credencial.
 
     match /invitaciones/{token} {
+
+      // Legible sin sesión: quien acepta todavía no tiene cuenta. Conocer
+      // el testigo es la credencial, y el testigo es el identificador del
+      // documento, así que solo lo lee quien ya lo tiene.
       allow get: if true;
-      allow list: if false;   // no se puede enumerar
-      allow create, update: if autenticado();
+
+      // Enumerar daría los correos y los roles de toda la plantilla.
+      allow list: if false;
+
+      // Antes bastaba estar autenticado, así que una cuenta de cualquier
+      // empresa podía crear o reescribir el índice de cualquier otra. Ahora
+      // hay que administrar la empresa que se declara en el documento.
+      allow create: if esAdmin(request.resource.data.empresaId);
+
+      // Dos vías de actualización, y ninguna más:
+      //
+      //   quien administra la empresa   → revocar, reenviar
+      //   la persona invitada           → marcarla aceptada, y solo eso
+      //
+      // La segunda se ata al correo del testigo de autenticación: la cuenta
+      // recién creada solo puede cerrar SU invitación.
+      allow update: if esAdmin(resource.data.empresaId)
+                    || (
+                      miCorreo() == resource.data.email.lower() &&
+                      soloCambia(['estado', 'fechaAceptada']) &&
+                      request.resource.data.estado == 'aceptada' &&
+                      resource.data.estado == 'pendiente'
+                    );
+
       allow delete: if false;
     }
 
@@ -145,9 +185,30 @@ service cloud.firestore {
       }
 
       // ---- Invitaciones ----
+      // ---- Invitaciones ----
+      //
+      // Este documento guarda el testigo en claro, porque quien administra
+      // tiene que poder volver a copiar el enlace. Por eso NO lo lee
+      // cualquier miembro: con `esMiembroActivo` aquí, un colaborador leía
+      // los testigos de las invitaciones pendientes, y una invitación de
+      // administrador sin canjear era una escalada de privilegios servida.
+      //
+      // Quien acepta no lee de aquí: lee del índice público, que lleva lo
+      // justo para la pantalla y ningún testigo ajeno.
       match /invitaciones/{id} {
-        allow read: if esMiembroActivo(eid);
-        allow create, update: if esAdmin(eid);
+        allow read: if esAdmin(eid);
+        allow create: if esAdmin(eid);
+
+        // Igual que en el índice: quien administra, o la persona invitada
+        // cerrando la suya.
+        allow update: if esAdmin(eid)
+                      || (
+                        miCorreo() == resource.data.email.lower() &&
+                        soloCambia(['estado', 'fechaAceptada']) &&
+                        request.resource.data.estado == 'aceptada' &&
+                        resource.data.estado == 'pendiente'
+                      );
+
         allow delete: if false;
       }
 

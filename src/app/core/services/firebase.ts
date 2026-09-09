@@ -162,19 +162,45 @@ export class FirebaseService {
   // invitacion todavia no pertenece a ninguna, asi que no podria leer nada
   // que colgara de ella.
 
+  /**
+   * Crea la invitacion y su entrada en el indice publico.
+   *
+   * El indice lleva TODO lo que necesita la pantalla de aceptacion,
+   * porque quien acepta no puede leer nada dentro de la empresa: no
+   * pertenece a ella todavia, que es justo el punto de aceptar. Antes
+   * el indice era un puntero y obligaba a una segunda lectura que las
+   * reglas denegaban, asi que ninguna invitacion se podia abrir.
+   *
+   * Lo que NO lleva es nada que no conceda ya el propio testigo: quien
+   * tiene el enlace tiene la invitacion.
+   */
   async crearInvitacion(empresaId: string, data: any): Promise<string> {
     const ref = doc(collection(this.firestore, `empresas/${empresaId}/invitaciones`));
-    await setDoc(ref, this.limpiar({ ...data, id: ref.id, empresaId }));
+    const lote = writeBatch(this.firestore);
 
-    await setDoc(doc(this.firestore, `invitaciones/${data.token}`), this.limpiar({
+    // En un lote: una invitacion sin indice es un enlace que no abre, y
+    // un indice sin invitacion es un enlace que apunta a la nada.
+    lote.set(ref, this.limpiar({ ...data, id: ref.id, empresaId }));
+
+    lote.set(doc(this.firestore, `invitaciones/${data.token}`), this.limpiar({
       token: data.token,
       empresaId,
+      empresaNombre: data.empresaNombre ?? '',
       invitacionId: ref.id,
+
       email: data.email,
+      nombre: data.nombre,
+      rol: data.rol,
+      area: data.area,
+      cargo: data.cargo,
+      invitadaPorNombre: data.invitadaPorNombre,
+
       estado: 'pendiente',
+      fechaEnvio: data.fechaEnvio,
       fechaExpira: data.fechaExpira
     }));
 
+    await lote.commit();
     return ref.id;
   }
 
@@ -185,26 +211,50 @@ export class FirebaseService {
   }
 
   /** Busca por testigo, sin conocer la empresa. */
+  /**
+   * La invitacion que hay detras de un testigo.
+   *
+   * Una sola lectura, y contra el indice. Antes iba de ahi al documento
+   * de la empresa, y esa segunda lectura la deniegan las reglas a quien
+   * no es miembro: es decir, a todo el que llega a aceptar.
+   */
   async getInvitacionPorToken(token: string): Promise<any | null> {
     const indice = await getDoc(doc(this.firestore, `invitaciones/${token}`));
     if (!indice.exists()) return null;
 
     const datos = indice.data() as any;
-    const snap = await getDoc(
-      doc(this.firestore, `empresas/${datos.empresaId}/invitaciones/${datos.invitacionId}`)
-    );
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    // La pantalla trabaja con una Invitacion; el id que le importa es el
+    // del documento de la empresa, que es el que luego se marca aceptado.
+    return { ...datos, id: datos.invitacionId };
   }
 
+  /**
+   * Cambia el estado de una invitacion en los dos sitios a la vez.
+   *
+   * Si divergieran, el indice diria pendiente sobre una invitacion
+   * revocada y el enlace seguiria abriendo.
+   */
   async actualizarInvitacion(empresaId: string, invitacionId: string, token: string, data: any) {
-    await setDoc(
+    const lote = writeBatch(this.firestore);
+
+    lote.set(
       doc(this.firestore, `empresas/${empresaId}/invitaciones/${invitacionId}`),
       this.limpiar(data), { merge: true }
     );
+
     if (data.estado) {
-      await setDoc(doc(this.firestore, `invitaciones/${token}`),
-        this.limpiar({ estado: data.estado }), { merge: true });
+      // El indice solo refleja el estado y su fecha: las reglas no
+      // admiten mas campos en la via del destinatario.
+      const espejo: Record<string, unknown> = { estado: data.estado };
+      if (data.fechaAceptada) espejo['fechaAceptada'] = data.fechaAceptada;
+      // El motivo viaja al indice para que la pantalla pueda explicar por
+      // que un enlace dejo de servir, en vez de decir solo que no sirve.
+      if (data.motivoRevocacion) espejo['motivoRevocacion'] = data.motivoRevocacion;
+
+      lote.set(doc(this.firestore, `invitaciones/${token}`), this.limpiar(espejo), { merge: true });
     }
+
+    await lote.commit();
   }
 
   // ============================================

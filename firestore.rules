@@ -38,12 +38,6 @@ service cloud.firestore {
 
     // Solo un miembro activo opera. Invitado y suspendido conservan su
     // historial pero no entran.
-    // El rol que tiene quien pide, en esta empresa. Se lee una vez y se
-    // reutiliza: cada get() dentro de una regla cuenta como lectura.
-    function rolEn(eid) {
-      return get(/databases/$(database)/documents/empresas/$(eid)/miembros/$(request.auth.uid)).data.rol;
-    }
-
     // Una escritura que solo toca los campos indicados. Sirve para
     // conceder un permiso estrecho sin abrir el documento entero.
     function soloCambia(campos) {
@@ -83,14 +77,20 @@ service cloud.firestore {
     // Ve todo el acervo, no solo lo suyo. Coincide con DOC_VER_TODOS
     // de la matriz de permisos: si una cambia, la otra tiene que cambiar.
     function veTodoElAcervo(eid) {
-      return rolEn(eid) in ['admin_empresa', 'gerente', 'jefe_area', 'supervisor'];
+      return tieneRol(eid, ['ADMIN_EMPRESA', 'GERENTE', 'JEFE_AREA', 'SUPERVISOR']);
     }
 
     // Ve tambien lo confidencial y lo restringido. DOC_VER_CONFIDENCIAL.
     // El supervisor ve todo el acervo pero no esto: es la diferencia
     // entre revisar el flujo de trabajo y acceder al contenido reservado.
     function veLoReservado(eid) {
-      return rolEn(eid) in ['admin_empresa', 'gerente', 'jefe_area'];
+      return tieneRol(eid, ['ADMIN_EMPRESA', 'GERENTE', 'JEFE_AREA']);
+    }
+
+    // Anular una solicitud la retira sin atenderla. La matriz lo
+    // reserva a direccion: SOL_ANULAR no lo tiene ni la jefatura.
+    function esDireccion(eid) {
+      return tieneRol(eid, ['ADMIN_EMPRESA', 'GERENTE']);
     }
 
     function esGestor(eid) {
@@ -244,8 +244,17 @@ service cloud.firestore {
 
         // Editar exige poder ver. Y el dueno no se reescribe: cambiarlo
         // seria apropiarse de un documento ajeno o repudiar el propio.
+        // Editar lo puede cualquier miembro —DOC_EDITAR lo tienen los cinco
+        // roles—, pero archivar no: DOC_ARCHIVAR se detiene en la jefatura.
+        // Se comprueba sobre la transicion, no sobre el metodo, porque
+        // archivar tambien se alcanza cambiando el estado a mano.
         allow update: if esMiembroActivo(eid) &&
-                      resource.data.creadoPorUid == request.resource.data.creadoPorUid;
+                      resource.data.creadoPorUid == request.resource.data.creadoPorUid &&
+                      (
+                        request.resource.data.estado != 'archivado' ||
+                        resource.data.estado == 'archivado' ||
+                        esGestor(eid)
+                      );
 
         allow delete: if false;   // se archiva, no se borra
 
@@ -258,8 +267,24 @@ service cloud.firestore {
       match /solicitudes/{id} {
         allow read: if esMiembroActivo(eid);
         allow create: if esMiembroActivo(eid);
-        allow update: if esAprobador(eid) ||
-                         resource.data.solicitante == miMembresia(eid).nombre;
+        // Tres puertas distintas, y cada una con su llave:
+        //
+        //   anular    → SOL_ANULAR, que solo tiene direccion
+        //   atender   → SOL_ATENDER, hasta supervision
+        //   lo demas  → quien la atiende, o quien la pidio
+        //
+        // Antes bastaba ser aprobador o figurar como solicitante para
+        // cualquiera de las tres, asi que un colaborador anulaba la suya
+        // sin tener SOL_ANULAR.
+        allow update: if esMiembroActivo(eid) && (
+          request.resource.data.status == 'anulada'
+            ? esDireccion(eid)
+            : (
+              request.resource.data.status in ['atendida', 'en_proceso']
+                ? esAprobador(eid)
+                : (esAprobador(eid) || resource.data.solicitante == miMembresia(eid).nombre)
+            )
+        );
         allow delete: if false;
       }
 

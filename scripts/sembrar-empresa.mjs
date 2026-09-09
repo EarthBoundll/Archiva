@@ -176,7 +176,7 @@ try {
 const miembroRef = db.doc('empresas/' + empresaId + '/miembros/' + usuario.uid);
 const miembroPrevio = await miembroRef.get();
 
-if (miembroPrevio.exists && miembroPrevio.data().rol === 'admin_empresa') {
+if (miembroPrevio.exists && miembroPrevio.data().rol === 'ADMIN_EMPRESA') {
   console.log('· Ya era administrador de esta empresa. Nada que cambiar.');
 } else {
   await miembroRef.set({
@@ -184,14 +184,14 @@ if (miembroPrevio.exists && miembroPrevio.data().rol === 'admin_empresa') {
     empresaId,
     email: arg.email,
     nombre: arg.nombre ?? arg.email,
-    rol: 'admin_empresa',
+    rol: 'ADMIN_EMPRESA',
     estado: 'activo',
     area: 'administracion',
     cargo: arg.cargo ?? 'Administrador',
     fechaAlta: new Date().toISOString(),
     altaPor: 'script de siembra'
   }, { merge: true });
-  console.log('· Pertenencia creada con rol admin_empresa.');
+  console.log('· Pertenencia creada con rol ADMIN_EMPRESA.');
 }
 
 // El perfil global dice a que empresa pertenece la cuenta. Es lo primero
@@ -216,7 +216,7 @@ console.log('· Perfil global enlazado a la empresa.');
 await db.collection('empresas/' + empresaId + '/auditoria').add({
   actorUid: usuario.uid,
   actorNombre: arg.nombre ?? arg.email,
-  actorRol: 'admin_empresa',
+  actorRol: 'ADMIN_EMPRESA',
   accion: 'creo',
   entidad: 'empresa',
   entidadId: empresaId,

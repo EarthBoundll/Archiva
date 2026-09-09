@@ -17,6 +17,7 @@ import {
 } from '../models/review-request.model';
 import { TenantService } from './tenant';
 import { AuditService } from './audit';
+import { Permiso } from '../models/rbac.model';
 
 @Injectable({ providedIn: 'root' })
 export class ReviewRequestService {
@@ -33,6 +34,13 @@ export class ReviewRequestService {
   // ============================================
   // LECTURA
   // ============================================
+
+  /** Corta la operacion si el rol no alcanza. */
+  private exigir(permiso: Permiso): void {
+    if (!this.tenant.puede(permiso)) {
+      throw new Error('Tu rol no permite esta accion.');
+    }
+  }
 
   async getAll(): Promise<SolicitudRevision[]> {
     const userId = this.tenant.empresaOpcional();
@@ -57,6 +65,7 @@ export class ReviewRequestService {
   // ============================================
 
   async create(payload: SolicitudRevisionPayload): Promise<SolicitudRevision> {
+    this.exigir(Permiso.SOL_CREAR);
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
@@ -116,6 +125,7 @@ export class ReviewRequestService {
 
   /** Pasa a en proceso: alguien la tomó y está trabajando en ella. */
   async tomar(s: SolicitudRevision, revisor: string): Promise<void> {
+    this.exigir(Permiso.SOL_ATENDER);
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
@@ -136,6 +146,7 @@ export class ReviewRequestService {
   }
 
   async marcarAtendida(s: SolicitudRevision, diasReales: number): Promise<void> {
+    this.exigir(Permiso.SOL_ATENDER);
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
@@ -154,6 +165,7 @@ export class ReviewRequestService {
   }
 
   async anular(s: SolicitudRevision, motivo: string): Promise<void> {
+    this.exigir(Permiso.SOL_ANULAR);
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 

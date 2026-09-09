@@ -25,6 +25,7 @@ import {
   RESULTADOS_ETAPA
 } from '../models/workflow.model';
 import { TenantService } from './tenant';
+import { Permiso } from '../models/rbac.model';
 
 /**
  * Flujos de aprobación por etapas.
@@ -52,6 +53,13 @@ export class WorkflowService {
    * flujo completado desaparecía del listado en cuanto se aprobaba su
    * última etapa: justo cuando más interesa verlo.
    */
+  /** Corta la operacion si el rol no alcanza. */
+  private exigir(permiso: Permiso): void {
+    if (!this.tenant.puede(permiso)) {
+      throw new Error('Tu rol no permite esta accion.');
+    }
+  }
+
   async getAll(): Promise<FlujoAprobacion[]> {
     const userId = this.tenant.empresaOpcional();
     if (!userId) return [];
@@ -117,6 +125,7 @@ export class WorkflowService {
   }
 
   async update(flujoId: string, payload: Partial<FlujoAprobacionPayload>): Promise<FlujoAprobacion> {
+    this.exigir(Permiso.FLUJO_EDITAR);
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 

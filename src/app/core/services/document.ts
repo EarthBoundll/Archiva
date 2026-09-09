@@ -79,6 +79,19 @@ export class DocumentService {
    * es para que la pantalla no pida lo que le van a denegar; el que
    * protege de verdad es el del servidor.
    */
+  /**
+   * Corta la operacion si el rol no alcanza.
+   *
+   * La comprobacion se repite en las reglas de Firestore. Esta de
+   * aqui es para dar un mensaje entendible en vez de un fallo de
+   * permisos crudo; la que protege es la del servidor.
+   */
+  private exigir(permiso: Permiso): void {
+    if (!this.tenant.puede(permiso)) {
+      throw new Error('Tu rol no permite esta accion.');
+    }
+  }
+
   async getAll(): Promise<Documento[]> {
     const empresaId = this.tenant.empresaOpcional();
     if (!empresaId) return [];
@@ -166,6 +179,7 @@ export class DocumentService {
   // ============================================
 
   async create(payload: DocumentoPayload): Promise<Documento> {
+    this.exigir(Permiso.DOC_CREAR);
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
@@ -225,6 +239,7 @@ export class DocumentService {
   }
 
   async update(documentoId: string, payload: Partial<DocumentoPayload>): Promise<void> {
+    this.exigir(Permiso.DOC_EDITAR);
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
 
@@ -278,6 +293,11 @@ export class DocumentService {
   ): Promise<void> {
     const userId = this.tenant.empresaOpcional();
     if (!userId) throw new Error('No autenticado');
+
+    // Archivar retira un documento de la circulacion. No es una
+    // transicion mas: por eso la matriz se la reserva a la jefatura, y
+    // por eso se comprueba aqui y no solo en archivar().
+    if (nuevoEstado === 'archivado') this.exigir(Permiso.DOC_ARCHIVAR);
 
     if (!puedeTransicionar(doc.estado, nuevoEstado)) {
       throw new Error(
@@ -352,6 +372,7 @@ export class DocumentService {
   }
 
   async archivar(doc: Documento): Promise<void> {
+    this.exigir(Permiso.DOC_ARCHIVAR);
     return this.cambiarEstado(doc, 'archivado');
   }
 

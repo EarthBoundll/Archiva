@@ -151,11 +151,22 @@ describe('Visibilidad · las reglas de Firestore dicen lo mismo', () => {
   it('el supervisor está en el acervo pero no en lo reservado', () => {
     // Es exactamente la línea que hay que mirar si alguien discute por
     // qué un supervisor no abre un contrato marcado como confidencial.
+    //
+    // Se compara contra Rol.SUPERVISOR y no contra una cadena escrita a
+    // mano: la primera versión de esta prueba buscaba 'supervisor' en
+    // minúsculas y pasaba PORQUE la regla estaba mal, que es el peor modo
+    // de fallar que tiene una prueba.
     const acervo = reglas.match(/function veTodoElAcervo[\s\S]*?\n {4}\}/)![0];
     const reservado = reglas.match(/function veLoReservado[\s\S]*?\n {4}\}/)![0];
 
-    expect(acervo).toContain('supervisor');
-    expect(reservado).not.toContain('supervisor');
+    expect(acervo).toContain(Rol.SUPERVISOR);
+    expect(reservado).not.toContain(Rol.SUPERVISOR);
+
+    // Y los tres que sí ven lo reservado, en los dos predicados.
+    for (const r of [Rol.ADMIN_EMPRESA, Rol.GERENTE, Rol.JEFE_AREA]) {
+      expect(acervo).toContain(r);
+      expect(reservado).toContain(r);
+    }
   });
 
   it('crear exige declararse dueño, y editar no permite cambiar de dueño', () => {

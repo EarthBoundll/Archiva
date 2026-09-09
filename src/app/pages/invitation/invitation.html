@@ -2,13 +2,24 @@
   <div class="tarjeta">
 
     <div class="marca">
-      <svg class="marca__logo" viewBox="0 0 260 48" role="img" aria-label="ARCHIVA" xmlns="http://www.w3.org/2000/svg">
+      <!--
+        El logo de la empresa va PRIMERO y el de la plataforma debajo, en
+        pequeño. Quien abre este enlace lo recibió de su empresa, no de
+        nosotros: lo que tiene que reconocer es la marca de quien le invita.
+      -->
+      @if (logoEmpresa(); as logo) {
+        <img class="marca__empresa" [src]="logo"
+             [alt]="invitacion()?.empresaNombre || 'Logo de la empresa'">
+        <span class="marca__sobre">en ARCHIVA</span>
+      } @else {
+        <svg class="marca__logo" viewBox="0 0 260 48" role="img" aria-label="ARCHIVA" xmlns="http://www.w3.org/2000/svg">
         <rect x="2" y="10" width="40" height="30" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"/>
         <path d="M2 18 h40" stroke="currentColor" stroke-width="2.5"/>
         <path d="M14 8 h18 l3 4 H11 z" fill="currentColor"/>
         <path d="M14 27 h16 M14 33 h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
         <text x="56" y="35" font-family="Archivo, sans-serif" font-size="27" font-weight="700" letter-spacing="3" fill="currentColor">ARCHIVA</text>
-      </svg>
+        </svg>
+      }
     </div>
 
     @switch (fase()) {

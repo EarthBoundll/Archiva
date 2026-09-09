@@ -7,6 +7,7 @@ import { ThemeService } from '../services/theme.service';
 import { DialogoDirective } from '../directives/dialogo.directive';
 import { TenantService } from '../services/tenant';
 import { SessionService } from '../services/session';
+import { BrandingService } from '../services/branding';
 import { CompanyService } from '../services/company';
 import { Permiso } from '../models/rbac.model';
 
@@ -191,6 +192,11 @@ import { Permiso } from '../models/rbac.model';
             <span class="interruptor-tema__bola" aria-hidden="true"></span>
           </button>
 
+          @if (marca.logo(); as logo) {
+            <img class="topbar__logo" [src]="logo"
+                 [alt]="empresa.razonSocial() || 'Logo de la empresa'">
+          }
+
           @if (empresa.nombre()) {
             <span class="topbar__empresa" [title]="empresa.razonSocial()">
               {{ empresa.nombre() }}
@@ -316,6 +322,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   theme = inject(ThemeService);
   tenant = inject(TenantService);
   sesion = inject(SessionService);
+  marca = inject(BrandingService);
   empresa = inject(CompanyService);
   
   toggleSidebar() {
@@ -384,7 +391,12 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
     // La barra superior muestra el nombre de la empresa: hay que tenerlo
     // antes de pintarla.
-    await this.empresa.cargar();
+    // En paralelo: la marca no debe retrasar la primera pintura, y la
+    // empresa no depende de ella.
+    await Promise.all([
+      this.empresa.cargar(),
+      this.marca.cargar()
+    ]);
   }
 
 
@@ -402,6 +414,10 @@ export class LayoutComponent implements OnInit, OnDestroy {
     try {
       // Por el servicio de sesion, no por auth directamente: es lo que
       // deja el asiento de salida antes de perder la empresa resuelta.
+      // Se retira la marca antes de salir: en un equipo compartido, la
+      // siguiente persona no deberia ver los colores de la empresa
+      // anterior mientras teclea su correo.
+      this.marca.limpiar();
       await this.sesion.cerrar('voluntario');
     } finally {
       this.saliendo.set(false);

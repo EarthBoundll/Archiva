@@ -522,3 +522,144 @@
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
 }
+
+// ------------------------------------------
+// MARCA DE LA EMPRESA
+// ------------------------------------------
+
+.seccion__nota {
+  margin: 0 0 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  max-width: 46ch;
+}
+
+.marca {
+  display: grid;
+  // Dos columnas donde caben; una sola en cuanto no. El min() evita que
+  // la pista de 18rem desborde por debajo de esa anchura.
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  gap: 1.5rem;
+
+  &__bloque {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.7rem;
+    min-width: 0;
+  }
+
+  &__etiqueta {
+    font-size: 0.72rem;
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--color-text-muted);
+  }
+
+  // El logo se enseña sobre los DOS fondos a la vez. Un logo blanco sobre
+  // la cabecera clara se ve perfecto y desaparece en tema oscuro; verlo
+  // aquí es lo que evita descubrirlo en producción.
+  &__logos {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  &__muestra {
+    display: grid;
+    place-items: center;
+    width: 8.5rem;
+    height: 4rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0.5rem;
+
+    img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    &--claro  { background: #F4F2ED; }
+    &--oscuro { background: #10171A; }
+  }
+
+  &__pista,
+  &__vacio {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    max-width: 34ch;
+  }
+
+  &__colores {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  &__chip {
+    display: grid;
+    place-items: end center;
+    width: 5.5rem;
+    height: 3.2rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding-bottom: 0.3rem;
+  }
+
+  &__chip-hex {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.68rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  &__subir input:focus-visible + .btn {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  // El aviso de corrección: informativo, no una alarma. Que tu color se
+  // aclare para leerse es lo correcto, no un error.
+  &__aviso {
+    margin: 0.45rem 0 0;
+    padding: 0.45rem 0.6rem;
+    border-left: 2px solid var(--color-border-hover);
+    background: var(--color-bg);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+  }
+}
+
+.campo-color {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+
+  input[type='color'] {
+    // 44px de lado: es un control táctil, no un adorno.
+    width: 44px;
+    height: 44px;
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  &__hex {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono, monospace);
+    text-transform: uppercase;
+  }
+}

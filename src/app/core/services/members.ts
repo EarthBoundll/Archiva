@@ -192,6 +192,11 @@ export class MembersService {
     const empresa = await this.firebase.getEmpresa(empresaId).catch(() => null);
     const nombreEmpresa = empresa?.['nombreComercial'] || empresa?.['razonSocial'] || '';
 
+    // La marca, para que la pantalla de aceptacion no se vea generica.
+    // Si falla, la invitacion sigue siendo valida: se vera con los
+    // colores de la plataforma, que es peor pero no rompe nada.
+    const marca = await this.firebase.getMarca(empresaId).catch(() => null);
+
     const invitacion: Omit<Invitacion, 'id'> = {
       empresaId,
       empresaNombre: nombreEmpresa,
@@ -208,7 +213,11 @@ export class MembersService {
       fechaExpira: fechaExpiracion(ahora)
     };
 
-    const id = await this.firebase.crearInvitacion(empresaId, invitacion);
+    const id = await this.firebase.crearInvitacion(empresaId, {
+      ...invitacion,
+      colorPrimario: marca?.['colorPrimario'],
+      logo: marca?.['logo']
+    });
 
     await this.audit.registrarSobre(
       'invito', 'invitacion', id, `${invitacion.nombre} (${email})`,

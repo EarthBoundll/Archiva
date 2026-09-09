@@ -281,3 +281,28 @@
 @media (prefers-reduced-motion: reduce) {
   .giro { animation-duration: 3s; }
 }
+
+// ------------------------------------------
+// LA MARCA DE QUIEN INVITA
+// ------------------------------------------
+// Quien abre este enlace lo recibió de su empresa. Lo que tiene que
+// reconocer al llegar es esa marca, no la nuestra.
+
+.marca {
+  &__empresa {
+    display: block;
+    max-width: min(200px, 70%);
+    max-height: 64px;
+    margin: 0 auto;
+    object-fit: contain;
+  }
+
+  &__sobre {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+}

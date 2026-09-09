@@ -115,6 +115,27 @@ export class FirebaseService {
   }
 
   // ============================================
+  // MARCA DE LA EMPRESA
+  // ============================================
+  //
+  // Documento aparte y no un campo mas de la ficha: el logo viaja como
+  // data URL y engordaria un documento que se lee en cada arranque de
+  // cada sesion. Aqui se carga en paralelo y sin bloquear.
+
+  async getMarca(empresaId: string): Promise<any | null> {
+    const snap = await getDoc(doc(this.firestore, `empresas/${empresaId}/marca/actual`));
+    return snap.exists() ? snap.data() : null;
+  }
+
+  async guardarMarca(empresaId: string, marca: any): Promise<void> {
+    await setDoc(
+      doc(this.firestore, `empresas/${empresaId}/marca/actual`),
+      this.limpiar(marca),
+      { merge: true }
+    );
+  }
+
+  // ============================================
   // MIEMBROS
   // ============================================
 
@@ -188,7 +209,13 @@ export class FirebaseService {
 
       estado: 'pendiente',
       fechaEnvio: data.fechaEnvio,
-      fechaExpira: data.fechaExpira
+      fechaExpira: data.fechaExpira,
+
+      // La marca viaja con la invitacion porque quien la abre no puede
+      // leer nada dentro de la empresa. Es el primer contacto con la
+      // plataforma, y llega con los colores de quien invita.
+      colorPrimario: data.colorPrimario,
+      logo: data.logo
     }));
 
     await lote.commit();

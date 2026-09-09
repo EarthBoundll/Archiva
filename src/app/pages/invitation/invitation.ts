@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FirebaseService } from '../../core/services/firebase';
 import { Auth } from '../../core/services/auth';
 import { TenantService } from '../../core/services/tenant';
+import { BrandingService } from '../../core/services/branding';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { PasswordStrengthComponent } from '../../core/components/password-strength/password-strength';
 import {
@@ -33,9 +34,11 @@ export class InvitationComponent implements OnInit {
   private firebase = inject(FirebaseService);
   private auth = inject(Auth);
   private tenant = inject(TenantService);
+  private marca = inject(BrandingService);
 
   fase = signal<Fase>('comprobando');
   invitacion = signal<Invitacion | null>(null);
+  logoEmpresa = signal<string | null>(null);
   motivo = signal('');
   error = signal('');
 
@@ -90,6 +93,14 @@ export class InvitationComponent implements OnInit {
 
       const inv = { ...datos, estado: estadoReal(datos) } as Invitacion;
       this.invitacion.set(inv);
+
+      // Los colores de la empresa que invita, ya en esta pantalla: es el
+      // primer contacto con la plataforma y no deberia verse generico.
+      this.marca.previsualizar({
+        colorPrimario: datos.colorPrimario,
+        logo: datos.logo
+      });
+      this.logoEmpresa.set(datos.logo ?? null);
 
       if (!esAceptable(inv)) {
         this.motivo.set(this.explicar(inv));

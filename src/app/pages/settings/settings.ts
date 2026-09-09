@@ -2,6 +2,12 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Auth } from '../../core/services/auth';
 import { DevSettingsService } from '../../core/services/dev-settings';
+import { BrandingService } from '../../core/services/branding';
+import { TenantService } from '../../core/services/tenant';
+import { Permiso } from '../../core/models/rbac.model';
+import {
+  seLeeTalCual, ajusteAplicado, esColorValido
+} from '../../core/models/brand.model';
 import { CompanyService } from '../../core/services/company';
 import { IconComponent } from '../../core/components/icon/icon.component';
 import { DialogoDirective } from '../../core/directives/dialogo.directive';
@@ -26,6 +32,8 @@ export class SettingsComponent implements OnInit {
   private auth = inject(Auth);
   company = inject(CompanyService);
   dev = inject(DevSettingsService);
+  marca = inject(BrandingService);
+  private tenant = inject(TenantService);
 
   sello = SELLO_COMPILACION;
 
@@ -61,6 +69,37 @@ export class SettingsComponent implements OnInit {
   rucValido     = computed(() => esRucValido(this.fRuc()));
 
   // Cierre de sesión
+  // ---- Marca ----
+  editandoMarca = signal(false);
+  guardandoMarca = signal(false);
+  errorMarca = signal('');
+  subiendoLogo = signal(false);
+
+  mPrimario   = signal('');
+  mSecundario = signal('');
+
+  /** Solo quien administra cambia lo que ven los demas. */
+  puedeEditarMarca = computed(() => this.tenant.puede(Permiso.EMPRESA_EDITAR));
+
+  /**
+   * Si el color elegido se lee tal cual en cada tema.
+   *
+   * Se ensena mientras se elige, no despues: descubrir que tu marca se
+   * ha aclarado un treinta por ciento al verla puesta es peor que
+   * saberlo al elegirla.
+   */
+  avisoClaro = computed(() => this.avisoDe('claro'));
+  avisoOscuro = computed(() => this.avisoDe('oscuro'));
+
+  private avisoDe(tema: 'claro' | 'oscuro'): string | null {
+    const c = this.mPrimario();
+    if (!c || !esColorValido(c)) return null;
+    if (seLeeTalCual(c, tema)) return null;
+
+    const ajuste = ajusteAplicado(c, tema);
+    return `En tema ${tema} se aclara un ${ajuste}% para que se lea.`;
+  }
+
   confirmandoSalida = signal(false);
   saliendo = signal(false);
 
@@ -138,6 +177,99 @@ export class SettingsComponent implements OnInit {
       this.errorForm.set(e?.message ?? 'No se pudo guardar la configuración.');
     } finally {
       this.guardando.set(false);
+    }
+  }
+
+  // ------------------------------------------
+  // MARCA
+  // ------------------------------------------
+
+  abrirMarca() {
+    const m = this.marca.marca();
+    this.mPrimario.set(m.colorPrimario ?? '');
+    this.mSecundario.set(m.colorSecundario ?? '');
+    this.errorMarca.set('');
+    this.editandoMarca.set(true);
+  }
+
+  cerrarMarca() {
+    if (this.guardandoMarca()) return;
+    // Deshace la previsualizacion: lo que no se guarda, no se queda.
+    this.marca.cancelarPrevisualizacion();
+    this.editandoMarca.set(false);
+  }
+
+  /**
+   * Pinta el color sobre la aplicacion real segun se escribe.
+   *
+   * Sobre la aplicacion y no sobre una muestra: un color se juzga
+   * viendolo en los botones, los enlaces y los bordes que va a tenir,
+   * no en una pastilla de dos centimetros.
+   */
+  previsualizar() {
+    const primario = this.mPrimario().trim();
+    if (!primario || !esColorValido(primario)) return;
+
+    this.marca.previsualizar({
+      ...this.marca.marca(),
+      colorPrimario: primario,
+      colorSecundario: this.mSecundario().trim() || undefined
+    });
+  }
+
+  async guardarMarca() {
+    if (this.guardandoMarca()) return;
+
+    this.guardandoMarca.set(true);
+    this.errorMarca.set('');
+    try {
+      await this.marca.guardar({
+        colorPrimario: this.mPrimario().trim() || undefined,
+        colorSecundario: this.mSecundario().trim() || undefined
+      });
+      this.editandoMarca.set(false);
+    } catch (e: any) {
+      this.errorMarca.set(e?.message ?? 'No se pudo guardar la marca.');
+    } finally {
+      this.guardandoMarca.set(false);
+    }
+  }
+
+  async onLogo(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const archivo = input.files?.[0];
+    if (!archivo) return;
+
+    this.subiendoLogo.set(true);
+    this.errorMarca.set('');
+    try {
+      await this.marca.guardarLogo(archivo);
+    } catch (err: any) {
+      this.errorMarca.set(err?.message ?? 'No se pudo guardar el logo.');
+    } finally {
+      this.subiendoLogo.set(false);
+      // Permite volver a elegir el mismo archivo tras corregirlo.
+      input.value = '';
+    }
+  }
+
+  async quitarLogo() {
+    this.errorMarca.set('');
+    try {
+      await this.marca.quitarLogo();
+    } catch (e: any) {
+      this.errorMarca.set(e?.message ?? 'No se pudo quitar el logo.');
+    }
+  }
+
+  async restablecerMarca() {
+    this.errorMarca.set('');
+    try {
+      await this.marca.guardar({ colorPrimario: undefined, colorSecundario: undefined });
+      this.mPrimario.set('');
+      this.mSecundario.set('');
+    } catch (e: any) {
+      this.errorMarca.set(e?.message ?? 'No se pudo restablecer.');
     }
   }
 

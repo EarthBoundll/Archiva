@@ -39,7 +39,6 @@ export class CompanyService {
   readonly prefijo     = computed(() => this._empresa()?.prefijoCodificacion ?? '');
   readonly razonSocial = computed(() => this._empresa()?.razonSocial ?? '');
   readonly nombre      = computed(() => nombreVisible(this._empresa()));
-  readonly logo        = computed(() => this._empresa()?.logo ?? null);
 
   readonly diasAlertaPorDefecto = computed(() =>
     this._empresa()?.diasAlertaPorDefecto ?? EMPRESA_POR_DEFECTO.diasAlertaPorDefecto
@@ -142,32 +141,6 @@ export class CompanyService {
     });
 
     return limpio;
-  }
-
-  /** Reemplaza el logo. Se comprueba el tamaño antes de subirlo. */
-  async guardarLogo(archivo: File): Promise<void> {
-    if (archivo.size > MAX_LOGO_BYTES) {
-      throw new Error(
-        `El logo pesa ${Math.round(archivo.size / 1024)} KB y el máximo son ` +
-        `${Math.round(MAX_LOGO_BYTES / 1024)} KB.`
-      );
-    }
-    if (!archivo.type.startsWith('image/')) {
-      throw new Error('El logo tiene que ser una imagen.');
-    }
-
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const lector = new FileReader();
-      lector.onload = () => resolve(String(lector.result));
-      lector.onerror = () => reject(new Error('No se pudo leer la imagen.'));
-      lector.readAsDataURL(archivo);
-    });
-
-    await this.guardar({ logo: dataUrl });
-  }
-
-  async quitarLogo(): Promise<void> {
-    await this.guardar({ logo: '' });
   }
 
   // ------------------------------------------

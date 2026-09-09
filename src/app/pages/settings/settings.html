@@ -73,6 +73,81 @@
       </dl>
     </section>
 
+    <!-- ============ MARCA ============ -->
+    <section class="seccion">
+      <div class="seccion__cabecera">
+        <h2>Marca</h2>
+        @if (puedeEditarMarca()) {
+          <button class="btn btn--sm" (click)="abrirMarca()">Personalizar</button>
+        }
+      </div>
+
+      <p class="seccion__nota">
+        El logo y los colores que ve tu equipo. Los colores se ajustan solos
+        para que se lean sobre los dos temas, claro y oscuro.
+      </p>
+
+      <div class="marca">
+        <!-- Logo -->
+        <div class="marca__bloque">
+          <span class="marca__etiqueta">Logo</span>
+
+          @if (marca.logo(); as logo) {
+            <div class="marca__logos">
+              <div class="marca__muestra marca__muestra--claro">
+                <img [src]="logo" alt="Logo sobre fondo claro">
+              </div>
+              <div class="marca__muestra marca__muestra--oscuro">
+                <img [src]="logo" alt="Logo sobre fondo oscuro">
+              </div>
+            </div>
+            <p class="marca__pista">
+              Se muestra sobre los dos fondos: si tu logo desaparece en uno,
+              conviene una versión con contorno.
+            </p>
+            @if (puedeEditarMarca()) {
+              <button class="btn btn--sm" (click)="quitarLogo()">Quitar logo</button>
+            }
+          } @else {
+            <p class="marca__vacio">Sin logo. Se muestra el nombre de la empresa.</p>
+          }
+
+          @if (puedeEditarMarca()) {
+            <label class="marca__subir">
+              <input type="file" accept="image/*" (change)="onLogo($event)" hidden>
+              <span class="btn btn--sm">
+                {{ subiendoLogo() ? 'Subiendo…' : (marca.logo() ? 'Cambiar logo' : 'Subir logo') }}
+              </span>
+            </label>
+          }
+        </div>
+
+        <!-- Colores -->
+        <div class="marca__bloque">
+          <span class="marca__etiqueta">Colores</span>
+
+          @if (marca.marca().colorPrimario) {
+            <div class="marca__colores">
+              <span class="marca__chip" [style.background]="marca.marca().colorPrimario">
+                <span class="marca__chip-hex">{{ marca.marca().colorPrimario }}</span>
+              </span>
+              @if (marca.marca().colorSecundario; as sec) {
+                <span class="marca__chip" [style.background]="sec">
+                  <span class="marca__chip-hex">{{ sec }}</span>
+                </span>
+              }
+            </div>
+          } @else {
+            <p class="marca__vacio">Sin colores propios. Se usan los de ARCHIVA.</p>
+          }
+        </div>
+      </div>
+
+      @if (errorMarca() && !editandoMarca()) {
+        <p class="error-form" role="alert">{{ errorMarca() }}</p>
+      }
+    </section>
+
     <!-- ============ CUENTA ============ -->
     <section class="seccion">
       <div class="seccion__cabecera"><h2>Cuenta</h2></div>
@@ -238,6 +313,76 @@
         <button class="salida__btn" (click)="confirmandoSalida.set(false)">Seguir aquí</button>
         <button class="salida__btn salida__btn--confirmar" (click)="confirmarCierre()" [disabled]="saliendo()">
           {{ saliendo() ? 'Cerrando…' : 'Cerrar sesión' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===== Modal: personalizar la marca ===== -->
+@if (editandoMarca()) {
+  <div class="overlay" (click)="cerrarMarca()">
+    <div class="modal modal--sm" appDialogo (cerrar)="cerrarMarca()"
+         aria-labelledby="titulo-marca" (click)="$event.stopPropagation()">
+
+      <div class="modal__header">
+        <h3 id="titulo-marca">Colores de la empresa</h3>
+        <button class="btn-cerrar" (click)="cerrarMarca()" aria-label="Cerrar">
+          <app-icon name="x" [size]="18" />
+        </button>
+      </div>
+
+      <div class="modal__cuerpo">
+        <p class="nota-form">
+          Se aplican mientras eliges, sobre la aplicación real. Si cierras sin
+          guardar, vuelve lo anterior.
+        </p>
+
+        <div class="campo-form">
+          <label for="m-primario">Color principal</label>
+          <div class="campo-color">
+            <input id="m-primario" type="color"
+                   [value]="mPrimario() || '#1F4959'"
+                   (input)="mPrimario.set($any($event.target).value); previsualizar()">
+            <input type="text" class="campo-color__hex"
+                   [value]="mPrimario()"
+                   (input)="mPrimario.set($any($event.target).value); previsualizar()"
+                   placeholder="#1F4959" spellcheck="false">
+          </div>
+          @if (avisoClaro(); as aviso) {
+            <p class="marca__aviso">{{ aviso }}</p>
+          }
+          @if (avisoOscuro(); as aviso) {
+            <p class="marca__aviso">{{ aviso }}</p>
+          }
+        </div>
+
+        <div class="campo-form">
+          <label for="m-secundario">
+            Color secundario <span class="opcional">opcional</span>
+          </label>
+          <div class="campo-color">
+            <input id="m-secundario" type="color"
+                   [value]="mSecundario() || '#C97B3C'"
+                   (input)="mSecundario.set($any($event.target).value); previsualizar()">
+            <input type="text" class="campo-color__hex"
+                   [value]="mSecundario()"
+                   (input)="mSecundario.set($any($event.target).value); previsualizar()"
+                   placeholder="#C97B3C" spellcheck="false">
+          </div>
+          <p class="nota-form">Para acentos y realces.</p>
+        </div>
+
+        @if (errorMarca()) {
+          <p class="error-form" role="alert">{{ errorMarca() }}</p>
+        }
+      </div>
+
+      <div class="modal__pie">
+        <button class="btn" (click)="restablecerMarca()">Quitar colores</button>
+        <button class="btn" (click)="cerrarMarca()">Cancelar</button>
+        <button class="btn btn--primary" (click)="guardarMarca()" [disabled]="guardandoMarca()">
+          {{ guardandoMarca() ? 'Guardando…' : 'Guardar' }}
         </button>
       </div>
     </div>

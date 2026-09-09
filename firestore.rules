@@ -184,6 +184,17 @@ service cloud.firestore {
         allow delete: if false;   // se suspende, no se borra
       }
 
+      // ---- Marca ----
+      //
+      // La lee cualquier miembro activo: sin ella la aplicacion se pinta
+      // con la identidad de la plataforma y el cliente no reconoce lo que
+      // esta usando. La escribe solo quien administra, porque cambiar la
+      // marca cambia lo que ven todos los demas.
+      match /marca/{id} {
+        allow read: if esMiembroActivo(eid);
+        allow write: if esAdmin(eid);
+      }
+
       // ---- Invitaciones ----
       // ---- Invitaciones ----
       //

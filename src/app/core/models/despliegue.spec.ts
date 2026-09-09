@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
  * para .rules ni para .firebaserc, y anadirle uno solo para esto seria
  * cambiar la construccion del proyecto por una prueba.
  */
-const leer = (f: string) => readFileSync(new URL('../../../../' + f, import.meta.url), 'utf8');
+const leer = (f: string) => readFileSync(f, 'utf8');
 const leerJson = (f: string) => JSON.parse(leer(f));
 
 const reglas       = leer('firestore.rules');

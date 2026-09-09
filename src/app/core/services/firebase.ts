@@ -520,17 +520,61 @@ export class FirebaseService {
   // DOCUMENTOS
   // ============================================
   
-  // Todos los documentos del usuario
+  /**
+   * Todos los documentos de la empresa, del mas reciente al mas antiguo.
+   *
+   * Ordena por createdAt y no por titulo porque Firestore deja fuera de
+   * los resultados los documentos que no tienen el campo del orderBy:
+   * ordenar por un campo opcional esconde justo los registros peor
+   * rellenados, que suelen ser los que hay que revisar. createdAt lo
+   * escribe crearDocumento siempre.
+   */
   async getDocumentos(empresaId: string) {
     const q = query(
       collection(this.firestore, `empresas/${empresaId}/documentos`),
-      orderBy('name')
+      orderBy('createdAt', 'desc')
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   }
 
   // Documentos activos
+  /**
+   * Solo los documentos que creo esta persona.
+   *
+   * Es lo que puede pedir quien no tiene DOC_VER_TODOS. La consulta
+   * lleva el mismo filtro que la regla de Firestore a proposito: si
+   * pidiera mas, la regla rechazaria la consulta entera y no veria ni
+   * siquiera los suyos.
+   */
+  async getDocumentosDe(empresaId: string, uid: string) {
+    const q = query(
+      collection(this.firestore, `empresas/${empresaId}/documentos`),
+      where('creadoPorUid', '==', uid),
+      orderBy('createdAt', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }
+
+  /**
+   * El acervo sin lo reservado.
+   *
+   * Lo que puede pedir quien ve todo el acervo pero no lo confidencial
+   * —el supervisor—. Sus propios documentos reservados los obtiene por
+   * la otra consulta y se unen despues.
+   */
+  async getDocumentosNoReservados(empresaId: string) {
+    const q = query(
+      collection(this.firestore, `empresas/${empresaId}/documentos`),
+      where('confidencialidad', 'not-in', ['confidencial', 'restringido']),
+      orderBy('confidencialidad'),
+      orderBy('createdAt', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }
+
   async getDocumentosActivos(empresaId: string) {
     const q = query(
       collection(this.firestore, `empresas/${empresaId}/documentos`),
@@ -644,11 +688,11 @@ export class FirebaseService {
   // SOLICITUDES DE REVISION (sistema dual)
   // ============================================
 
-  // Todas las solicitudes del usuario
+  /** Todas las solicitudes, de la mas reciente a la mas antigua. */
   async getSolicitudes(empresaId: string): Promise<any[]> {
     const q = query(
       collection(this.firestore, `empresas/${empresaId}/solicitudes`),
-      orderBy('name')
+      orderBy('createdAt', 'desc')
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -664,16 +708,6 @@ export class FirebaseService {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   }
 
-  // Get expenses by month
-  async getSolicitudesPorPeriodo(empresaId: string, year: number, month: number): Promise<any[]> {
-    const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    const q = query(
-      collection(this.firestore, `empresas/${empresaId}/periodos/${periodoId}/solicitudes`),
-      orderBy('name')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  }
 
   // Alta de solicitud
   async crearSolicitud(empresaId: string, data: any): Promise<any> {

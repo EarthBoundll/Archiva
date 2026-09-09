@@ -5,8 +5,42 @@
       "collectionGroup": "almacenamiento",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "esPrioritaria", "order": "ASCENDING" },
-        { "fieldPath": "budgetedAmount", "order": "DESCENDING" }
+        {
+          "fieldPath": "esPrioritaria",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "budgetedAmount",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "documentos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "confidencialidad",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "documentos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "creadoPorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     }
   ],

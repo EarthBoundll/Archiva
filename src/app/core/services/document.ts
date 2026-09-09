@@ -20,6 +20,7 @@ import {
   TIPOS_DOCUMENTALES
 } from '../models/document.model';
 import { TenantService } from './tenant';
+import { Permiso } from '../models/rbac.model';
 
 /** Adjunto de un documento, sin el contenido salvo al descargarlo. */
 export interface ArchivoAdjunto {
@@ -63,11 +64,82 @@ export class DocumentService {
   // LECTURA
   // ============================================
 
+  /**
+   * Los documentos que esta persona puede ver.
+   *
+   * Hasta ahora devolvia el acervo entero a cualquiera: la matriz decia
+   * que un colaborador ve solo lo suyo y nadie lo aplicaba. Son dos
+   * recortes distintos y hay que hacer los dos:
+   *
+   *   sin DOC_VER_TODOS        → solo los que creo esta persona
+   *   sin DOC_VER_CONFIDENCIAL → ni confidenciales ni restringidos
+   *                              ajenos; los propios si
+   *
+   * El filtro se aplica tambien en las reglas de Firestore. Este de aqui
+   * es para que la pantalla no pida lo que le van a denegar; el que
+   * protege de verdad es el del servidor.
+   */
   async getAll(): Promise<Documento[]> {
-    const userId = this.tenant.empresaOpcional();
-    if (!userId) return [];
-    const data = await this.firebase.getDocumentos(userId);
-    return data.map((d: any) => this.normalizar(d));
+    const empresaId = this.tenant.empresaOpcional();
+    if (!empresaId) return [];
+
+    const uid = this.tenant.uid();
+    const veTodo     = this.tenant.puede(Permiso.DOC_VER_TODOS);
+    const veReservado = this.tenant.puede(Permiso.DOC_VER_CONFIDENCIAL);
+
+    // Quien lo ve todo pide todo de una vez.
+    if (veTodo && veReservado) {
+      return (await this.firebase.getDocumentos(empresaId))
+        .map((x: any) => this.normalizar(x));
+    }
+
+    // Quien no ve lo reservado pide el acervo sin ello, y aparte lo suyo:
+    // sus propios documentos reservados si le corresponden.
+    if (veTodo && uid) {
+      const [abiertos, mios] = await Promise.all([
+        this.firebase.getDocumentosNoReservados(empresaId),
+        this.firebase.getDocumentosDe(empresaId, uid)
+      ]);
+      return this.unir(abiertos, mios);
+    }
+
+    // Quien solo ve lo suyo, pide solo lo suyo.
+    if (uid) {
+      return (await this.firebase.getDocumentosDe(empresaId, uid))
+        .map((x: any) => this.normalizar(x));
+    }
+
+    return [];
+  }
+
+  /** Une dos consultas quitando los repetidos y reordenando por fecha. */
+  private unir(...listas: any[][]): Documento[] {
+    const porId = new Map<string, Documento>();
+    for (const lista of listas) {
+      for (const x of lista) porId.set(x.id, this.normalizar(x));
+    }
+    return [...porId.values()]
+      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+  }
+
+  /**
+   * Regla de visibilidad, en un solo sitio.
+   *
+   * Un documento sin creadoPorUid es anterior a que existiera ese campo.
+   * Se trata como visible para quien tiene DOC_VER_TODOS y oculto para
+   * quien no: ocultarselo a todo el mundo perderia el acervo historico, y
+   * ensenarselo a todo el mundo seria justo el agujero que se cierra.
+   */
+  puedeVer(doc: Documento, uid: string | null): boolean {
+    const esMio = !!uid && doc.creadoPorUid === uid;
+    if (esMio) return true;
+
+    if (!this.tenant.puede(Permiso.DOC_VER_TODOS)) return false;
+
+    const reservado = doc.confidencialidad === 'confidencial' ||
+                      doc.confidencialidad === 'restringido';
+
+    return !reservado || this.tenant.puede(Permiso.DOC_VER_CONFIDENCIAL);
   }
 
   /** Acervo activo: todo lo que no esta archivado. */
@@ -126,6 +198,8 @@ export class DocumentService {
       area: payload.area,
       confidencialidad: payload.confidencialidad,
       estado: 'borrador',
+      creadoPorUid: this.tenant.uid() ?? undefined,
+      creadoPorNombre: this.tenant.nombre() || undefined,
       responsable: payload.responsable.trim(),
       elaboradoPor: payload.responsable.trim(),
       documentoReferencia: payload.documentoReferencia,

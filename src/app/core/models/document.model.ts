@@ -163,6 +163,18 @@ export interface Documento {
   fechaEnvioRevision?: string;
 
   // Responsables
+  /**
+   * Quien lo dio de alta. Es un uid, no un nombre.
+   *
+   * `responsable` es texto libre —un nombre y apellidos escritos a mano— y
+   * con eso no se puede decidir nada: ni el cliente ni las reglas de
+   * Firestore pueden saber si un documento es «mio». Sin este campo, la
+   * matriz de permisos declaraba una visibilidad que era imposible
+   * aplicar.
+   */
+  creadoPorUid?: string;
+  creadoPorNombre?: string;
+
   responsable: string;
   elaboradoPor?: string;
   revisadoPor?: string;

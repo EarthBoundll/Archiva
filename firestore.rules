@@ -38,6 +38,12 @@ service cloud.firestore {
 
     // Solo un miembro activo opera. Invitado y suspendido conservan su
     // historial pero no entran.
+    // El rol que tiene quien pide, en esta empresa. Se lee una vez y se
+    // reutiliza: cada get() dentro de una regla cuenta como lectura.
+    function rolEn(eid) {
+      return get(/databases/$(database)/documents/empresas/$(eid)/miembros/$(request.auth.uid)).data.rol;
+    }
+
     function esMiembroActivo(eid) {
       return existeMembresia(eid) && miMembresia(eid).estado == 'activo';
     }
@@ -60,6 +66,19 @@ service cloud.firestore {
     }
 
     // Quien puede definir flujos y cuotas.
+    // Ve todo el acervo, no solo lo suyo. Coincide con DOC_VER_TODOS
+    // de la matriz de permisos: si una cambia, la otra tiene que cambiar.
+    function veTodoElAcervo(eid) {
+      return rolEn(eid) in ['admin_empresa', 'gerente', 'jefe_area', 'supervisor'];
+    }
+
+    // Ve tambien lo confidencial y lo restringido. DOC_VER_CONFIDENCIAL.
+    // El supervisor ve todo el acervo pero no esto: es la diferencia
+    // entre revisar el flujo de trabajo y acceder al contenido reservado.
+    function veLoReservado(eid) {
+      return rolEn(eid) in ['admin_empresa', 'gerente', 'jefe_area'];
+    }
+
     function esGestor(eid) {
       return tieneRol(eid, ['ADMIN_EMPRESA', 'GERENTE', 'JEFE_AREA']);
     }
@@ -133,12 +152,43 @@ service cloud.firestore {
       }
 
       // ---- Acervo documental ----
+      // ---- Documentos ----
+      //
+      // La matriz de permisos declara dos recortes de visibilidad y hasta
+      // ahora no se aplicaba ninguno: cualquier miembro leia el acervo
+      // entero, confidenciales incluidos. El filtro del cliente evita
+      // pedir lo que se va a denegar; el que protege es este.
+      //
+      // Firestore evalua esta regla documento a documento, tambien en las
+      // consultas de lista: si un solo resultado no la cumple, rechaza la
+      // consulta entera. Por eso el cliente tiene que acotar lo que pide
+      // —y por eso un colaborador consulta filtrando por creadoPorUid.
       match /documentos/{id} {
-        allow read: if esMiembroActivo(eid);
-        allow create: if esMiembroActivo(eid);
-        allow update: if esMiembroActivo(eid);
+        allow read: if esMiembroActivo(eid) && (
+          // Lo mio, siempre.
+          resource.data.creadoPorUid == request.auth.uid ||
+          (
+            veTodoElAcervo(eid) && (
+              veLoReservado(eid) ||
+              !(resource.data.confidencialidad in ['confidencial', 'restringido'])
+            )
+          )
+        );
+
+        // Al crear se exige que el documento diga quien lo crea, y que sea
+        // quien lo esta creando. Sin esto, bastaba omitir el campo para
+        // que el documento quedara fuera de toda comprobacion de dueno.
+        allow create: if esMiembroActivo(eid) &&
+                      request.resource.data.creadoPorUid == request.auth.uid;
+
+        // Editar exige poder ver. Y el dueno no se reescribe: cambiarlo
+        // seria apropiarse de un documento ajeno o repudiar el propio.
+        allow update: if esMiembroActivo(eid) &&
+                      resource.data.creadoPorUid == request.resource.data.creadoPorUid;
+
         allow delete: if false;   // se archiva, no se borra
 
+        // Los adjuntos siguen la suerte del documento que los contiene.
         match /archivos/{archivoId} {
           allow read, write: if esMiembroActivo(eid);
         }

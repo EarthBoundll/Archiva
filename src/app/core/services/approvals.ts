@@ -85,33 +85,34 @@ export class ApprovalsService {
     }
 
     const ahora = new Date().toISOString();
-    const expediente = await this.firebase.crearFlujo(empresaId, {
-      documentoId: documento.id,
-      codigoDocumento: documento.codigo,
 
-      name: documento.codigo + ' \u00b7 ' + documento.titulo,
-      description: 'Expediente abierto sobre la plantilla \u00ab' + plantilla.name + '\u00bb.',
-      category: plantilla.category,
+    const { flujo } = await this.firebase.crearExpediente(
+      empresaId,
+      {
+        documentoId: documento.id,
+        codigoDocumento: documento.codigo,
 
-      etapasTotales: etapas.length,
-      etapasCompletadas: 0,
-      etapasPorPeriodo: plantilla.etapasPorPeriodo ?? 1,
-      etapasDefinidas: etapas,
-      nombresEtapas: etapas.map(e => e.nombre),
+        name: documento.codigo + ' \u00b7 ' + documento.titulo,
+        description: 'Expediente abierto sobre la plantilla \u00ab' + plantilla.name + '\u00bb.',
+        category: plantilla.category,
 
-      activo: true,
-      duplicadoDe: plantilla.id,
-      status: 'active',
-      priority: plantilla.priority ?? 'medium',
-      estaCompletado: false,
-      periodosParaCierre: null,
-      etapas: [],
-      createdAt: ahora,
-      updatedAt: ahora
-    });
+        etapasTotales: etapas.length,
+        etapasPorPeriodo: plantilla.etapasPorPeriodo ?? 1,
+        etapasDefinidas: etapas,
+        nombresEtapas: etapas.map(e => e.nombre),
 
-    const flujo = { ...expediente, id: expediente.id } as FlujoAprobacion;
-    await this.abrirFlujo(flujo, etapas);
+        activo: true,
+        duplicadoDe: plantilla.id,
+        priority: plantilla.priority ?? 'medium',
+        periodosParaCierre: null
+      },
+      etapas.map(etapa => this.tareaDeEtapa(etapa, plantilla, etapas.length, documento, ahora))
+    );
+
+    await this.audit.registrarSobre(
+      'creo', 'flujo', flujo.id, flujo.name,
+      etapas.length + ' etapas abiertas'
+    );
 
     // El documento pasa a pendiente de aprobacion: es lo que impide que
     // se edite mientras alguien lo revisa.
@@ -126,7 +127,44 @@ export class ApprovalsService {
       // sigue siendo valido: el documento se movera al resolverse.
     }
 
-    return flujo;
+    return flujo as FlujoAprobacion;
+  }
+
+  /** Convierte una etapa definida en la tarea que la sostiene. */
+  private tareaDeEtapa(
+    etapa: EtapaDefinida,
+    flujo: { priority?: string },
+    total: number,
+    documento: Documento | null,
+    ahora: string
+  ) {
+    return {
+      flujoNombre: documento ? documento.codigo + ' \u00b7 ' + documento.titulo : '',
+      documentoId: documento?.id,
+      codigoDocumento: documento?.codigo,
+      tituloDocumento: documento?.titulo,
+
+      orden: etapa.orden,
+      etapaNombre: etapa.nombre,
+      etapasTotales: total,
+
+      responsableUid: etapa.responsableUid,
+      responsableNombre: etapa.responsableNombre,
+      asignadoUid: etapa.responsableUid,
+      asignadoNombre: etapa.responsableNombre,
+      rolRequerido: etapa.rolRequerido,
+      area: etapa.area,
+
+      // Solo la primera se abre; el resto espera su turno.
+      estado: etapa.orden === 1 ? 'pendiente' : 'en_curso',
+      prioridad: flujo.priority ?? 'medium',
+
+      fechaCreacion: ahora,
+      fechaLimite: etapa.plazoDias
+        ? new Date(new Date(ahora).getTime() + etapa.plazoDias * 86400000).toISOString()
+        : undefined,
+      traspasos: []
+    };
   }
 
   /**
@@ -138,47 +176,29 @@ export class ApprovalsService {
    */
   async abrirFlujo(flujo: FlujoAprobacion, etapas: EtapaDefinida[]): Promise<TareaAprobacion[]> {
     const empresaId = this.tenant.exigirEmpresa();
-    const ahora = new Date();
-    const creadas: TareaAprobacion[] = [];
+    const ahora = new Date().toISOString();
 
-    for (const etapa of etapas) {
-      const tarea = await this.firebase.crearTarea(empresaId, {
+    // En un solo lote: un corte a mitad dejaba un flujo que declaraba N
+    // etapas con menos tareas creadas, y el expediente se quedaba mudo
+    // al aprobar la ultima que si existia.
+    const creadas = await this.firebase.crearTareas(
+      empresaId,
+      etapas.map(etapa => ({
+        ...this.tareaDeEtapa(etapa, flujo, etapas.length, null, ahora),
         flujoId: flujo.id,
         flujoNombre: flujo.name,
         documentoId: flujo.documentoId,
         codigoDocumento: flujo.codigoDocumento,
-        tituloDocumento: flujo.name,
-
-        orden: etapa.orden,
-        etapaNombre: etapa.nombre,
-        etapasTotales: etapas.length,
-
-        responsableUid: etapa.responsableUid,
-        responsableNombre: etapa.responsableNombre,
-        asignadoUid: etapa.responsableUid,
-        asignadoNombre: etapa.responsableNombre,
-        rolRequerido: etapa.rolRequerido,
-        area: etapa.area,
-
-        // Solo la primera se abre; el resto espera su turno.
-        estado: etapa.orden === 1 ? 'pendiente' : 'en_curso',
-        prioridad: flujo.priority ?? 'medium',
-
-        fechaCreacion: ahora.toISOString(),
-        fechaLimite: etapa.plazoDias
-          ? new Date(ahora.getTime() + etapa.plazoDias * 86400000).toISOString()
-          : undefined,
-        traspasos: []
-      });
-      creadas.push(tarea as TareaAprobacion);
-    }
+        tituloDocumento: flujo.name
+      }))
+    );
 
     await this.audit.registrarSobre(
       'creo', 'flujo', flujo.id, flujo.name,
-      `${etapas.length} etapas abiertas`
+      etapas.length + ' etapas abiertas'
     );
 
-    return creadas;
+    return creadas as TareaAprobacion[];
   }
 
   // ------------------------------------------

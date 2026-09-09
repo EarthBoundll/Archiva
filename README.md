@@ -188,6 +188,62 @@ Sin ella, todo queda denegado por omisión.
 
 ---
 
+## Puesta en marcha
+
+Tres pasos, una sola vez. Los tres hacen falta: sin el primero el
+aislamiento entre empresas vive solo en el navegador, y sin el tercero
+no hay forma de entrar.
+
+### 1. Desplegar las reglas
+
+El flujo de GitHub publica el sitio, no las reglas. Estas van con la CLI
+de Firebase:
+
+```bash
+npx firebase-tools login
+npx firebase-tools deploy --only firestore
+```
+
+El proyecto ya esta declarado en `.firebaserc`, asi que no pregunta cual.
+Despliega `firestore.rules` y `firestore.indexes.json` a la vez.
+
+**Hasta que esto se ejecute, cualquier cuenta autenticada puede leer los
+datos de cualquier empresa.** Las comprobaciones del cliente son de
+experiencia; la frontera real son las reglas.
+
+### 2. Sembrar la primera empresa
+
+No hay alta publica, y eso crea un huevo-y-gallina: quien crearia la
+primera empresa todavia no pertenece a ninguna, asi que las reglas le
+deniegan todo. Se rompe desde fuera, con las credenciales de
+administrador del proyecto:
+
+```bash
+npm install --no-save firebase-admin
+node scripts/sembrar-empresa.mjs \
+  --clave "C:/ruta/clave-servicio.json" \
+  --ruc 20123456789 \
+  --razon "Constructora Andes S.A.C." \
+  --email admin@empresa.com \
+  --nombre "Nombre Apellido"
+```
+
+La clave de servicio sale de la consola de Firebase: Configuracion del
+proyecto → Cuentas de servicio → Generar nueva clave privada. **Guardala
+fuera del repositorio**: da acceso total al proyecto.
+
+El script crea la empresa, la cuenta, la pertenencia con rol
+`admin_empresa` y su asiento de auditoria; imprime la contrasena una sola
+vez. Es idempotente: ejecutarlo dos veces con el mismo RUC no duplica
+nada.
+
+### 3. Invitar al resto
+
+Desde **Personas**, ya dentro de la aplicacion. El script no vuelve a
+hacer falta.
+
+---
+
 ## Instalación
 
 ```bash

@@ -49,13 +49,14 @@ jobs:
       - name: Ejecutar pruebas
         run: pnpm exec ng test --watch=false
 
+      # OJO: este flujo publica el SITIO, no las reglas de Firestore.
+      # Las reglas y los indices van aparte y a mano:
+      #   npx firebase-tools deploy --only firestore
+      # Mientras no se ejecute eso, el aislamiento entre empresas vive
+      # solo en el navegador. La bateria de pruebas comprueba que el
+      # fichero de reglas sigue diciendo lo que debe, pero no puede
+      # comprobar que este desplegado.
       # El sitio se publica en /Archiva/, no en la raiz del dominio.
-      # Las reglas se despliegan aparte, con la CLI de Firebase: el flujo
-      # de Pages solo publica el sitio. Se comprueba que el archivo existe
-      # para que nadie lo borre sin darse cuenta.
-      - name: Comprobar que las reglas de Firestore siguen ahi
-        run: test -f firestore.rules && test -f firebase.json
-
       - name: Compilar
         run: pnpm exec ng build --base-href /Archiva/
 

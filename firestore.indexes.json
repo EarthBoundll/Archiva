@@ -1,0 +1,14 @@
+{
+  "//": "Firestore resuelve sola cualquier consulta con un solo campo. Solo hay que declarar aqui las que ordenan por dos campos a la vez o mezclan filtro y orden. Hoy hay una: el reparto de capacidad por categoria, que ordena primero por prioridad y luego por tamano. Sin este indice la consulta falla en produccion con un enlace a la consola, no antes.",
+  "indexes": [
+    {
+      "collectionGroup": "almacenamiento",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "esPrioritaria", "order": "ASCENDING" },
+        { "fieldPath": "budgetedAmount", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -54,3 +54,11 @@ firebase-service-account.json
 
 docs/docs.rar
 .vercel
+
+# Claves de servicio de Firebase. Dan acceso total al proyecto: si una
+# acaba en un commit hay que revocarla desde la consola, no basta con
+# borrarla del arbol. Se cubren tambien los nombres genericos con los que
+# la consola las descarga.
+*-firebase-adminsdk-*.json
+clave-servicio*.json
+clave*.json

@@ -211,6 +211,72 @@ export class FirebaseService {
   // TAREAS DE APROBACION
   // ============================================
 
+  /**
+   * Crea el expediente y todas sus tareas de una vez.
+   *
+   * O queda todo o no queda nada. Antes eran N+1 escrituras sueltas y un
+   * corte a mitad dejaba un flujo que declaraba tres etapas con una sola
+   * tarea creada: el expediente se quedaba mudo al aprobar esa etapa, sin
+   * ningun error que lo delatara.
+   *
+   * El limite de un lote son 500 escrituras. Un expediente con mas de 499
+   * etapas no es un expediente, es un error de configuracion, y conviene
+   * que falle aqui y no a medio escribir.
+   */
+  async crearExpediente(empresaId: string, flujo: any, etapas: any[]): Promise<{ flujo: any; tareas: any[] }> {
+    if (etapas.length > 499) {
+      throw new Error('Un flujo con mas de 499 etapas no se puede abrir de una vez.');
+    }
+
+    const lote = writeBatch(this.firestore);
+    const now = new Date().toISOString();
+
+    const flujoRef = doc(collection(this.firestore, `empresas/${empresaId}/flujos`));
+    const datosFlujo = {
+      ...flujo,
+      id: flujoRef.id,
+      empresaId,
+      etapasCompletadas: 0,
+      status: 'active',
+      estaCompletado: false,
+      etapas: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    lote.set(flujoRef, this.limpiar(datosFlujo));
+
+    const tareas: any[] = [];
+    for (const etapa of etapas) {
+      const ref = doc(collection(this.firestore, `empresas/${empresaId}/tareas`));
+      const tarea = { ...etapa, id: ref.id, empresaId, flujoId: flujoRef.id };
+      lote.set(ref, this.limpiar(tarea));
+      tareas.push(tarea);
+    }
+
+    await lote.commit();
+    return { flujo: datosFlujo, tareas };
+  }
+
+  /** Anade varias tareas a un flujo existente. Todas o ninguna. */
+  async crearTareas(empresaId: string, tareas: any[]): Promise<any[]> {
+    if (tareas.length > 500) {
+      throw new Error('No se pueden abrir mas de 500 etapas de una vez.');
+    }
+
+    const lote = writeBatch(this.firestore);
+    const creadas: any[] = [];
+
+    for (const t of tareas) {
+      const ref = doc(collection(this.firestore, `empresas/${empresaId}/tareas`));
+      const tarea = { ...t, id: ref.id, empresaId };
+      lote.set(ref, this.limpiar(tarea));
+      creadas.push(tarea);
+    }
+
+    await lote.commit();
+    return creadas;
+  }
+
   async crearTarea(empresaId: string, data: any): Promise<any> {
     const ref = doc(collection(this.firestore, `empresas/${empresaId}/tareas`));
     const tarea = { ...data, id: ref.id, empresaId };

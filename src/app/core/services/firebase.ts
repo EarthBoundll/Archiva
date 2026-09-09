@@ -114,15 +114,6 @@ export class FirebaseService {
     return ref.id;
   }
 
-  /** Compatibilidad con el nombre anterior del perfil de empresa. */
-  async getUserProfileComplete(empresaId: string): Promise<any | null> {
-    return this.getEmpresa(empresaId);
-  }
-
-  async saveUserProfile(empresaId: string, data: any) {
-    return this.guardarEmpresa(empresaId, data);
-  }
-
   // ============================================
   // MIEMBROS
   // ============================================
@@ -399,19 +390,21 @@ export class FirebaseService {
   }
 
 
-  // Get all months for user
-
   // ============================================
-  // BITACORA — FUENTE UNICA
+  // BITACORA
   // ============================================
   //
-  // Habia dos colecciones divergentes: los asientos se escribian en
-  // `users/{uid}/bitacora` y una de las lecturas consultaba
-  // `users/{uid}/periodos/{id}/historial`, que nada escribia. El contador de
-  // movimientos del detalle de flujo marcaba cero siempre.
+  // Todo entra y sale de `empresas/{eid}/bitacora`. El periodo se filtra
+  // por el prefijo de la fecha, que ya viene en formato ISO, asi que no
+  // hace falta una subcoleccion por mes.
   //
-  // Ahora todo entra y sale de `users/{uid}/bitacora`. El periodo se filtra
-  // por el prefijo de la fecha, que ya viene en formato ISO.
+  // Hubo una segunda coleccion, `periodos/{id}/historial`, que solo se
+  // leia: era del producto anterior. Con ella habia aqui una migracion
+  // que escribia una marca en la ficha de la empresa, y esa ruta solo la
+  // escribe un administrador. Para el resto de roles se denegaba, el
+  // catch lo silenciaba, la marca no se ponia nunca y en cada sesion se
+  // volvia a leer la bitacora entera por si habia algo que mover. Se
+  // retiro entera: no iba a migrar nada y cobraba por intentarlo.
 
   /** Asientos de un mes concreto. */
   async getHistorialPorPeriodo(empresaId: string, year: number, month: number) {
@@ -445,60 +438,7 @@ export class FirebaseService {
     });
   }
 
-  /**
-   * Traslada a la bitacora los asientos que quedaron en la estructura por
-   * periodos, sin duplicar los que ya estan. Devuelve cuantos movio.
-   *
-   * Se ejecuta una sola vez por usuario: deja constancia en el perfil para
-   * no recorrer las subcolecciones en cada arranque.
-   */
-  async migrarHistorialAntiguo(empresaId: string): Promise<number> {
-    const perfil = await this.getUserProfileComplete(empresaId);
-    if (perfil?.['bitacoraUnificada']) return 0;
-
-    const periodos = await getDocs(collection(this.firestore, `empresas/${empresaId}/periodos`));
-    const yaEnBitacora = new Set(
-      (await this.getBitacora(empresaId)).map((r: any) => this.huella(r))
-    );
-
-    let movidos = 0;
-    for (const periodo of periodos.docs) {
-      const asientos = await getDocs(
-        collection(this.firestore, `empresas/${empresaId}/periodos/${periodo.id}/historial`)
-      );
-
-      for (const asiento of asientos.docs) {
-        const datos = asiento.data() as any;
-        // Los registros del producto anterior llevaban importe y no accion.
-        if (!datos['accion']) continue;
-        if (yaEnBitacora.has(this.huella(datos))) continue;
-
-        await this.agregarBitacora(empresaId, { ...datos, migradoDe: periodo.id });
-        yaEnBitacora.add(this.huella(datos));
-        movidos++;
-      }
-    }
-
-    await this.saveUserProfile(empresaId, {
-      bitacoraUnificada: true,
-      bitacoraUnificadaEl: new Date().toISOString(),
-      bitacoraAsientosMigrados: movidos
-    });
-
-    return movidos;
-  }
-
-  /** Identidad de un asiento, para no duplicarlo al migrar. */
-  private huella(r: any): string {
-    return [r.documentoId ?? '', r.accion ?? '', r.date ?? '', r.time ?? '', r.titulo ?? '']
-      .join('|');
-  }
-
-
-
-
-
-  // ============================================
+// ============================================
   // GOALS (Múltiples)
   // ============================================
   

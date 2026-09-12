@@ -35,6 +35,7 @@ export class NoAccessComponent {
     switch (this.tenant.motivoSinAcceso()) {
       case 'suspendido': return 'Tu acceso está suspendido';
       case 'invitado':   return 'Tu invitación sigue pendiente';
+      case 'plataforma': return 'Operas la plataforma';
       default:           return 'No perteneces a ninguna empresa';
     }
   });
@@ -51,13 +52,22 @@ export class NoAccessComponent {
       case 'invitado':
         return 'Tu cuenta existe pero la invitación no se completó. Abre de nuevo el ' +
                'enlace que recibiste, o pide que te envíen uno nuevo.';
+      case 'plataforma':
+        // La verdad, dicha entera: es operador, y todavía no hay dónde
+        // elegir. La pantalla que lista las empresas llega en la Fase 4.
+        return 'Tu cuenta opera ARCHIVA y no pertenece a ninguna empresa concreta. ' +
+               'Todavía no hay una pantalla donde elegir en cuál entrar: llegará con ' +
+               'las siguientes entregas.';
       default:
         return 'Tu cuenta no está vinculada a ninguna empresa. ARCHIVA no admite altas ' +
                'por cuenta propia: alguien de la empresa tiene que invitarte.';
     }
   });
 
-  icono = computed(() => this.esFaltaDePermiso() ? 'lock' : 'shield-alert');
+  icono = computed(() => {
+    if (this.esFaltaDePermiso()) return 'lock';
+    return this.tenant.motivoSinAcceso() === 'plataforma' ? 'shield-check' : 'shield-alert';
+  });
 
   correo = computed(() => this.auth.currentUser()?.email ?? '');
 

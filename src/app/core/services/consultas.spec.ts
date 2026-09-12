@@ -114,10 +114,18 @@ describe('Consultas · el campo de ordenación tiene que existir', () => {
 describe('Consultas · aislamiento por empresa', () => {
 
   it('ninguna consulta lee una colección fuera de empresas/', () => {
-    // Salvo las dos que existen a propósito: el perfil global, que dice a
-    // qué empresa perteneces, y el índice de invitaciones, que tiene que
-    // ser legible por quien todavía no pertenece a ninguna.
-    const permitidas = ['usuarios', 'invitaciones'];
+    // Tres excepciones, y cada una con su motivo:
+    //
+    //   usuarios      el perfil global dice a qué empresa perteneces. Hay
+    //                 que leerlo antes de conocerla.
+    //   invitaciones  el índice tiene que ser legible por quien todavía no
+    //                 pertenece a ninguna: ese es el punto de aceptar.
+    //   superadmins   quien opera la plataforma no tiene empresa. Su
+    //                 condición no puede colgar de una.
+    //
+    // Una cuarta necesitaría su propia razón, y esta prueba existe para
+    // obligar a escribirla.
+    const permitidas = ['usuarios', 'invitaciones', 'superadmins'];
 
     const fuera = [...fuente.matchAll(/(?:collection|doc)\(this\.firestore,\s*[`']([^`']+)[`']/g)]
       .map(m => m[1])

@@ -7,7 +7,8 @@ import { authGuard } from './auth-guard';
 import { guestGuard } from './guest-guard';
 import { Auth } from '../services/auth';
 import { TenantService } from '../services/tenant';
-import { Rol } from '../models/rbac.model';
+import { Rol, Permiso, tienePermiso } from '../models/rbac.model';
+import { permitidoEnSoporte } from '../models/plataforma.model';
 import { Miembro } from '../models/member.model';
 
 /**
@@ -40,12 +41,26 @@ describe('Guardas de sesión y tenencia', () => {
     } as Miembro;
   }
 
-  /** Doble de la tenencia: devuelve la pertenencia que la prueba decida. */
-  function tenantFalso(m: Miembro | null) {
+  /**
+   * Doble de la tenencia.
+   *
+   * Desde la Fase 2 la guarda no calcula el permiso: se lo pregunta al
+   * servicio, para que no haya dos sitios donde se decida lo mismo. El
+   * doble reproduce esa decisión con la misma lógica que el real —lista
+   * blanca de soporte incluida— en vez de devolver un booleano fijo: si
+   * simplificara, los casos de permiso dejarían de probar nada.
+   */
+  function tenantFalso(m: Miembro | null, operador = false) {
     return {
       resolver: () => Promise.resolve(m),
       miembro: () => m,
-      rol: () => m?.rol ?? null
+      rol: () => m?.rol ?? null,
+      esPlataforma: () => operador,
+      puede: (permiso: Permiso) => {
+        if (m?.estado !== 'activo') return false;
+        if (operador && !permitidoEnSoporte(permiso)) return false;
+        return tienePermiso(m.rol, permiso);
+      }
     };
   }
 
@@ -237,6 +252,75 @@ describe('Guardas de sesión y tenencia', () => {
   // ------------------------------------------
   // ACCESO PARA VISITANTES
   // ------------------------------------------
+
+  // ------------------------------------------
+  // PASO 3 BIS: EL OPERADOR DE PLATAFORMA
+  // ------------------------------------------
+
+  describe('authGuard · modo plataforma', () => {
+
+    it('un operador sin empresa activa va a la pantalla que lo explica', async () => {
+      // No es acceso denegado: es un caso de elegir destino. La pantalla
+      // lo distingue por el motivo, que es «plataforma» y no «sin empresa».
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(null, true)
+      );
+      await asentar();
+      expect(String(emitido[0])).toBe('/sin-acceso');
+    });
+
+    it('un operador dentro de una empresa pasa como cualquiera', async () => {
+      // La pertenencia sintética lleva rol de administrador, así que la
+      // navegación funciona sin excepciones.
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.ADMIN_EMPRESA }), true),
+        rutaDe('dashboard')
+      );
+      await asentar();
+      expect(emitido).toEqual([true]);
+    });
+
+    it('la lista blanca corta al operador donde el rol no cortaría', async () => {
+      // Este es el caso que motivó unificar la guarda con el servicio.
+      // La bandeja exige APROBAR, que un administrador de empresa tiene
+      // —así que comparando el rol contra la tabla, la guarda habría
+      // dejado pasar—. La lista blanca lo niega, y ahora la guarda se
+      // entera porque pregunta en vez de calcular.
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.ADMIN_EMPRESA }), true),
+        rutaDe('bandeja')
+      );
+      await asentar();
+      expect(String(emitido[0])).toBe('/sin-permiso');
+    });
+
+    it('un administrador de empresa de verdad sí alcanza la bandeja', async () => {
+      // El contraste que demuestra que el corte lo hace el modo
+      // plataforma y no el rol: misma ruta, mismo rol, sin operador.
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.ADMIN_EMPRESA }), false),
+        rutaDe('bandeja')
+      );
+      await asentar();
+      expect(emitido).toEqual([true]);
+    });
+
+    it('el operador sí alcanza la configuración de la empresa', async () => {
+      // EMPRESA_VER está en la lista blanca: gestionar la empresa es su
+      // función aprobada.
+      const emitido = ejecutar(
+        authGuard, authFalso(false, true),
+        tenantFalso(miembro({ rol: Rol.ADMIN_EMPRESA }), true),
+        rutaDe('configuracion')
+      );
+      await asentar();
+      expect(emitido).toEqual([true]);
+    });
+  });
 
   describe('guestGuard', () => {
 

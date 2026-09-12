@@ -115,6 +115,20 @@ export class FirebaseService {
   }
 
   // ============================================
+  // OPERADORES DE PLATAFORMA
+  // ============================================
+  //
+  // Tercera coleccion fuera de `empresas/`. Se lee una sola vez por
+  // sesion, y solo para quien NO tiene empresa: un usuario normal nunca
+  // llega a esta consulta, porque su perfil global ya declara la suya y
+  // la resolucion termina antes.
+
+  async getSuperAdmin(uid: string): Promise<any | null> {
+    const snap = await getDoc(doc(this.firestore, `superadmins/${uid}`));
+    return snap.exists() ? { uid, ...snap.data() } : null;
+  }
+
+  // ============================================
   // MARCA DE LA EMPRESA
   // ============================================
   //

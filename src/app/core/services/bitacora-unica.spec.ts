@@ -76,8 +76,28 @@ describe('B-1 · no quedan colecciones que solo se lean', () => {
   it('toda colección que se lee, alguien la escribe', () => {
     // `periodos/{id}/historial` se leía y nadie la escribía: existía solo
     // para que la migración tuviera de dónde migrar.
-    const soloLectura = [...lee].filter(c => !escribe.has(c)).sort();
+    //
+    // `superadmins` es la excepción, y lo es por diseño: el cliente la lee
+    // para resolver la sesión y NO la escribe nunca. Las reglas cierran su
+    // escritura sin excepción —ni siquiera un operador nombra a otro desde
+    // la aplicación— y solo se puebla con credenciales de servidor. Que
+    // aquí figure como «solo lectura» no es un olvido: es la prueba de que
+    // esa decisión sigue en pie.
+    const SOLO_SERVIDOR = ['superadmins'];
+
+    const soloLectura = [...lee]
+      .filter(c => !escribe.has(c))
+      .filter(c => !SOLO_SERVIDOR.includes(c))
+      .sort();
+
     expect(soloLectura).toEqual([]);
+  });
+
+  it('la colección de plataforma se lee y nunca se escribe desde el cliente', () => {
+    // El complemento de la excepción anterior: no basta con exceptuarla,
+    // hay que comprobar que sigue siendo cierto lo que la justifica.
+    expect(lee.has('superadmins')).toBe(true);
+    expect(escribe.has('superadmins')).toBe(false);
   });
 
   it('toda colección que se escribe, alguien la lee', () => {

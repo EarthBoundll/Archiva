@@ -4,7 +4,7 @@ import { toObservable } from '@angular/core/rxjs-interop';
 import { filter, switchMap, map, take, of } from 'rxjs';
 import { Auth } from '../services/auth';
 import { TenantService } from '../services/tenant';
-import { PERMISO_POR_RUTA, tienePermiso } from '../models/rbac.model';
+import { PERMISO_POR_RUTA } from '../models/rbac.model';
 import { puedeEntrar } from '../models/member.model';
 
 /**
@@ -15,7 +15,8 @@ import { puedeEntrar } from '../models/member.model';
  *    nueva— el estado tarda un instante, y decidir antes expulsaba al
  *    login a personas con sesión válida.
  * 2. Resuelve a qué empresa pertenece y con qué rol.
- * 3. Comprueba que ese rol pueda ver la ruta pedida.
+ * 3. Comprueba que pueda ver la ruta pedida, preguntándoselo al mismo
+ *    servicio que usa el resto de la aplicación.
  */
 export const authGuard: CanActivateFn = (ruta: ActivatedRouteSnapshot) => {
   const auth   = inject(Auth);
@@ -30,14 +31,23 @@ export const authGuard: CanActivateFn = (ruta: ActivatedRouteSnapshot) => {
         return of(router.createUrlTree(['/login']));
       }
       return tenant.resolver().then(miembro => {
-        // Autenticado pero sin pertenencia utilizable: hay una pantalla
-        // que lo explica, en vez de un tablero vacío sin motivo.
+        // Autenticado pero sin pertenencia utilizable. Un operador de
+        // plataforma que aún no ha entrado en ninguna empresa cae aquí, y
+        // no es un caso de acceso denegado: es uno de elegir destino. La
+        // pantalla lo distingue por el motivo.
         if (!puedeEntrar(miembro)) {
           return router.createUrlTree(['/sin-acceso']);
         }
 
+        // El permiso se pregunta al servicio, no se calcula aquí.
+        //
+        // Antes esto comparaba el rol contra la tabla directamente, y con
+        // el rol sintético de un operador —administrador de empresa— habría
+        // concedido rutas que la lista blanca de soporte niega. Dos
+        // comprobaciones que deberían decir lo mismo diciendo cosas
+        // distintas es lo que produjo A-2: un solo sitio donde se decide.
         const permiso = permisoDeRuta(ruta);
-        if (permiso && !tienePermiso(miembro!.rol, permiso)) {
+        if (permiso && !tenant.puede(permiso)) {
           return router.createUrlTree(['/sin-permiso']);
         }
 

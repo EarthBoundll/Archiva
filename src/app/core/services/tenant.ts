@@ -3,6 +3,14 @@ import { FirebaseService } from './firebase';
 import { Auth } from './auth';
 import { Miembro, puedeEntrar } from '../models/member.model';
 import { Rol, Permiso, tienePermiso, tieneAlguno } from '../models/rbac.model';
+import {
+  OperadorPlataforma,
+  pertenenciaSintetica,
+  permitidoEnSoporte,
+  recordarEmpresa,
+  empresaRecordada,
+  olvidarEmpresa
+} from '../models/plataforma.model';
 import { log } from '../utils/logger';
 
 /**
@@ -26,11 +34,38 @@ export class TenantService {
   private readonly _resuelto  = signal(false);
   private resolucion: Promise<Miembro | null> | null = null;
 
+  /**
+   * Quien opera la plataforma, si la sesion es de plataforma.
+   *
+   * Se guarda aparte de la pertenencia sintetica porque sobrevive a
+   * entrar y salir de empresas: la condicion de operador no cambia al
+   * cambiar de cliente.
+   */
+  private readonly _operador = signal<OperadorPlataforma | null>(null);
+
   readonly miembro  = this._miembro.asReadonly();
   readonly cargando = this._cargando.asReadonly();
 
   /** true cuando ya se intentó resolver, con o sin resultado. */
   readonly resuelto = this._resuelto.asReadonly();
+
+  /**
+   * ¿La sesion en curso es de plataforma?
+   *
+   * Es un estado, no un rol ni un permiso: describe quien esta dentro,
+   * no lo que puede hacer. Por si solo no concede nada — un operador
+   * sin empresa activa tiene el identificador de empresa en nulo,
+   * igual que alguien sin acceso.
+   */
+  readonly esPlataforma = computed(() => this._operador() !== null);
+
+  /** El operador, para mostrarlo y —desde la Fase 3— para atribuirle. */
+  readonly operador = this._operador.asReadonly();
+
+  /** Un operador de plataforma que todavia no ha entrado en ninguna. */
+  readonly plataformaSinEmpresa = computed(() =>
+    this.esPlataforma() && this._miembro() === null
+  );
 
   readonly empresaId = computed(() => this._miembro()?.empresaId ?? null);
   readonly rol       = computed<Rol | null>(() => this._miembro()?.rol ?? null);
@@ -46,10 +81,14 @@ export class TenantService {
     this._resuelto() && !puedeEntrar(this._miembro())
   );
 
-  readonly motivoSinAcceso = computed<'sin_empresa' | 'suspendido' | 'invitado' | null>(() => {
+  readonly motivoSinAcceso = computed<'sin_empresa' | 'suspendido' | 'invitado' | 'plataforma' | null>(() => {
     if (!this._resuelto()) return null;
     const m = this._miembro();
-    if (!m) return 'sin_empresa';
+
+    // Un operador sin empresa activa no esta excluido: esta esperando a
+    // elegir una. Decirle que no pertenece a ninguna empresa seria
+    // literalmente cierto y completamente inutil.
+    if (!m) return this.esPlataforma() ? 'plataforma' : 'sin_empresa';
     if (m.estado === 'suspendido') return 'suspendido';
     if (m.estado === 'invitado')   return 'invitado';
     return null;
@@ -84,9 +123,11 @@ export class TenantService {
         const perfil = await this.firebase.getPerfilGlobal(uid);
         const empresaId = perfil?.['empresaId'] as string | undefined;
 
+        // Sin empresa en el perfil, este camino terminaba aqui en nulo.
+        // Ahora cuelga de el la via de plataforma, y solo de el: un usuario
+        // de empresa NUNCA llega a evaluarla, asi que no paga la lectura.
         if (!empresaId) {
-          this._miembro.set(null);
-          return null;
+          return await this.resolverPlataforma(uid);
         }
 
         const miembro = await this.firebase.getMiembro(empresaId, uid);
@@ -113,12 +154,84 @@ export class TenantService {
     return this.resolucion;
   }
 
+  /**
+   * ¿Es operador de plataforma? Y si lo es, ¿donde estaba?
+   *
+   * Una lectura, y solo para quien no tiene empresa. Ese caso ya
+   * terminaba en «sin acceso» tras una consulta fallida, asi que el
+   * coste anadido para un usuario normal es exactamente cero.
+   */
+  private async resolverPlataforma(uid: string): Promise<Miembro | null> {
+    const datos = await this.firebase.getSuperAdmin(uid);
+
+    if (!datos) {
+      this._operador.set(null);
+      this._miembro.set(null);
+      return null;
+    }
+
+    const operador = datos as OperadorPlataforma;
+    this._operador.set(operador);
+
+    // Si venia de una empresa —una recarga, un enlace directo—, vuelve
+    // a ella. Si no, queda en modo plataforma sin empresa activa.
+    const retenida = empresaRecordada();
+    this._miembro.set(retenida ? pertenenciaSintetica(operador, retenida) : null);
+
+    return this._miembro();
+  }
+
+  /**
+   * Entra en una empresa para dar soporte.
+   *
+   * Puebla la pertenencia sintetica, de la que derivan el identificador
+   * de empresa, el rol, el uid y el nombre. A partir de ahi los 28
+   * puntos de servicio y las 27 comprobaciones de permiso apuntan a esa
+   * empresa sin saber que quien mira es de plataforma.
+   *
+   * No cuesta ninguna lectura: la pertenencia se construye en memoria.
+   */
+  entrarEn(empresaId: string): void {
+    const operador = this._operador();
+    if (!operador) {
+      throw new Error('Solo un operador de plataforma puede entrar en una empresa.');
+    }
+    if (!empresaId?.trim()) {
+      throw new Error('Indica en que empresa entrar.');
+    }
+
+    recordarEmpresa(empresaId);
+    this._miembro.set(pertenenciaSintetica(operador, empresaId));
+    this._resuelto.set(true);
+    this._cargando.set(false);
+  }
+
+  /**
+   * Sale de la empresa visitada.
+   *
+   * Cambiar de empresa es salir y volver a entrar, no una transicion
+   * directa. Modelarlo como transicion invitaria a dejar residuos de la
+   * anterior — y hay uno concreto: el servicio de empresa cachea la
+   * ficha en una senal y solo la recarga si se le fuerza. Sin una salida
+   * limpia, el operador veria la ficha de la empresa anterior sobre los
+   * datos de la nueva.
+   */
+  salirDeEmpresa(): void {
+    olvidarEmpresa();
+    this._miembro.set(null);
+  }
+
   /** Olvida lo resuelto. Se llama al cerrar sesión. */
   limpiar(): void {
     this._miembro.set(null);
     this._resuelto.set(false);
     this._cargando.set(true);
     this.resolucion = null;
+
+    // El modo y la empresa visitada mueren con la sesion: en un equipo
+    // compartido, quien entre despues no debe heredar ni una cosa ni otra.
+    this._operador.set(null);
+    olvidarEmpresa();
   }
 
   /**
@@ -143,12 +256,39 @@ export class TenantService {
   // PERMISOS
   // ------------------------------------------
 
+  /**
+   * ¿Puede quien mira hacer esto?
+   *
+   * Punto unico: las 27 comprobaciones de la aplicacion pasan por aqui, y
+   * desde la Fase 2 tambien la guarda de rutas. Un solo sitio donde se
+   * decide es lo que evita que dos capas digan cosas distintas.
+   *
+   * En modo plataforma se consulta la lista blanca ANTES que el rol. La
+   * pertenencia sintetica lleva rol de administrador de empresa —el unico
+   * que abre todas las pantallas—, y ese rol tiene en la matriz permiso
+   * para editar documentos, aprobar etapas y anular solicitudes. Lo que no
+   * este escrito en la lista no se concede, aunque el rol lo tenga.
+   */
   puede(permiso: Permiso): boolean {
-    return puedeEntrar(this._miembro()) && tienePermiso(this.rol(), permiso);
+    if (!puedeEntrar(this._miembro())) return false;
+    if (this.esPlataforma() && !permitidoEnSoporte(permiso)) return false;
+    return tienePermiso(this.rol(), permiso);
   }
 
+  /**
+   * Igual con varios permisos.
+   *
+   * El filtro se aplica aqui tambien y no es redundante: sin el, esta
+   * variante seria la puerta trasera de la anterior.
+   */
   puedeAlguno(permisos: Permiso[]): boolean {
-    return puedeEntrar(this._miembro()) && tieneAlguno(this.rol(), permisos);
+    if (!puedeEntrar(this._miembro())) return false;
+
+    const alcanzables = this.esPlataforma()
+      ? permisos.filter(permitidoEnSoporte)
+      : permisos;
+
+    return tieneAlguno(this.rol(), alcanzables);
   }
 
   /** Versión reactiva, para ocultar controles en las plantillas. */

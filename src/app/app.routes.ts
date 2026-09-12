@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth-guard';
+import { entrarEnEmpresaGuard, salirDeEmpresaGuard } from './core/guards/plataforma-guard';
 import { guestGuard } from './core/guards/guest-guard';
 import { exigePermiso } from './core/guards/rol-guard';
 import { Permiso } from './core/models/rbac.model';
@@ -33,6 +34,28 @@ export const routes: Routes = [
   },
   {
     path: 'sin-permiso',
+    loadComponent: () =>
+      import('./pages/no-access/no-access').then(m => m.NoAccessComponent)
+  },
+
+  // Entrada y salida de un operador de plataforma.
+  //
+  // Rutas que actuan y redirigen, no pantallas. Van FUERA de authGuard,
+  // junto al acceso y la invitacion: dentro, un operador sin empresa
+  // activa seria redirigido a «sin acceso», que a su vez lo mandaria
+  // aqui. Un bucle.
+  //
+  // La pantalla desde donde elegir empresa llega en la Fase 4; entonces
+  // solo tendra que enlazar aqui.
+  {
+    path: 'plataforma/entrar/:empresaId',
+    canActivate: [entrarEnEmpresaGuard],
+    loadComponent: () =>
+      import('./pages/no-access/no-access').then(m => m.NoAccessComponent)
+  },
+  {
+    path: 'plataforma/salir',
+    canActivate: [salirDeEmpresaGuard],
     loadComponent: () =>
       import('./pages/no-access/no-access').then(m => m.NoAccessComponent)
   },

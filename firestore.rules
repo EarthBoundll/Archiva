@@ -52,6 +52,24 @@ service cloud.firestore {
              : '';
     }
 
+    // -------------------------------------------
+    // PLATAFORMA
+    // -------------------------------------------
+    //
+    // Existir en `superadmins/{uid}` es la condicion, y la unica. No hay
+    // rol de plataforma dentro de la matriz de la empresa: quien opera la
+    // plataforma no pertenece a ninguna, y meterlo en la matriz obligaria
+    // a definir sus permisos dentro de la ficha de cada cliente.
+    //
+    // En la Fase 1 este predicado NO lo invoca ninguna regla de acceso.
+    // Queda definido y probado; concede desde la Fase 3, y siempre a la
+    // DERECHA de una disyuncion para que un miembro legitimo no llegue
+    // nunca a evaluarlo ni pague la lectura que implica.
+    function esSuperAdmin() {
+      return autenticado() &&
+             exists(/databases/$(database)/documents/superadmins/$(request.auth.uid));
+    }
+
     function esMiembroActivo(eid) {
       return existeMembresia(eid) && miMembresia(eid).estado == 'activo';
     }
@@ -95,6 +113,40 @@ service cloud.firestore {
 
     function esGestor(eid) {
       return tieneRol(eid, ['ADMIN_EMPRESA', 'GERENTE', 'JEFE_AREA']);
+    }
+
+    // -------------------------------------------
+    // OPERADORES DE PLATAFORMA
+    // -------------------------------------------
+    //
+    // Tercera y ultima coleccion fuera de `empresas/`. Las otras dos —el
+    // perfil global y el indice de invitaciones— existen porque hay que
+    // leerlas antes de conocer la empresa. Esta existe porque su titular
+    // no tiene ninguna.
+    //
+    // El documento vale por existir, no por lo que contiene: ninguna regla
+    // lee sus campos. Por eso no hay campo de estado ni de permisos. Un
+    // `activo` invitaria a desactivar editando, y la escritura esta
+    // cerrada; una lista de permisos seria una segunda matriz de roles.
+
+    match /superadmins/{uid} {
+
+      // Cada cual puede saber si lo es —la resolucion de sesion lo
+      // consultara desde la Fase 2— pero nadie puede saber quienes son los
+      // demas. Enumerar esta coleccion daria la lista de quienes pueden
+      // entrar en todas las empresas: reconocimiento puro para un atacante,
+      // y sin utilidad para nadie mas.
+      allow get: if autenticado() && request.auth.uid == uid;
+      allow list: if false;
+
+      // Cerrada del todo, y sin excepcion para el propio operador: ni
+      // siquiera un super administrador nombra a otro desde la aplicacion.
+      // Solo se puebla con credenciales de servidor, desde el script.
+      //
+      // Es incomodo a proposito. Dar de alta a alguien con acceso a todos
+      // los clientes deberia exigir la clave del proyecto, no un boton.
+      // Contrapartida aceptada: no hay recuperacion desde dentro.
+      allow create, update, delete: if false;
     }
 
     // -------------------------------------------

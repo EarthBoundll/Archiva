@@ -32,6 +32,24 @@
  *        --nombre "Diego Acosta"
  *
  *   5. La contrasena se imprime una sola vez. Cambiala al primer acceso.
+ *
+ * ----------------------------------------------------------------------
+ * MODO OPERADOR DE PLATAFORMA
+ *
+ * El mismo script siembra tambien super administradores. No pertenecen a
+ * ninguna empresa: operan la plataforma.
+ *
+ *   node scripts/sembrar-empresa.mjs --clave "C:/ruta/clave.json" \
+ *     --superadmin --email operador@plataforma.com --nombre "Nombre Apellido"
+ *
+ * La cuenta tiene que existir ya en Firebase Authentication. El script no
+ * la crea: un operador con acceso a todos los clientes no deberia nacer de
+ * un comando que ademas inventa su contrasena.
+ *
+ * Y no hay marcha atras desde la aplicacion. Las reglas cierran la
+ * escritura sobre esa coleccion sin excepcion, ni siquiera para otro super
+ * administrador. Para retirar a alguien, hay que borrar su documento desde
+ * la consola de Firebase o volver a ejecutar esto.
  * ----------------------------------------------------------------------
  */
 
@@ -53,20 +71,35 @@ function argumentos() {
 
 const arg = argumentos();
 
-const FALTA = ['clave', 'ruc', 'razon', 'email'].filter(k => !arg[k]);
+// Dos modos. El de plataforma no necesita RUC ni razon social porque no
+// hay empresa: se siembra a una persona, no a una organizacion.
+//
+// Se detecta recorriendo argv y no por la tabla de pares: el parser toma
+// lo siguiente a cada --clave como su valor, asi que una bandera suelta
+// quedaria indefinida —o se comeria el argumento de al lado—.
+const MODO_PLATAFORMA = process.argv.includes('--superadmin');
+
+const REQUERIDOS = MODO_PLATAFORMA
+  ? ['clave', 'email']
+  : ['clave', 'ruc', 'razon', 'email'];
+
+const FALTA = REQUERIDOS.filter(k => !arg[k]);
 if (FALTA.length) {
   console.error('\nFaltan argumentos: --' + FALTA.join(' --'));
-  console.error('\nEjemplo:');
+  console.error('\nSembrar una empresa:');
   console.error('  node scripts/sembrar-empresa.mjs --clave clave.json \\');
   console.error('    --ruc 20123456789 --razon "Constructora Andes S.A.C." \\');
-  console.error('    --email admin@empresa.com --nombre "Diego Acosta"\n');
+  console.error('    --email admin@empresa.com --nombre "Diego Acosta"');
+  console.error('\nSembrar un operador de plataforma:');
+  console.error('  node scripts/sembrar-empresa.mjs --clave clave.json \\');
+  console.error('    --superadmin --email operador@plataforma.com --nombre "Nombre"\n');
   process.exit(1);
 }
 
 // El RUC peruano son once digitos y empieza por 10 (persona natural con
 // negocio) o 20 (persona juridica). Se comprueba aqui porque una empresa
 // mal identificada arrastra el error a todos sus documentos.
-if (!/^(10|20)\d{9}$/.test(arg.ruc)) {
+if (!MODO_PLATAFORMA && !/^(10|20)\d{9}$/.test(arg.ruc)) {
   console.error('\nEse RUC no es valido: son once digitos que empiezan por 10 o 20.\n');
   process.exit(1);
 }
@@ -106,8 +139,66 @@ const db = getFirestore();
 const auth = getAuth();
 
 console.log('\nProyecto: ' + credencial.project_id);
-console.log('Empresa:  ' + arg.razon + '  (RUC ' + arg.ruc + ')');
-console.log('Admin:    ' + arg.email + '\n');
+if (MODO_PLATAFORMA) {
+  console.log('Modo:     operador de plataforma');
+  console.log('Cuenta:   ' + arg.email + '\n');
+} else {
+  console.log('Empresa:  ' + arg.razon + '  (RUC ' + arg.ruc + ')');
+  console.log('Admin:    ' + arg.email + '\n');
+}
+
+// ============================================
+// MODO OPERADOR DE PLATAFORMA
+// ============================================
+//
+// Termina aqui: no hay empresa que sembrar.
+
+if (MODO_PLATAFORMA) {
+  // La cuenta tiene que existir. Crearla aqui significaria que un
+  // comando puede fabricar un acceso a todos los clientes, con una
+  // contrasena que ademas se inventa el propio comando.
+  let operador;
+  try {
+    operador = await auth.getUserByEmail(arg.email);
+  } catch {
+    console.error(
+      '\nNo existe ninguna cuenta con ese correo en Firebase Authentication.\n' +
+      'Creala primero desde la consola, y vuelve a ejecutar esto.\n'
+    );
+    process.exit(1);
+  }
+
+  const ref = db.doc('superadmins/' + operador.uid);
+  const previo = await ref.get();
+
+  if (previo.exists) {
+    console.log('· Ya era operador de plataforma. Nada que cambiar.');
+  } else {
+    // Los campos son informativos: ninguna regla los lee. Sirven para
+    // saber quien es cada uid al mirar la coleccion desde la consola.
+    await ref.set({
+      uid: operador.uid,
+      email: arg.email,
+      nombre: arg.nombre ?? operador.displayName ?? arg.email,
+      fechaAlta: new Date().toISOString(),
+      altaPor: 'script de siembra'
+    });
+    console.log('· Operador de plataforma creado: superadmins/' + operador.uid);
+  }
+
+  console.log('\n' + '\u2500'.repeat(58));
+  console.log('Listo. Esta cuenta opera la plataforma:');
+  console.log('  Correo: ' + arg.email);
+  console.log('  Uid:    ' + operador.uid);
+  console.log('\n  No pertenece a ninguna empresa y, por ahora, no puede');
+  console.log('  hacer nada: las reglas todavia no le conceden acceso.');
+  console.log('  Eso llega con las fases siguientes.');
+  console.log('\n  Para retirarle el acceso: borra ese documento desde la');
+  console.log('  consola de Firebase. No se puede desde la aplicacion.');
+  console.log('\u2500'.repeat(58) + '\n');
+
+  process.exit(0);
+}
 
 // ============================================
 // 1. LA EMPRESA

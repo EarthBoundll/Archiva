@@ -244,6 +244,39 @@ hacer falta.
 
 ---
 
+## Operadores de plataforma
+
+Un **super administrador** opera ARCHIVA, no pertenece a ninguna empresa.
+No esta en la matriz de roles empresariales: su condicion es un documento
+en la coleccion raiz `superadmins/{uid}`.
+
+La cuenta tiene que existir ya en Firebase Authentication. El script no la
+crea, y es deliberado: un acceso potencial a todos los clientes no deberia
+nacer de un comando que ademas se inventa la contrasena.
+
+```bash
+node scripts/sembrar-empresa.mjs \
+  --clave "C:/ruta/clave-servicio.json" \
+  --superadmin \
+  --email operador@plataforma.com \
+  --nombre "Nombre Apellido"
+```
+
+**No hay marcha atras desde la aplicacion.** Las reglas cierran la
+escritura sobre esa coleccion sin excepcion, ni siquiera para otro super
+administrador: nadie nombra ni retira operadores desde dentro. Es incomodo
+a proposito, porque dar de alta a alguien con acceso a todos los clientes
+deberia exigir la clave del proyecto y no un boton.
+
+Para retirar a un operador, borra su documento desde la consola de
+Firebase.
+
+> **Estado actual.** Sembrar un operador hoy no le concede nada: ninguna
+> regla comprueba todavia esa condicion. El acceso real llega con las
+> fases siguientes del plan de Super Administrador.
+
+---
+
 ## Instalación
 
 ```bash

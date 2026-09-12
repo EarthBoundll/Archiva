@@ -213,9 +213,11 @@ service cloud.firestore {
 
     match /empresas/{eid} {
 
-      // La lee cualquier miembro; la edita solo quien administra.
-      allow read: if esMiembroActivo(eid);
-      allow update: if esAdmin(eid);
+      // La lee cualquier miembro; la edita solo quien administra. Y el
+      // operador de plataforma hace las dos cosas: «gestionar empresas» es
+      // su funcion aprobada —activar, desactivar, corregir datos—.
+      allow read: if esMiembroActivo(eid) || esSuperAdmin();
+      allow update: if esAdmin(eid) || esSuperAdmin();
 
       // El alta de empresas no se hace desde el cliente: la crea el
       // aprovisionamiento inicial con credenciales de servidor.
@@ -225,9 +227,12 @@ service cloud.firestore {
       match /miembros/{uid} {
         // Cada persona lee su propia pertenencia aunque aún no esté
         // activa: es como la aplicación descubre que está suspendida.
+        // El operador ve quien hay: sin eso, el soporte es a ciegas.
+        // Escribir no: la plantilla es del cliente, y alterar roles ajenos
+        // seria una via de escalada indirecta.
         allow get: if autenticado() &&
-                   (request.auth.uid == uid || esMiembroActivo(eid));
-        allow list: if esMiembroActivo(eid);
+                   (request.auth.uid == uid || esMiembroActivo(eid) || esSuperAdmin());
+        allow list: if esMiembroActivo(eid) || esSuperAdmin();
 
         // Solo quien administra concede o retira acceso, y nunca sobre sí
         // mismo: el único administrador no puede dejarse fuera.
@@ -243,8 +248,15 @@ service cloud.firestore {
       // esta usando. La escribe solo quien administra, porque cambiar la
       // marca cambia lo que ven todos los demas.
       match /marca/{id} {
-        allow read: if esMiembroActivo(eid);
-        allow write: if esAdmin(eid);
+        // «Gestionar branding» es funcion aprobada del operador, y es la
+        // unica escritura sobre datos del cliente que se le concede: la
+        // identidad visual no es contenido operativo.
+        //
+        // Efecto secundario deseable: mientras da soporte, ve la
+        // plataforma con los colores de ese cliente. Es la mejor senal
+        // posible de en la instalacion de quien esta trabajando.
+        allow read: if esMiembroActivo(eid) || esSuperAdmin();
+        allow write: if esAdmin(eid) || esSuperAdmin();
       }
 
       // ---- Invitaciones ----
@@ -288,11 +300,25 @@ service cloud.firestore {
       // consulta entera. Por eso el cliente tiene que acotar lo que pide
       // —y por eso un colaborador consulta filtrando por creadoPorUid.
       match /documentos/{id} {
-        allow read: if esMiembroActivo(eid) && (
+        // El operador de plataforma entra por el nivel del ACERVO, no por
+        // el exterior. La diferencia es toda la decision de gobierno:
+        //
+        //   fuera  → veria todo, confidenciales incluidos
+        //   aqui   → ve lo mismo que un supervisor, y la reserva que puso
+        //            el cliente sigue en pie
+        //
+        // No tiene veLoReservado y no hay forma de que lo tenga: no es
+        // miembro, asi que ese predicado es falso para el siempre. Un
+        // documento marcado como confidencial o restringido se le deniega.
+        //
+        // Si algun dia hace falta acceso excepcional, sera una
+        // funcionalidad propia, auditada y con justificacion explicita,
+        // no un ensanchamiento de esta linea.
+        allow read: if (esMiembroActivo(eid) || esSuperAdmin()) && (
           // Lo mio, siempre.
           resource.data.creadoPorUid == request.auth.uid ||
           (
-            veTodoElAcervo(eid) && (
+            (veTodoElAcervo(eid) || esSuperAdmin()) && (
               veLoReservado(eid) ||
               !(resource.data.confidencialidad in ['confidencial', 'restringido'])
             )
@@ -328,7 +354,8 @@ service cloud.firestore {
       }
 
       match /solicitudes/{id} {
-        allow read: if esMiembroActivo(eid);
+        // Diagnosticar. Atender y anular siguen siendo del cliente.
+        allow read: if esMiembroActivo(eid) || esSuperAdmin();
         allow create: if esMiembroActivo(eid);
         // Tres puertas distintas, y cada una con su llave:
         //
@@ -366,7 +393,8 @@ service cloud.firestore {
       // decide quién lo aprueba. Sin esta distinción habría que elegir
       // entre que nadie envíe nada o que cualquiera se nombre aprobador.
       match /flujos/{id} {
-        allow read: if esMiembroActivo(eid);
+        // Diagnosticar. Definirlos y editarlos siguen siendo del cliente.
+        allow read: if esMiembroActivo(eid) || esSuperAdmin();
 
         allow create: if esGestor(eid) ||
                       (esMiembroActivo(eid) &&
@@ -382,7 +410,9 @@ service cloud.firestore {
       }
 
       match /tareas/{id} {
-        allow read: if esMiembroActivo(eid);
+        // Una bandeja atascada es un caso de soporte tipico. Resolver una
+        // etapa, en cambio, es una decision del cliente y no se concede.
+        allow read: if esMiembroActivo(eid) || esSuperAdmin();
 
         // El responsable de una etapa tiene que ser alguien que exista en
         // la empresa. Sin esta comprobación, quien abre un expediente
@@ -402,7 +432,9 @@ service cloud.firestore {
       // ---- Bitácora ----
       // Registro permanente: se añade y se lee, nunca se modifica.
       match /bitacora/{id} {
-        allow read: if esMiembroActivo(eid);
+        // Consultar el historial documental. Escribirlo no: lo escribe el
+        // ciclo de vida del documento, no una intervencion externa.
+        allow read: if esMiembroActivo(eid) || esSuperAdmin();
         allow create: if esMiembroActivo(eid);
         allow update: if esMiembroActivo(eid) &&
                       request.resource.data.diff(resource.data)
@@ -411,10 +443,22 @@ service cloud.firestore {
       }
 
       // ---- Auditoría ----
-      // La evidencia ante una auditoría no se toca una vez escrita.
+      //
+      // La evidencia ante una auditoría no se toca una vez escrita: sigue
+      // sin admitir modificación ni borrado, para nadie.
+      //
+      // El operador de plataforma sí escribe aquí, y es imprescindible:
+      // sin esta excepción, su entrada en la empresa no dejaría constancia
+      // y la trazabilidad obligatoria fallaría en silencio —porque el
+      // servicio captura sus propios errores—. Es el mismo modo de fallo
+      // que produjo A-3.
+      //
+      // El predicado va a la DERECHA de la disyunción: Firestore corta la
+      // evaluación en cuanto el primer término es cierto, así que un
+      // miembro legítimo nunca llega a evaluarlo ni paga la lectura.
       match /auditoria/{id} {
-        allow read: if esMiembroActivo(eid);
-        allow create: if esMiembroActivo(eid);
+        allow read: if esMiembroActivo(eid) || esSuperAdmin();
+        allow create: if esMiembroActivo(eid) || esSuperAdmin();
         allow update, delete: if false;
       }
 

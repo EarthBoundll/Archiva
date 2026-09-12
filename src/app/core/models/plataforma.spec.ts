@@ -107,14 +107,15 @@ describe('Fase 1 · el predicado de plataforma', () => {
     expect(fn).toContain('superadmins/$(request.auth.uid)');
   });
 
-  it('todavía no lo invoca ninguna regla de acceso', () => {
-    // La propiedad central de la Fase 1: el predicado está definido y
-    // probado, pero no concede nada. Concede desde la Fase 3.
+  it('lo invocan las reglas de la Fase 3, y solo esas', () => {
+    // Hasta la Fase 3 esta prueba exigía una sola aparición: la definición.
+    // Su comentario decía que cuando empezara a fallar sería porque la
+    // Fase 3 había llegado, y que entonces había que retirarla, no
+    // relajarla. Llegó, y la sustituye esta, que ya no cuenta: enumera.
     //
-    // Cuando esta prueba empiece a fallar, será porque la Fase 3 ha
-    // llegado — y entonces hay que retirarla, no relajarla.
-    const invocaciones = reglas.split('esSuperAdmin()').length - 1;
-    expect(invocaciones).toBe(1);   // solo la definición
+    // La cuenta exacta vive en la batería de la Fase 3, que dice cuáles y
+    // comprueba que las de escritura sobre contenido NO estén.
+    expect(reglas.split('esSuperAdmin()').length - 1).toBeGreaterThan(1);
   });
 });
 
@@ -130,7 +131,13 @@ describe('Fase 1 · ninguna ruta de acceso existente ha cambiado', () => {
    * Se escriben aquí a mano y a propósito. Generarlas desde el propio
    * archivo haría que la prueba se adaptara sola a cualquier cambio, que
    * es justo lo contrario de lo que hace falta: esto es un acta de lo que
-   * había, no un resumen de lo que hay.
+   * se decidió, no un resumen de lo que hay.
+   *
+   * La Fase 3 concedió lectura al operador de plataforma en diez de estas
+   * reglas, así que el acta las refleja con su disyunción. Las veintitrés
+   * restantes siguen intactas desde antes de la Fase 1, y esta prueba es
+   * lo que lo garantiza: cualquier cambio en ellas tiene que pasar por
+   * aquí, a mano y con quien lo haga mirándolo.
    */
   const ANTES: [string, string, string][] = [
     ['/usuarios/{uid}',        'read',                  'autenticado() && request.auth.uid == uid'],
@@ -140,27 +147,27 @@ describe('Fase 1 · ninguna ruta de acceso existente ha cambiado', () => {
     ['/invitaciones/{token}',  'list',                  'false'],
     ['/invitaciones/{token}',  'create',                'esAdmin(request.resource.data.empresaId)'],
     ['/invitaciones/{token}',  'delete',                'false'],
-    ['/empresas/{eid}',        'read',                  'esMiembroActivo(eid)'],
-    ['/empresas/{eid}',        'update',                'esAdmin(eid)'],
+    ['/empresas/{eid}',        'read',                  'esMiembroActivo(eid) || esSuperAdmin()'],
+    ['/empresas/{eid}',        'update',                'esAdmin(eid) || esSuperAdmin()'],
     ['/empresas/{eid}',        'create, delete',        'false'],
-    ['/marca/{id}',            'read',                  'esMiembroActivo(eid)'],
-    ['/marca/{id}',            'write',                 'esAdmin(eid)'],
+    ['/marca/{id}',            'read',                  'esMiembroActivo(eid) || esSuperAdmin()'],
+    ['/marca/{id}',            'write',                 'esAdmin(eid) || esSuperAdmin()'],
     ['/invitaciones/{id}',     'read',                  'esAdmin(eid)'],
     ['/invitaciones/{id}',     'create',                'esAdmin(eid)'],
     ['/documentos/{id}',       'delete',                'false'],
     ['/archivos/{archivoId}',  'read, write',           'esMiembroActivo(eid)'],
-    ['/solicitudes/{id}',      'read',                  'esMiembroActivo(eid)'],
+    ['/solicitudes/{id}',      'read',                  'esMiembroActivo(eid) || esSuperAdmin()'],
     ['/solicitudes/{id}',      'create',                'esMiembroActivo(eid)'],
     ['/solicitudes/{id}',      'delete',                'false'],
-    ['/flujos/{id}',           'read',                  'esMiembroActivo(eid)'],
+    ['/flujos/{id}',           'read',                  'esMiembroActivo(eid) || esSuperAdmin()'],
     ['/flujos/{id}',           'delete',                'false'],
-    ['/tareas/{id}',           'read',                  'esMiembroActivo(eid)'],
+    ['/tareas/{id}',           'read',                  'esMiembroActivo(eid) || esSuperAdmin()'],
     ['/tareas/{id}',           'delete',                'false'],
-    ['/bitacora/{id}',         'read',                  'esMiembroActivo(eid)'],
+    ['/bitacora/{id}',         'read',                  'esMiembroActivo(eid) || esSuperAdmin()'],
     ['/bitacora/{id}',         'create',                'esMiembroActivo(eid)'],
     ['/bitacora/{id}',         'delete',                'false'],
-    ['/auditoria/{id}',        'read',                  'esMiembroActivo(eid)'],
-    ['/auditoria/{id}',        'create',                'esMiembroActivo(eid)'],
+    ['/auditoria/{id}',        'read',                  'esMiembroActivo(eid) || esSuperAdmin()'],
+    ['/auditoria/{id}',        'create',                'esMiembroActivo(eid) || esSuperAdmin()'],
     ['/auditoria/{id}',        'update, delete',        'false'],
     ['/periodos/{periodoId}',  'read',                  'esMiembroActivo(eid)'],
     ['/periodos/{periodoId}',  'write',                 'esGestor(eid)']

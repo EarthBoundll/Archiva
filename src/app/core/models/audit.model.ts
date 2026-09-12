@@ -16,7 +16,12 @@ export type AccionAuditada =
   | 'envio_revision' | 'archivo'
   | 'invito' | 'revoco' | 'acepto_invitacion'
   | 'cambio_rol' | 'suspendio' | 'reactivo'
-  | 'inicio_sesion' | 'cerro_sesion';
+  | 'inicio_sesion' | 'cerro_sesion'
+  // Un operador de plataforma entra en esta empresa para dar soporte.
+  // Registra el acto de entrar, no lo que se haga despues: sin ella, un
+  // operador que entra, mira y sale no deja ningun rastro — y mirar es
+  // precisamente lo que mas va a hacer.
+  | 'acceso_soporte';
 
 export const ACCIONES_AUDITADAS: Record<AccionAuditada, { frase: string; token: string }> = {
   creo:                { frase: 'creó',                       token: 'var(--estado-borrador)' },
@@ -37,7 +42,8 @@ export const ACCIONES_AUDITADAS: Record<AccionAuditada, { frase: string; token: 
   suspendio:           { frase: 'suspendió a',                token: 'var(--estado-rechazado)' },
   reactivo:            { frase: 'reactivó a',                 token: 'var(--estado-aprobado)' },
   inicio_sesion:       { frase: 'inició sesión',              token: 'var(--estado-borrador)' },
-  cerro_sesion:        { frase: 'cerró sesión',               token: 'var(--estado-archivado)' }
+  cerro_sesion:        { frase: 'cerró sesión',               token: 'var(--estado-archivado)' },
+  acceso_soporte:      { frase: 'accedió para dar soporte', token: 'var(--color-accent)' },
 };
 
 export interface AsientoAuditoria {
@@ -58,6 +64,33 @@ export interface AsientoAuditoria {
 
   /** Detalle en palabras: el motivo de un rechazo, el rol anterior… */
   detalle?: string;
+
+  // Intervención de plataforma
+  /**
+   * Lo hizo un operador de la plataforma, no alguien de la empresa.
+   *
+   * Sin esta marca, un asiento que dice «María editó la ficha» cumple la
+   * letra de la trazabilidad y no su intención: el cliente no distinguiría
+   * a una compañera de quien opera el producto. Y esa distinción es lo que
+   * hace defendible que exista un acceso transversal.
+   *
+   * Opcional porque los asientos anteriores a la Fase 3 no lo llevan, y su
+   * ausencia significa exactamente lo que ocurrió: no fue plataforma.
+   */
+  plataforma?: boolean;
+
+  /**
+   * Por qué entró.
+   *
+   * Opcional en el esquema y exigido en el cliente, y la asimetría es
+   * deliberada: un asiento antiguo sin motivo sigue siendo válido, y uno
+   * nuevo sin motivo no debería llegar a existir.
+   *
+   * Obligar a escribirlo convierte la visita en un acto deliberado, que es
+   * el mismo razonamiento por el que observar y rechazar ya exigen motivo
+   * en el flujo de aprobación.
+   */
+  motivoIntervencion?: string;
 
   // Cuándo
   fecha: string;   // AAAA-MM-DD
@@ -83,6 +116,9 @@ export interface AsientoPayload {
   entidadId: string;
   entidadEtiqueta: string;
   detalle?: string;
+
+  /** Solo para la entrada de un operador: por que entra. */
+  motivoIntervencion?: string;
 }
 
 /** Frase completa del asiento, tal como se lee en pantalla. */
@@ -111,4 +147,25 @@ export function agruparPorDia(asientos: AsientoAuditoria[]): Array<{
       fecha,
       asientos: lista.sort((p, q) => q.timestamp.localeCompare(p.timestamp))
     }));
+}
+
+// ============================================
+// INTERVENCION DE PLATAFORMA
+// ============================================
+
+/**
+ * ¿Este asiento lo dejó alguien de fuera de la empresa?
+ *
+ * La ausencia del campo es una respuesta, no un dato que falte: los
+ * asientos anteriores a la Fase 3 no lo llevan porque en su momento no
+ * había plataforma que pudiera intervenir.
+ */
+export function esIntervencionDePlataforma(a: AsientoAuditoria): boolean {
+  return a.plataforma === true;
+}
+
+/** Cómo se presenta el autor de un asiento, con su procedencia. */
+export function autorConProcedencia(a: AsientoAuditoria): string {
+  const nombre = a.actorNombre || 'Desconocido';
+  return esIntervencionDePlataforma(a) ? nombre + ' · plataforma' : nombre;
 }

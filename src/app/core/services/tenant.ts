@@ -1,6 +1,7 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal, Injector } from '@angular/core';
 import { FirebaseService } from './firebase';
 import { Auth } from './auth';
+import { AuditService } from './audit';
 import { Miembro, puedeEntrar } from '../models/member.model';
 import { Rol, Permiso, tienePermiso, tieneAlguno } from '../models/rbac.model';
 import {
@@ -28,6 +29,21 @@ import { log } from '../utils/logger';
 export class TenantService {
   private firebase = inject(FirebaseService);
   private authService = inject(Auth);
+
+  /**
+   * El inyector, para resolver la auditoria cuando haga falta.
+   *
+   * No se inyecta AuditService directamente porque el ciclo seria
+   * inmediato: ese servicio toma de aqui la empresa y el actor, asi que
+   * ya depende de esta clase. Angular lo detecta al construir y falla.
+   *
+   * Resolverlo en el momento de usarlo deshace el nudo sin mover la
+   * responsabilidad: cuando entrarEn() se ejecuta, los dos servicios
+   * llevan rato construidos. Y la garantia de que no se entra sin dejar
+   * constancia sigue viviendo donde se entra, que es donde tiene que
+   * estar — sacarla a quien llama la convertiria en una convencion.
+   */
+  private readonly inyector = inject(Injector);
 
   private readonly _miembro   = signal<Miembro | null>(null);
   private readonly _cargando  = signal(true);
@@ -191,7 +207,7 @@ export class TenantService {
    *
    * No cuesta ninguna lectura: la pertenencia se construye en memoria.
    */
-  entrarEn(empresaId: string): void {
+  async entrarEn(empresaId: string, motivo: string): Promise<void> {
     const operador = this._operador();
     if (!operador) {
       throw new Error('Solo un operador de plataforma puede entrar en una empresa.');
@@ -199,11 +215,47 @@ export class TenantService {
     if (!empresaId?.trim()) {
       throw new Error('Indica en que empresa entrar.');
     }
+    if (!motivo?.trim()) {
+      // Obligar a escribir por que se entra convierte la visita en un acto
+      // deliberado. Es el mismo razonamiento por el que observar y
+      // rechazar ya exigen motivo en el flujo de aprobacion.
+      throw new Error('Indica por que entras: queda registrado en la auditoria de la empresa.');
+    }
 
-    recordarEmpresa(empresaId);
+    // La pertenencia se puebla ANTES de asentar, porque el servicio de
+    // auditoria toma de aqui la empresa y el actor. Si el asiento falla,
+    // se deshace: no puede quedar dentro sin constancia.
+    const anterior = this._miembro();
     this._miembro.set(pertenenciaSintetica(operador, empresaId));
     this._resuelto.set(true);
     this._cargando.set(false);
+
+    try {
+      const audit = this.inyector.get(AuditService);
+      await audit.registrarOFallar({
+        accion: 'acceso_soporte',
+        entidad: 'empresa',
+        entidadId: empresaId,
+        entidadEtiqueta: empresaId,
+        detalle: 'Acceso de soporte de plataforma',
+        motivoIntervencion: motivo.trim()
+      });
+    } catch (e) {
+      // Aqui la tolerancia se invierte respecto al resto del sistema. En
+      // una operacion de usuario, perder el documento porque no se pudo
+      // anotar seria peor que perder la anotacion. En una entrada de
+      // plataforma, entrar sin dejar rastro es lo que no puede pasar.
+      this._miembro.set(anterior);
+      log.error('[Plataforma] entrada abortada: no se pudo dejar constancia', e);
+      throw new Error(
+        'No se pudo registrar el acceso en la auditoria de esa empresa. ' +
+        'La entrada se ha cancelado: no se entra sin dejar constancia.'
+      );
+    }
+
+    // Solo despues de que conste. Asi, si la pestana se recarga, vuelve a
+    // una empresa en la que ya hay registro de haber entrado.
+    recordarEmpresa(empresaId);
   }
 
   /**

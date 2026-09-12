@@ -56,7 +56,12 @@ function montar(
     getPerfilGlobal: () => Promise.resolve(perfil),
     getMiembro: () => Promise.resolve(miembro),
     getSuperAdmin: () => Promise.resolve(operador),
-    marcarAcceso: () => Promise.resolve()
+    marcarAcceso: () => Promise.resolve(),
+
+    // Desde la Fase 3, entrar deja constancia antes de completarse. Si
+    // este doble fallara, la entrada debe abortar — y hay una prueba que
+    // lo comprueba con un doble que sí falla.
+    registrarAuditoria: () => Promise.resolve()
   };
 
   TestBed.configureTestingModule({
@@ -83,7 +88,8 @@ describe('Tenencia · un usuario de empresa, sin cambios', () => {
             getPerfilGlobal: () => Promise.resolve({ empresaId: 'e-1' }),
             getMiembro: () => Promise.resolve(miembroReal(Rol.COLABORADOR)),
             getSuperAdmin: () => { consultada = true; return Promise.resolve(null); },
-            marcarAcceso: () => Promise.resolve()
+            marcarAcceso: () => Promise.resolve(),
+            registrarAuditoria: () => Promise.resolve()
           }
         },
         { provide: Auth, useValue: { getUserId: () => 'u-1' } }
@@ -142,7 +148,7 @@ describe('Tenencia · el operador de plataforma', () => {
     const tenant = montar(null, null, OPERADOR);
     await tenant.resolver();
 
-    tenant.entrarEn('e-99');
+    await tenant.entrarEn('e-99', 'soporte');
 
     expect(tenant.empresaId()).toBe('e-99');
     expect(tenant.exigirEmpresa()).toBe('e-99');
@@ -154,13 +160,13 @@ describe('Tenencia · el operador de plataforma', () => {
     const tenant = montar({ empresaId: 'e-1' }, miembroReal(Rol.ADMIN_EMPRESA), null);
     await tenant.resolver();
 
-    expect(() => tenant.entrarEn('e-99')).toThrow();
+    await expect(tenant.entrarEn('e-99', 'soporte')).rejects.toThrow();
   });
 
   it('salir vacía la empresa pero conserva la condición de operador', async () => {
     const tenant = montar(null, null, OPERADOR);
     await tenant.resolver();
-    tenant.entrarEn('e-99');
+    await tenant.entrarEn('e-99', 'soporte');
 
     tenant.salirDeEmpresa();
 
@@ -171,7 +177,7 @@ describe('Tenencia · el operador de plataforma', () => {
   it('cerrar sesión olvida también la condición de operador', async () => {
     const tenant = montar(null, null, OPERADOR);
     await tenant.resolver();
-    tenant.entrarEn('e-99');
+    await tenant.entrarEn('e-99', 'soporte');
 
     tenant.limpiar();
 
@@ -182,7 +188,7 @@ describe('Tenencia · el operador de plataforma', () => {
   it('una recarga devuelve al operador a la empresa que visitaba', async () => {
     const primera = montar(null, null, OPERADOR);
     await primera.resolver();
-    primera.entrarEn('e-77');
+    await primera.entrarEn('e-77', 'soporte');
 
     // Segunda sesión sobre el mismo almacenamiento: es lo que hace una
     // recarga. No se llama a olvidarEmpresa, a diferencia de montar().
@@ -195,7 +201,8 @@ describe('Tenencia · el operador de plataforma', () => {
             getPerfilGlobal: () => Promise.resolve(null),
             getMiembro: () => Promise.resolve(null),
             getSuperAdmin: () => Promise.resolve(OPERADOR),
-            marcarAcceso: () => Promise.resolve()
+            marcarAcceso: () => Promise.resolve(),
+            registrarAuditoria: () => Promise.resolve()
           }
         },
         { provide: Auth, useValue: { getUserId: () => 'u-1' } }
@@ -227,7 +234,7 @@ describe('Tenencia · el servicio aplica la lista blanca', () => {
     it(`el servicio niega ${p} a un operador dentro de una empresa`, async () => {
       const tenant = montar(null, null, OPERADOR);
       await tenant.resolver();
-      tenant.entrarEn('e-1');
+      await tenant.entrarEn('e-1', 'soporte');
 
       expect(tenant.puede(p)).toBe(false);
     });
@@ -237,7 +244,7 @@ describe('Tenencia · el servicio aplica la lista blanca', () => {
     // Sin el filtro aquí, esta variante sería la puerta trasera de la otra.
     const tenant = montar(null, null, OPERADOR);
     await tenant.resolver();
-    tenant.entrarEn('e-1');
+    await tenant.entrarEn('e-1', 'soporte');
 
     expect(tenant.puedeAlguno([Permiso.APROBAR, Permiso.DOC_EDITAR])).toBe(false);
   });
@@ -245,7 +252,7 @@ describe('Tenencia · el servicio aplica la lista blanca', () => {
   it('pero deja pasar los permitidos en esa misma variante', async () => {
     const tenant = montar(null, null, OPERADOR);
     await tenant.resolver();
-    tenant.entrarEn('e-1');
+    await tenant.entrarEn('e-1', 'soporte');
 
     expect(tenant.puedeAlguno([Permiso.APROBAR, Permiso.DOC_VER])).toBe(true);
   });
@@ -254,7 +261,7 @@ describe('Tenencia · el servicio aplica la lista blanca', () => {
     it(`el servicio concede ${p} a un operador dentro de una empresa`, async () => {
       const tenant = montar(null, null, OPERADOR);
       await tenant.resolver();
-      tenant.entrarEn('e-1');
+      await tenant.entrarEn('e-1', 'soporte');
 
       expect(tenant.puede(p)).toBe(true);
     });

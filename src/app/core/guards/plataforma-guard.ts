@@ -32,7 +32,7 @@ export const entrarEnEmpresaGuard: CanActivateFn = (ruta: ActivatedRouteSnapshot
         return of(router.createUrlTree(['/login']));
       }
 
-      return tenant.resolver().then(() => {
+      return tenant.resolver().then(async () => {
         // Solo un operador entra así. Un usuario de empresa que llegue
         // aquí —por curiosidad o por un enlace copiado— va a su tablero,
         // no a una pantalla de error: no ha hecho nada malo.
@@ -45,9 +45,16 @@ export const entrarEnEmpresaGuard: CanActivateFn = (ruta: ActivatedRouteSnapshot
           return router.createUrlTree(['/sin-acceso']);
         }
 
+        // El motivo llega en la consulta. Cuando exista la pantalla de
+        // plataforma —Fase 4— lo pedirá en un formulario; hasta entonces,
+        // sin motivo no se entra.
+        const motivo = ruta.queryParamMap.get('motivo')?.trim();
+
         try {
-          tenant.entrarEn(empresaId);
+          await tenant.entrarEn(empresaId, motivo ?? '');
         } catch {
+          // Sin constancia no hay entrada. La pantalla de acceso denegado
+          // lo explica desde el modo plataforma.
           return router.createUrlTree(['/sin-acceso']);
         }
 

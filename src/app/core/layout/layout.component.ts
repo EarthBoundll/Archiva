@@ -10,6 +10,8 @@ import { SessionService } from '../services/session';
 import { BrandingService } from '../services/branding';
 import { CompanyService } from '../services/company';
 import { Permiso } from '../models/rbac.model';
+import { NotificacionesService, Notificacion } from '../services/notificaciones';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-layout',
@@ -203,6 +205,56 @@ import { Permiso } from '../models/rbac.model';
             </span>
           }
 
+          <div class="avisos">
+            <button class="avisos__campana"
+                    (click)="alternarAvisos($event)"
+                    [attr.aria-expanded]="avisosAbiertos()"
+                    [attr.aria-label]="notificaciones.noLeidas() > 0
+                      ? notificaciones.noLeidas() + ' notificaciones sin leer'
+                      : 'Notificaciones'">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+              </svg>
+              @if (notificaciones.noLeidas() > 0) {
+                <span class="avisos__contador">{{ notificaciones.noLeidas() > 99 ? '99+' : notificaciones.noLeidas() }}</span>
+              }
+            </button>
+
+            @if (avisosAbiertos()) {
+              <div class="avisos__panel" appDialogo (cerrar)="avisosAbiertos.set(false)"
+                   (click)="$event.stopPropagation()" role="dialog" aria-label="Notificaciones">
+                <header class="avisos__cabecera">
+                  <h2>Notificaciones</h2>
+                  @if (notificaciones.noLeidas() > 0) {
+                    <button class="avisos__todas" (click)="marcarTodas()">Marcar todas como leidas</button>
+                  }
+                </header>
+
+                @if (notificaciones.cargando()) {
+                  <p class="avisos__estado">Cargando...</p>
+                } @else if (notificaciones.lista().length === 0) {
+                  <p class="avisos__estado">No hay avisos. El acervo esta al dia.</p>
+                } @else {
+                  <ul class="avisos__lista">
+                    @for (n of notificaciones.lista(); track n.id) {
+                      <li class="avisos__item"
+                          [class.avisos__item--nueva]="!n.leida"
+                          [class]="'sev--' + n.severidad">
+                        <button class="avisos__boton" (click)="abrirAviso(n)">
+                          <span class="avisos__titulo">{{ n.titulo }}</span>
+                          <span class="avisos__mensaje">{{ n.mensaje }}</span>
+                          <span class="avisos__fecha">{{ n.fecha | date:'dd/MM/yyyy HH:mm' }}</span>
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+              </div>
+            }
+          </div>
+
           <div class="topbar__user">
             <span class="topbar__greeting">{{ greeting }}, {{ userName }}</span>
             <div class="topbar__avatar">
@@ -324,9 +376,33 @@ export class LayoutComponent implements OnInit, OnDestroy {
   sesion = inject(SessionService);
   marca = inject(BrandingService);
   empresa = inject(CompanyService);
+  notificaciones = inject(NotificacionesService);
+  private router = inject(Router);
+
+  avisosAbiertos = signal(false);
   
   toggleSidebar() {
     this.layoutService.toggleSidebar();
+  }
+
+  alternarAvisos(e: Event) {
+    e.stopPropagation();
+    const abrir = !this.avisosAbiertos();
+    this.avisosAbiertos.set(abrir);
+    // Se refresca al abrir: entre dos aperturas puede haber vencido algo.
+    if (abrir) this.notificaciones.cargar(true);
+  }
+
+  async abrirAviso(n: Notificacion) {
+    await this.notificaciones.marcarLeida(n.id);
+    this.avisosAbiertos.set(false);
+    if (n.documentoId) {
+      this.router.navigate(['/documentos'], { queryParams: { doc: n.documentoId } });
+    }
+  }
+
+  marcarTodas() {
+    this.notificaciones.marcarTodasLeidas();
   }
 
   toggleMobileMenu() {
@@ -388,6 +464,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
     // abierta: hacerlo en la raiz pondria el reloj a correr tambien en la
     // pantalla de acceso, donde no hay nada que proteger.
     this.sesion.iniciar();
+
+    // Los avisos no deben retrasar la primera pintura de la barra.
+    this.notificaciones.cargar().catch(() => {});
 
     // La barra superior muestra el nombre de la empresa: hay que tenerlo
     // antes de pintarla.

@@ -381,17 +381,21 @@ export class DocumentService {
   // ============================================
 
   /**
-   * Tope de 600 KB por archivo.
+   * Tope de 700 KB por archivo.
    *
-   * El contenido viaja como data URL dentro de un documento de Firestore, y
-   * Firestore limita cada documento a 1 MiB. Base64 infla el tamaño un 33%,
-   * asi que 600 KB reales ocupan unos 800 KB y dejan margen.
+   * No es una cifra elegida: la impone Firestore. El contenido viaja como
+   * data URL dentro del documento, y Firestore limita cada documento a
+   * 1 MiB. Base64 infla el contenido un 33%, de modo que el techo absoluto
+   * ronda los 760 KB reales. Se queda en 700 KB para que quepan tambien el
+   * nombre, el tipo, la fecha y el prefijo del data URL sin rozar el limite:
+   * 700 KB reales ocupan unos 956 KB y dejan 90 KB de margen.
    *
-   * Para archivos grandes hace falta Firebase Storage, que en proyectos
-   * nuevos exige plan Blaze. Mientras tanto, esos documentos se registran
-   * con su ubicacion de referencia.
+   * Subirlo mas no es cuestion de cambiar este numero: a partir de ahi hace
+   * falta Firebase Storage, que en proyectos nuevos exige plan Blaze.
+   * Mientras tanto, esos documentos se registran con su ubicacion de
+   * referencia.
    */
-  static readonly MAX_ARCHIVO_BYTES = 600 * 1024;
+  static readonly MAX_ARCHIVO_BYTES = 700 * 1024;
 
   static readonly TIPOS_ACEPTADOS = [
     'application/pdf',
@@ -409,8 +413,9 @@ export class DocumentService {
 
     if (file.size > DocumentService.MAX_ARCHIVO_BYTES) {
       const mb = (file.size / 1024 / 1024).toFixed(1);
+      const tope = Math.round(DocumentService.MAX_ARCHIVO_BYTES / 1024);
       throw new Error(
-        `El archivo pesa ${mb} MB y el máximo son 600 KB. ` +
+        `El archivo pesa ${mb} MB y el máximo son ${tope} KB. ` +
         `Sube una versión comprimida o registra su ubicación de referencia.`
       );
     }

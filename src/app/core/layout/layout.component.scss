@@ -977,12 +977,16 @@
 .avisos {
   position: relative;
   margin-left: auto;
+  // Sin esto la barra, que es flex y en movil va muy justa, encoge la
+  // campana hasta dejarla en cero ancho: existe en el DOM pero no se ve.
+  flex-shrink: 0;
 
   &__campana {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     width: 38px;
     height: 38px;
     border: 1px solid transparent;

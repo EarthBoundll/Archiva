@@ -245,7 +245,10 @@
   border-radius: var(--radius-md);
   color: var(--color-text-secondary);
 
-  &--busqueda { flex: 1 1 260px; }
+  // .filtros apila en columna: aqui el eje principal es el vertical, de modo
+  // que un flex-basis de 260px seria ALTURA, no anchura. Con 'auto' la caja
+  // mide lo que mide su input.
+  &--busqueda { flex: 0 0 auto; }
 
   input {
     flex: 1;

@@ -791,15 +791,34 @@ export class FirebaseService {
   // ============================================
   
   // Get budgets for a month
+  /**
+   * Cuotas del periodo, ordenadas en el cliente.
+   *
+   * Ordenar por dos campos en Firestore exige un indice compuesto, y sin el
+   * la consulta no devuelve una lista vacia: lanza FAILED_PRECONDITION y se
+   * lleva por delante la pantalla de Alertas entera, que es donde se
+   * consumen estas cuotas.
+   *
+   * Hay una cuota por categoria documental y hay doce categorias, asi que
+   * la lista no pasa de doce filas. Ordenar doce elementos en memoria cuesta
+   * nada y elimina la dependencia de un indice que hay que desplegar aparte
+   * —el flujo de GitHub publica el sitio, no los indices—.
+   *
+   * El orden es el mismo que pedia la consulta: primero las no prioritarias
+   * (false < true en Firestore) y, dentro de cada grupo, de mayor a menor
+   * cuota asignada.
+   */
   async getCuotasPorPeriodo(empresaId: string, year: number, month: number): Promise<any[]> {
     const periodoId = `${year}-${String(month).padStart(2, '0')}`;
-    const q = query(
-      collection(this.firestore, `empresas/${empresaId}/periodos/${periodoId}/almacenamiento`),
-      orderBy('esPrioritaria'),
-      orderBy('budgetedAmount', 'desc')
+    const snapshot = await getDocs(
+      collection(this.firestore, `empresas/${empresaId}/periodos/${periodoId}/almacenamiento`)
     );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }) as any)
+      .sort((a, b) =>
+        Number(a.esPrioritaria ?? false) - Number(b.esPrioritaria ?? false) ||
+        (b.budgetedAmount ?? 0) - (a.budgetedAmount ?? 0)
+      );
   }
 
   // Create or update budget for a category

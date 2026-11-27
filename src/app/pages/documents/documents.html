@@ -428,6 +428,9 @@
                     <span class="adjunto__nombre">{{ a.nombre }}</span>
                     <span class="adjunto__meta">{{ formatoBytes(a.bytes) }}</span>
                   </div>
+                  @if (esPrevisualizable(a.tipo)) {
+                    <button class="btn-accion" (click)="verArchivo(a)">Ver</button>
+                  }
                   <button class="btn-accion" (click)="descargar(a)">Descargar</button>
                   <button class="btn-accion btn-accion--peligro" (click)="borrarArchivo(a)">Eliminar</button>
                 </li>
@@ -556,6 +559,27 @@
                 [disabled]="enviando() || plantillas().length === 0">
           {{ enviando() ? 'Abriendo…' : 'Abrir expediente' }}
         </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===== Visor de adjuntos ===== -->
+@if (vistaPrevia(); as vp) {
+  <div class="overlay overlay--visor" (click)="cerrarVistaPrevia()">
+    <div class="visor" appDialogo (cerrar)="cerrarVistaPrevia()"
+         (click)="$event.stopPropagation()" role="dialog" aria-label="Vista previa del archivo">
+      <header class="visor__cabecera">
+        <span class="visor__nombre" [title]="vp.nombre">{{ vp.nombre }}</span>
+        <button class="btn-cerrar" (click)="cerrarVistaPrevia()" aria-label="Cerrar">&times;</button>
+      </header>
+
+      <div class="visor__cuerpo">
+        @if (vp.esPdf && vp.url) {
+          <iframe class="visor__marco" [src]="vp.url" title="Vista previa del documento"></iframe>
+        } @else if (vp.esImagen && vp.urlImagen) {
+          <img class="visor__imagen" [src]="vp.urlImagen" [alt]="vp.nombre">
+        }
       </div>
     </div>
   </div>

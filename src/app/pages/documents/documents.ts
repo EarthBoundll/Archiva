@@ -1,4 +1,5 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DocumentService, type ArchivoAdjunto } from '../../core/services/document';
@@ -34,12 +35,13 @@ type FiltroEstado = EstadoDocumental | 'todos' | 'por_vencer';
   templateUrl: './documents.html',
   styleUrl: './documents.scss'
 })
-export class DocumentsComponent implements OnInit {
+export class DocumentsComponent implements OnInit, OnDestroy {
 
   private documentService = inject(DocumentService);
   private workflowService = inject(WorkflowService);
   private approvals = inject(ApprovalsService);
   private tenant = inject(TenantService);
+  private sanitizer = inject(DomSanitizer);
 
   // ── Datos ──
   documentos = signal<Documento[]>([]);
@@ -560,6 +562,85 @@ export class DocumentsComponent implements OnInit {
     } finally {
       this.subiendo.set(false);
     }
+  }
+
+  // ── Vista previa de adjuntos ──
+
+  /**
+   * Lo que se esta viendo. `url` solo se rellena para PDF e imagen, que son
+   * los unicos formatos que el navegador sabe pintar por si mismo; para un
+   * Word o un Excel se ofrece la descarga, que es lo honesto.
+   */
+  vistaPrevia = signal<{
+    nombre: string;
+    tipo: string;
+    esPdf: boolean;
+    esImagen: boolean;
+    url: SafeResourceUrl | null;
+    urlImagen: string | null;
+  } | null>(null);
+
+  /**
+   * El blob vivo de la vista previa.
+   *
+   * Un PDF no se puede incrustar desde su data URL: Chrome bloquea los
+   * `data:` dentro de un iframe. Hay que convertirlo a blob y servirlo por
+   * su URL temporal, que ocupa memoria hasta que se revoca; de ahi que se
+   * guarde la referencia y se libere al cerrar.
+   */
+  private urlBlob: string | null = null;
+
+  esPrevisualizable(tipo: string): boolean {
+    return tipo === 'application/pdf' || tipo.startsWith('image/');
+  }
+
+  async verArchivo(a: ArchivoAdjunto) {
+    const doc = this.modalArchivos();
+    if (!doc) return;
+
+    try {
+      const contenido = await this.documentService.getContenidoArchivo(doc.id, a.id);
+      if (!contenido) { this.errorMsg.set('El archivo ya no está disponible.'); return; }
+
+      this.liberarVistaPrevia();
+      const esPdf = a.tipo === 'application/pdf';
+      const esImagen = a.tipo.startsWith('image/');
+
+      let url: SafeResourceUrl | null = null;
+      if (esPdf) {
+        this.urlBlob = URL.createObjectURL(this.aBlob(contenido, a.tipo));
+        url = this.sanitizer.bypassSecurityTrustResourceUrl(this.urlBlob);
+      }
+
+      this.vistaPrevia.set({
+        nombre: a.nombre, tipo: a.tipo, esPdf, esImagen,
+        url, urlImagen: esImagen ? contenido : null
+      });
+    } catch {
+      this.errorMsg.set('No se pudo abrir el archivo.');
+    }
+  }
+
+  cerrarVistaPrevia() {
+    this.liberarVistaPrevia();
+    this.vistaPrevia.set(null);
+  }
+
+  private liberarVistaPrevia() {
+    if (this.urlBlob) { URL.revokeObjectURL(this.urlBlob); this.urlBlob = null; }
+  }
+
+  /** Si se abandona la pantalla con una vista previa abierta, el blob se queda. */
+  ngOnDestroy() {
+    this.liberarVistaPrevia();
+  }
+
+  private aBlob(dataUrl: string, tipo: string): Blob {
+    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    const binario = atob(base64);
+    const bytes = new Uint8Array(binario.length);
+    for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+    return new Blob([bytes], { type: tipo });
   }
 
   async descargar(a: ArchivoAdjunto) {

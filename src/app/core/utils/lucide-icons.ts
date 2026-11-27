@@ -33,7 +33,7 @@ export const LUCIDE_ICONS: Record<string, string> = {
   // ------------------------------------------
   // CATEGORIAS DOCUMENTALES
   // ------------------------------------------
-  "receipt": '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" /> <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" /> <path d="M12 17.5v-11" />',
+  "receipt": '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" /> <path d="M8 8h8" /> <path d="M8 12h8" /> <path d="M8 16h5" />',
   "shopping-bag": '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /> <path d="M3 6h18" /> <path d="M16 10a4 4 0 0 1-8 0" />',
   "mail": '<rect width="20" height="16" x="2" y="4" rx="2" /> <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />',
   "mails": '<rect width="16" height="13" x="6" y="4" rx="2" /> <path d="m22 7-7.1 3.78c-.57.3-1.23.3-1.8 0L6 7" /> <path d="M2 8v11c0 1.1.9 2 2 2h14" />',
